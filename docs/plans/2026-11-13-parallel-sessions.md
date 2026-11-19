@@ -38,7 +38,7 @@ not quietly fall back to the two-view shape.
   part is read-only: the composer takes no input (Enter and the send button are
   blocked) until its turn ends, and a **Stop** action ends it. Two live sessions mean
   two model calls; the list says so.
-- `chatOf(botId)` still returns the current part. Phone, IM, group chats and the Bot's
+- `chatOf(botId)` still returns the current part. IM, group chats and the Bot's
   identity are unchanged; they keep seeing the current part.
 
 ## Run mode
@@ -94,5 +94,4 @@ Bot's chat as one place follows the thread a part belongs to instead:
 - Two windows side by side (the next step; this change is "parallel work", not "two
   visible windows"), and the two-view shape above.
 - Group chats: membership and group sessions are untouched.
-- The phone app: it keeps showing the current part.
 - The Bot identity model: still one Bot, one identity, one memory.

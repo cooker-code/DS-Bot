@@ -12,7 +12,6 @@ import { AskUserCell, SettledQuestion } from './questions.js'
 import { AnsweredReply, ClosedView, WidgetCell } from './widget-cell.js'
 import { SecretToolCell } from './secret-card.js'
 import { ConnectorToolCell, MailToolCell } from './connectors.js'
-import { HandoffCall } from './handoff-card.js'
 import { AppAccessCall, ComputerCallRow, ComputerHandoffCall } from './computer.js'
 import { mdLabels, t } from './i18n.js'
 import { call } from './api.js'
@@ -1209,7 +1208,7 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot,
     case 'mail_send':
       return h(MailToolCell, { sessionId, callId: call.callId, done, content: call.content, roster, actions, heldCards })
     case 'browser_handoff':
-      return h(HandoffCall, { sessionId, callId: call.callId, roster, actions, heldCards, hooks })
+      return h(CellEmpty, { className: 'bt-q-gone' })
     case 'computer_handoff':
       return h(ComputerHandoffCall, { sessionId, callId: call.callId, roster, actions, heldCards, hooks })
     case 'ask_user_question': {
@@ -1239,7 +1238,7 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot,
   }
 }
 
-export function ToolCell({ node, sessionId, useRoster, useUi, useWork, useHeldCards, useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer, actions }) {
+export function ToolCell({ node, sessionId, useRoster, useUi, useWork, useHeldCards, useComputer, actions }) {
   const roster = useRoster(value => value)
   const heldCards = useHeldCards?.(state => state[sessionId])
   const root = node.data.root
@@ -1260,6 +1259,6 @@ export function ToolCell({ node, sessionId, useRoster, useUi, useWork, useHeldCa
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note)
   useShownCards(actions, sessionId, drawn.filter(call => (CARDS.has(toolName(call)) || isComputerCall(toolName(call))) && call.callId).map(call => call.callId))
   if (drawn.length === 0) return h(CellEmpty)
-  const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer } }
+  const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useComputer } }
   return h(Fragment, null, drawn.map((call, index) => h(Fragment, { key: call.callId ?? index }, renderCall(call, env))))
 }

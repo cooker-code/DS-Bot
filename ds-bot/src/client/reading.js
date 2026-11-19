@@ -44,8 +44,7 @@ export function sectionAt(tops, line) {
 }
 
 // The band of `scroller` the reader sees: below DS Bot's floating header, which lies over
-// the scroller's top in DSH and in the desktop app alike, and above DSH's composer, which
-// sits inside the scroller (the desktop app's sits below it).
+// the scroller's top and above the composer when it sits inside the scroller.
 export function readingBand(scroller) {
   const box = scroller.getBoundingClientRect()
   const head = Array.from(document.querySelectorAll('.bt-head'), node => node.getBoundingClientRect())

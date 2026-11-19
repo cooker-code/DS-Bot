@@ -14,7 +14,6 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SettingsDialog } from './settings.js'
 import { Switch } from './bot-settings.js'
-import { NotificationsRow } from './notifications.js'
 import { GearIcon } from './icons.js'
 import { useLinger } from './motion.js'
 import { t } from './i18n.js'
@@ -509,10 +508,6 @@ export function installSettingsShell(ctx, { face, actions, ui, held }) {
         }),
       }, HostReleasePrompt)), 'ds-bot: host release prompt')
     }),
-    // Notifications are this window's own switches, so the row registers without a form.
-    ctx.effect(() => slots.inject('settings.general.item', () => slots.register({
-      name: 'settings.general.item', id: 'notifications', order: 5,
-    }, NotificationsRow)), 'ds-bot: notifications row'),
     ctx.inject(['configForms'], (scope) => {
       scope.effect(() => slots.inject('settings.general.item', () => slots.register({
         name: 'settings.general.item', id: 'developer-tools', order: 15,

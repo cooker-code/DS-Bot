@@ -124,16 +124,7 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'effect ds-bot: update check',
     'effect ds-bot: dsh update install',
     'on session/event',
-    'effect ds-bot: mobile room signals',
-    'on agent/status',
-    'on session/event',
-    'on agent/assistant-stream',
-    'effect ds-bot: live feed route',
-    'route GET /api/bot/feed',
-    'effect ds-bot: live feed',
-    'on session/event',
     'effect ds-bot: im',
-    'effect ds-bot: phone link',
     'effect ds-bot: api route',
     'route POST /api/bot',
     'effect ds-bot: load state',
@@ -246,10 +237,7 @@ test('in the Desktop profile read_browser is the last tool and reads through the
 })
 
 test('browser takeover and give-back are user-only and publish hold state', async t => {
-  const previous = process.env.DS_BOT_APP
-  process.env.DS_BOT_APP = '1'
-  t.after(() => { if (previous === undefined) delete process.env.DS_BOT_APP; else process.env.DS_BOT_APP = previous })
-  const { call, stop } = start(TEAM, { services: { profileContext: { name: 'ds-bot' } } })
+  const { call, stop } = start(TEAM, { services: { profileContext: { name: 'desktop' } } })
   t.after(stop)
   await call('state')
   assert.equal((await call('browser-takeover', { botId: 'b2' })).value, true)
@@ -259,13 +247,7 @@ test('browser takeover and give-back are user-only and publish hold state', asyn
   assert.deepEqual((await call('browser-wait', { clientId: 'hold-window', open: {} })).value.holds, {})
 })
 
-test('the desktop app has read_browser too; DSH Web does not', (t) => {
-  process.env.DS_BOT_APP = '1'
-  t.after(() => { delete process.env.DS_BOT_APP })
-  const app = start(TEAM, { services: { profileContext: { name: 'ds-bot' } } })
-  t.after(app.stop)
-  assert.ok(app.rt.teamTools.some(d => d.name === 'read_browser'))
-  delete process.env.DS_BOT_APP
+test('DSH Web has no browser panel by default', (t) => {
   const web = start(TEAM, { services: { profileContext: { name: 'web' } } })
   t.after(web.stop)
   assert.ok(!web.rt.teamTools.some(d => d.name === 'read_browser'))

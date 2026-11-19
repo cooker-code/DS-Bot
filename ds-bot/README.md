@@ -23,7 +23,7 @@ Tested with dsh `0.2.2-rc.1` (Web and Desktop).
 - **Long chats stay inside the model's window**: dsh's own compaction never runs on a Bot's Session. When a turn ends past the check line (a share of the model's context window), a small separate model call, the context steward, reads the latest messages of the chat and decides once. If the work is still under way, the chat is condensed in place into a checkpoint: a handoff summary plus your recent messages word for word. If the work has reached a stopping point, the Bot writes a handoff note and continues in a new part. Either way you still see one chat, with no marker. Earlier parts and condensed messages stay searchable in a full-text index (`node:sqlite` FTS5) through `read_own_chat`.
 - **Memory**: each Bot keeps notes across all its conversations, each group chat keeps its own for its members, and the team shares one more. See [Memory](#memory).
 - **Web search**: see [Web search](#web-search).
-- **Bot browser (dsh Desktop and the desktop app)**: see [Bot browser](#bot-browser).
+- **Bot browser (DSH Desktop)**: see [Bot browser](#bot-browser).
 - **Images**: for a model that cannot read images, a vision model first turns the image into text.
 - **Secrets**: a Bot asks for an API key or token with a card in its own chat and never sees the value. See [Secrets](#secrets).
 - **Usage**: Settings → Usage shows token usage by time (24 hours to 12 months, or days picked on a calendar), by Bot and by model, with a page for each Bot and each model. Calls that a Session logs are read from the logs, so older chats count too. Calls that leave no log (checkpoints, handoff notes, the steward, image readings, dsh titles and compaction) are counted while they stream, from the time the plugin runs. Tokens only, no cost.
@@ -76,7 +76,7 @@ Options go in the profile's `cordis.patch.yml`, under the `bot` entry. All of th
     home: /path/to/bot-data         # where the team is saved; default $DSH_HOME/bot
     checkRatio: 0.8                 # share of the model's usable window where the steward decides
     checkTokens: 380000             # the highest context where it decides, even on a larger window
-    browser: true                   # force the Bot browser on or off; default on in Desktop and the desktop app only
+    browser: true                   # force the Bot browser on or off; default on in DSH Desktop only
     memory: true                    # false turns memory off: no memory tools, section or panel
     memoryReview: true              # false leaves memory to the Bots' own remember calls
     diagnosticsFile: false          # keep the error log in memory only; default <home>/logs/diagnostics.jsonl
@@ -153,19 +153,18 @@ Another plugin can also set the search provider while dsh runs, after the profil
 
 ## Bot browser
 
-In dsh Desktop and the desktop app, each Bot has its own browser panel in the right column (open a page from the Bot's details panel or the panel bar's `···` menu).
+In DSH Desktop, each Bot has its own browser panel in the right column (open a page from the Bot's details panel or the panel bar's `···` menu).
 
-- **One partition per Bot** (`bot:<id>`): logins and cookies belong to that Bot only. The desktop app keeps them on disk, so a Bot stays signed in after a restart; dsh Desktop keeps them in memory only.
+- **One partition per Bot** (`bot:<id>`): logins and cookies belong to that Bot only. DSH Desktop keeps the panel partition in memory.
 - **The Bot can read the page**: the `read_browser` tool reads the page's DOM, not a screenshot. The text becomes Markdown with headings, nested lists, tables, code blocks and quotes. Links and form controls are marked `[#n]` in place and listed below with their targets and values. The tool also reads the text you selected. Long pages are read in parts (`from`). Page content is treated as data, never as instructions.
   - It reads open Shadow DOM (with `<slot>`) and same-origin iframes up to 3 levels deep.
   - It reads only what is visible: `display:none`, `visibility:hidden`, zero-height and closed `<details>` content is skipped.
   - It never reads the values of password, credit card (`autocomplete="cc-*"`) or one-time code fields.
   - Limits: 400,000 characters, 150,000 nodes, 5,000 rows per table, 3,000 links and controls, 1.5 seconds. A cut result says so.
   - It cannot read cross-origin iframes (one line with the address), closed shadow roots, canvas content (online editors, maps), or text in CSS `::before` / `::after`. On pages that render on demand, only the rendered part is read.
-  - Without a browser plugin, `read_browser` is read-only. When a browser plugin (`refs`, `script` or `task`; see [`browser-plugins/`](../browser-plugins/)) is enabled in **Settings → Browser**, Bots can open, inspect and interact with pages in their own profile (`bot/browser-profiles/<botId>/`); in the desktop app they share the panel's tabs with you, hand off sign-in or payment steps via a chat card (`browser_handoff`), and yield whenever you take over.
+  - Without a browser plugin, `read_browser` is read-only. When a browser plugin (`refs`, `script` or `task`; see [`browser-plugins/`](../browser-plugins/)) is enabled in **Settings → Browser**, Bots can open, inspect and interact with pages in their own profile (`bot/browser-profiles/<botId>/`).
 - **Addresses**: http and https only. localhost and LAN addresses are allowed; cloud metadata addresses (such as `169.254.x.x`) and dsh's own ports are not.
 - The browser panel and the details drawer share the right column; opening one closes the other. Switching chats switches the panel to that Bot. Deleting a Bot clears its browser and saved address.
-- **Cookie import (desktop app only)**: the import button in the browser bar previews the cookies of a file (Cookie-Editor JSON, Netscape `cookies.txt`, Playwright `storageState`) or of an installed Chromium/Firefox profile, then writes them into the Bot's partition. A source browser closes for a moment so its cookie store can be copied, and it reopens with its tabs. Sign-in that lives outside cookies (localStorage, passkeys) does not come along.
 
 dsh Web has no browser panel and no `read_browser` tool.
 
@@ -217,7 +216,7 @@ Files in `bot/`:
 | `secrets.json` | Saved secrets. Treat backups of it like passwords. |
 | `logs/diagnostics.jsonl` | Recent errors and warnings, with keys, tokens, saved secrets and the home folder removed. It moves to `diagnostics.jsonl.1` past 1 MB. Safe to delete. |
 
-The chats themselves are dsh Sessions and are not in `bot/`: they are in `~/.dsh/sessions/`. dsh keeps its workspace list in `~/.dsh/storages/workspace.json` and profiles (with model settings) in `~/.dsh/profiles/`. dsh Desktop keeps each Bot's browser partition in memory only, so its logins are not saved. The desktop app saves them with its own window data, not in the data location, and clears a Bot's when the Bot is deleted.
+The chats themselves are dsh Sessions and are not in `bot/`: they are in `~/.dsh/sessions/`. dsh keeps its workspace list in `~/.dsh/storages/workspace.json` and profiles (with model settings) in `~/.dsh/profiles/`. dsh Desktop keeps each Bot's browser partition in memory only, so its logins are not saved.
 
 **Back up and restore**
 
@@ -231,26 +230,24 @@ The chats themselves are dsh Sessions and are not in `bot/`: they are in `~/.dsh
 
 ## Development
 
-You need Node 24, pnpm and a deepseek-harness checkout with its dependencies installed, next to this repository (`../deepseek-harness`, or set `DSH_HARNESS`). The Desktop test bench also needs `xvfb-run` and `ffmpeg`. Web screenshots need Chrome or Chromium (`CHROME_BIN`; by default `google-chrome` or `chromium`).
+You need Node 24, pnpm and a deepseek-harness checkout with its dependencies installed, next to this repository (`../deepseek-harness`, or set `DSH_HARNESS`). Web screenshots need Chrome or Chromium (`CHROME_BIN`; by default `google-chrome` or `chromium`).
 
 ```sh
 npm ci                                   # esbuild, for the client build
 npm run build                            # src/client → client.js
-npm test                                 # unit tests
+npm test -- test/group-search.test.js    # choose the affected test files
 npm run lint                             # oxlint from the dsh repository (.oxlintrc.json)
 dev/bench.sh dev 3100 8800 start         # Web test bench: mock model + dsh Web, data in ../.dsh-test-dev
-dev/desktop-linux/desktop.sh dev start   # Desktop test bench: mock model + dsh Desktop in Xvfb
 CONTEXT_WINDOW=100000 CHECK_RATIO=0.45 dev/bench.sh smoke 3101 8801 reset && node dev/smoke.mjs smoke 3101
-dev/check.sh                             # all checks (see below)
+dev/check.sh --only build                # check the generated client
 ```
 
-- `client.js` is built from `src/client/` and committed, so `link:` and Git installs need no build. Do not edit `client.js` by hand; `npm test` checks that it matches the source. After a change in `src/client/`, run `npm run build` and reload the page. After a change in `index.js` or `src/host/`, restart dsh.
+- `client.js` is built from `src/client/` and committed, so `link:` and Git installs need no build. Do not edit `client.js` by hand; `node scripts/build-client.mjs --check` checks that it matches the source. After a change in `src/client/`, run `npm run build` and reload the page. After a change in `index.js` or `src/host/`, restart dsh.
 - **Web test bench** `dev/bench.sh <name> <web port> <mock port> [start|stop|reset|status]`: a scripted mock model (`dev/mock-llm.mjs`, no real tokens; its commands are listed at the top of the file) and a dsh Web server. Data goes in `../.dsh-test-<name>/`; `reset` clears the team and Sessions first. The login address with its token is in `../.dsh-test-<name>/web.log`.
-- **Desktop test bench** `dev/desktop-linux/desktop.sh <name> [start|stop|reset|status]`: dsh does not run Desktop on Linux; `launch.mts` runs the unpackaged Desktop in Xvfb. The first start downloads Electron and a Linux runtime (a few minutes). `start` returns when the team shows in a 1400×860 window.
-- **All checks** `dev/check.sh [--skip steps] [--only steps] [--out dir]`: `unit`, `build`, `lint`, `smoke`, `web` (screenshots of the sidebar, a chat, a group, Bot settings, the Bots page and group settings) and `desktop` (the same screenshots, then the Bot browser checks). It stops everything it started. On failure it names the step and its log and exits non-zero. A full run takes about 3 minutes after the first download.
-- **Ports**: every script takes `SLOT=n` (0-9, default 0) so that several people or sessions on one machine do not collide: Web bench `31n0` and mock `88n0`, smoke `31n1` and `88n1`, Desktop mock `88n2`, and so on. A Desktop uses about 1 GB of memory; stop it when you are done.
+- **Selected checks**: `dev/check.sh --only build,lint` runs the named steps. Choose from `build`, `lint`, `smoke`, `web` and `unit` (the full unit suite). The script saves logs and screenshots in a timestamped directory under `shots`. Pass `--out <dir>` to choose the output directory.
+- **Ports**: `dev/check.sh` uses `SLOT=n` (0–9, default 0). Web uses `31n0/88n0` and smoke uses `31n1/88n1`.
 - **Real models** (these cost tokens): `dev/steward-eval.mjs` sends hand-written conversation endings through the context steward's own prompt to an OpenAI-compatible route (or, with `--api messages`, an Anthropic Messages route such as DeepSeek's official one) and checks each decision. `dev/llm-tap.mjs <port> <upstream base URL> <log.jsonl> [body dir]` is a logging pass-through for either format: point a provider's `baseURL` at it, and it writes one JSON line per call (steward, checkpoint, handoff note or main turn, the Bot's name, token usage, the answer, and where the request first differs from the same Bot's previous one, which is what a provider's cache can reuse; never headers). With a body dir it also saves every request body. Each file explains its use at the top.
-- **Screenshots**: `dev/ui-shots.mjs` works for both apps (`desktop <dsh repo> <dir> <renderer port>` or `web <dsh repo> <dir> <bench name> <web port>`).
+- **Web screenshots**: `dev/ui-shots.mjs web <dsh-repo> <out-dir> <bench-name> <web-port>` checks the plugin in a running Web test bench.
 - `npm test` loads the `@deepseek-ai/*` packages from `dev/harness/` (`npm run harness`) or `DSH_HARNESS`.
 
 ## Layout
@@ -264,7 +261,7 @@ dev/check.sh                             # all checks (see below)
 | `web-search.js` | The `auto` search provider; independent of the team code |
 | `test/` | Unit tests and fixtures |
 | `dev/characters.mjs` | Builds the characters (small 3D models traced to outlines) into the `CHARACTERS` table in `src/client/characters.js` |
-| `dev/` | Mock model, test benches, smoke test, Desktop scripts, real-model tools (steward evaluation, logging pass-through) |
+| `dev/` | Mock model, test benches, smoke test, real-model tools (steward evaluation, logging pass-through) |
 
 ## License
 

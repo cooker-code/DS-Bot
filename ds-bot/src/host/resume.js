@@ -266,6 +266,11 @@ export function install(rt) {
     // dropped) falls back to the Bot's current chat.
     const ownPart = rt.selfOf(sessionId) === bot.id && rt.isBotSession(sessionId) ? { sessionId } : {}
     const trigger = record.trigger
+    if (scopeOf(trigger) && trigger.audience === 'user' && trigger.role === 'request') {
+      await rt.deliver({ toId: bot.id, ...ownPart, ...scopeFields(scopeOf(trigger)), role: 'request', audience: 'user',
+        fromId: trigger.senderSessionId, exchangeId: trigger.exchangeId, roomId: trigger.roomId, resumed: true, text })
+      return
+    }
     if ((trigger?.role === 'request' || trigger?.role === 'stopped') && trigger.senderSessionId && trigger.audience !== 'user' && rt.botOf(trigger.senderSessionId)) {
       // The sender still waits for this turn's answer, so it goes on under the same exchange.
       await rt.deliver({ fromId: trigger.senderSessionId, toId: bot.id, ...ownPart, ...scopeFields(scopeOf(trigger)), ...(trigger.senderPart ? { fromPart: trigger.senderPart } : {}), role: trigger.role, ...(trigger.exchangeId ? { exchangeId: trigger.exchangeId } : {}), ...(trigger.senderRoomId ? { fromRoomId: trigger.senderRoomId } : {}), resumed: true, text })

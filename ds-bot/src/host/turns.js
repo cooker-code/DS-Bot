@@ -206,6 +206,7 @@ export function install(rt) {
       toId: rt.selfOf(id),
       sessionId: id,
       role: keeps ? info.role : 'retry',
+      ...scopeFields(scopeOf(info)),
       ...(keeps && info.roomId ? { roomId: info.roomId } : {}),
       ...(keeps && info.exchangeId ? { exchangeId: info.exchangeId } : {}),
       ...(info?.work ? { work: info.work } : {}),
@@ -393,7 +394,7 @@ export function install(rt) {
     }
   }
 
-  // The phone's Stop for a Bot's own-chat turn: the same cancel the group's
+  // Stop a Bot's own-chat turn: the same cancel the group's
   // member stop uses — end the running turn and any subagents it spawned.
   async function stopChat(botId) {
     await rt.load()

@@ -1,5 +1,6 @@
 // Team tools: the roster, bot-to-bot messages, group chat settings and posts, and the
 // question and view cards. Group rounds and reading chats are in groups.js.
+import { developmentHandoff, projectRoomForCard } from './project-tasks.js'
 import { outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -175,7 +176,7 @@ export function install(rt) {
   const bodyOf = (message) => {
     const content = Array.isArray(message.content) ? message.content : []
     const first = content.find(block => block?.type === 'text')?.text ?? ''
-    return { text: first.slice(first.indexOf('\n') + 1), files: content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment) }
+    return { text: first.slice(first.indexOf('\n') + 1), files: content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment), images: content.filter(block => block?.type === 'image' && block.attachment !== undefined).map(block => block.attachment) }
   }
 
   // A tool that throws shows as failed in the chat, instead of as sent or stopped.
@@ -255,7 +256,7 @@ export function install(rt) {
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
-      card_round: { type: 'integer', description: 'After verifying board_dispatch(read), a bound project manager can include the saved development handoff automatically. Send its round, taskId, reply_to=user, and request_id to the assigned owner. Put only extra instructions in message.' },
+      card_round: { type: 'integer', description: 'After project_task read, the group admin sends the saved DS Bot assignment and attachments from its own chat. Send its round, taskId, reply_to=user, and request_id to the assigned owner. Put only extra instructions in message.' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
       reply_to: {
         type: 'string',
@@ -285,12 +286,19 @@ export function install(rt) {
       if (name.length > NAME_MAX) return `The request_id is ${name.length} characters long; a request name is at most ${NAME_MAX}.`
       const room = rt.roomOf(rt.groupOwners.get(exec.agent?.id)?.roomId)
       const source = rt.live.get(exec.agent?.id)?.info
-      const sharedTaskRoom = room ?? Object.values(state.rooms).find(r => taskRoom(r) && r.members.includes(sender.id) && r.members.includes(target.id))
+      const cardDispatch = args.card_round !== undefined
+      const projectRoom = projectRoomForCard(rt, args.taskId ?? source?.taskId)
+      if (projectRoom && (!projectRoom.members.includes(sender.id) || !projectRoom.members.includes(target.id) ||
+          (room && room.id !== projectRoom.id) || (source?.intakeId && source.roomId !== projectRoom.id))) {
+        refuse('Send project work only within the group that owns the card.')
+      }
+      const sharedTaskRoom = room ?? projectRoom ?? Object.values(state.rooms).find(r => taskRoom(r) && r.members.includes(sender.id) && r.members.includes(target.id))
       const key = outgoingScope(source, args.taskId, args.message, taskRoom(sharedTaskRoom), sharedTaskRoom && rt.isAdminOf(sharedTaskRoom, sender.id))
+      if (projectRoom && source?.intakeId && !projectRoom.projectCards[key]?.intakes.includes(source.intakeId)) refuse('Attach this intake to its card before sending.')
       if (key?.startsWith('intake-')) refuse('Identify the persistent card before assigning work.')
       const message = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
-      const cardDispatch = args.card_round !== undefined
       if (cardDispatch && (!key || room || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a private card handoff with taskId, current card_round, reply_to=user and request_id.')
+      const handoff = cardDispatch ? developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom?.projectCards?.[key], target.id, args.card_round) : undefined
       let text = tagged(key, message)
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
       const request = name === '' ? undefined : rt.requestIdentity({
@@ -313,15 +321,22 @@ export function install(rt) {
         if (outcome.status === 'readonly') refuse(`Not sent: this window cannot save the Bot team, so it cannot record the request_id "${name}". Send it from the window that owns the team, or leave the request_id out.`)
         return outcome.receipt
       }
+      const receiptWithHandoff = async outcome => {
+        const receipt = answer(outcome)
+        if (!handoff || !['sent', 'replay'].includes(outcome.status)) return receipt
+        const exchangeId = handoff.round.dispatchId
+        const entry = rt.exchangeOf(exchangeId, sender.id, target.id)
+        if (!entry) return receipt
+        const saved = await rt.exchangeText(entry)
+        return receipt + '\nCard handoff: ' + JSON.stringify({ exchangeId, text: saved.text, ...(saved.whole === false ? { whole: false } : {}) })
+      }
       if (request !== undefined) {
         const seen = await rt.knownRequest(request)
-        if (seen !== undefined) return answer(seen)
+        if (seen !== undefined) return receiptWithHandoff(seen)
       }
-      if (cardDispatch) {
-        const brief = rt.ctx.get?.('dshKanban')?.developmentHandoff?.(exec.agent?.id, key, target.id, args.card_round)
-        if (!brief) refuse('Read the assigned backlog card and verify its owner and current round before dispatch.')
-        const ack = `Check the assigned worktree, branch, HEAD and status once. If they match, immediately message ${sender.name} with this taskId and your explicit start confirmation. Report a mismatch instead of confirming. Inspect implementation details after the start confirmation, within the stated scope.`
-        text = tagged(key, [message, brief, ack].join('\n\n'))
+      if (handoff) {
+        const ack = 'Check the assignment and, for code changes, the actual worktree. Confirm with project_task start using this taskId and round ' + args.card_round + '. Report mismatches to the manager. When finished, call project_task submit with the result and checks, then notify the manager with this taskId.'
+        text = tagged(key, [message, handoff.text, ack].join('\n\n'))
       }
       if (room !== undefined) {
         const refusal = groupRefusal(room, sender, target)
@@ -356,7 +371,7 @@ export function install(rt) {
         // sender's own chat are two conversations, though: one answer could come back to
         // only one of them, so their requests are sent and answered apart.
         const earlier = unreadRequest(agent, sender.id, toUser)
-        const joinable = !cardDispatch && earlier !== undefined && scopeOf(earlier.message.source) === key
+        const joinable = !cardDispatch && earlier !== undefined && !projectRoom && scopeOf(earlier.message.source) === key
           && (toUser || ((earlier.message.source.senderPart ?? undefined) === fromPart && rt.sameWork(earlier.message.source.exchangeId, work)))
         const before = joinable ? bodyOf(earlier.message) : undefined
         let long = await rt.attachLong(before ? `${before.text}\n\n${text}` : text, `Message from ${sender.name}.txt`)
@@ -368,17 +383,21 @@ export function install(rt) {
         const working = rt.live.get(chat)?.turn !== undefined
         const activeKey = scopeOf(rt.live.get(chat)?.info)
         const steer = activeKey === key && ((args.when !== 'queue' && !toUser) || (joins && earlier.steered))
-        const exchangeId = joins ? earlier.message.source.exchangeId : randomUUID()
+        const exchangeId = handoff?.round.dispatchId ?? (joins ? earlier.message.source.exchangeId : randomUUID())
         if (joins) rt.forgetDelivery?.(exchangeId)
         else if (!toUser) rt.openWork(exchangeId, { ...scopeFields(key), from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
         try {
-          await rt.deliver({ ...scopeFields(key), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+          await rt.deliver({ ...scopeFields(key), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, images: handoff?.images ?? (joins ? before.images : []), files: [...long.files, ...(handoff?.files ?? []), ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
         } catch (error) {
           // The delivery stays noted for the next start while its Bot exists
           // (resume.js), and the resent request still answers up the tree, so the
           // work it opened stays too. Only a target that is gone drops the work.
           if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)
           throw error
+        }
+        if (handoff) {
+          handoff.round.sentAt ??= Date.now()
+          await rt.save({ required: true })
         }
         const sent = toUser
           ? `Delivered to ${target.name}. It will answer the user in its own chat; nothing comes back to you, so point the user to ${target.name}'s chat instead of relaying.`
@@ -398,10 +417,23 @@ export function install(rt) {
         // going on elsewhere (a group, or another live part of its own chat) goes on
         // without it.
         const elsewhere = activeSessions(target.id).running.filter(sessionId => sessionId !== chat)
-        const packet = cardDispatch ? '\nCard handoff: ' + JSON.stringify({ exchangeId, text }) : ''
-        if (elsewhere.length === 0) return out + packet
+        if (elsewhere.length === 0) return out
         const stop = rt.isMain(sender.id) ? ' If it must not go on there, use stop_bot.' : ''
-        return `${out} Your message does not reach its work in ${elsewhere.map(whereOf).join(' and ')}.${stop}${packet}`
+        return `${out} Your message does not reach its work in ${elsewhere.map(whereOf).join(' and ')}.${stop}`
+      }
+      if (handoff) {
+        // A sender's request name and the card's assignment round each identify
+        // one delivery, including when two callers retry under different names.
+        const dispatch = rt.requestIdentity({ caller: sender.id, context: 'project-dispatch:' + key,
+          name: String(args.card_round), payload: { owner: target.id, message } })
+        return receiptWithHandoff(await rt.admitRequest(request, async () => {
+          const outcome = await rt.admitRequest(dispatch, async () => {
+            const receipt = await send()
+            if (request.unsent) dispatch.unsent = true
+            return receipt
+          })
+          return answer(outcome)
+        }))
       }
       return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
     },
@@ -910,7 +942,6 @@ export function install(rt) {
         askedAt: Date.now(),
       }
       await rt.save()
-      rt.cardShown?.(id, 'question', state.questions[id].question)
       exec.concludeTurn?.()
       return 'The card is on screen; the user\'s answer arrives as their next message.'
     },
@@ -944,7 +975,6 @@ export function install(rt) {
         askedAt: Date.now(),
       }
       await rt.save()
-      rt.cardShown?.(id, 'view', title)
       exec.concludeTurn?.()
       return 'The view is on screen; the user\'s answer arrives as their next message.'
     },

@@ -1,4 +1,6 @@
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
+import { projectCardSummary } from './project-tasks.js'
+import { fileDownload } from './file-download.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { install as installBtw } from './btw.js'
@@ -89,10 +91,10 @@ export function install(rt) {
     // `sessionId` is the group's own Session's current part, `ownParts` its earlier
     // ones; `parts` the members' hidden group Sessions and their earlier segments,
     // for usage.
-    rooms: Object.values(state.rooms).map(({ log, seen, paused, sessions, segments, parts: ownParts, ...room }) => {
+    rooms: Object.values(state.rooms).map(({ log, seen, paused, sessions, segments, parts: ownParts, projectCards, ...room }) => {
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId), ...(ownParts ?? []).map(segment => segment.sessionId)]
       const last = (log ?? []).filter(line => line.kind === undefined).at(-1)
-      return { ...room, sessionId: rt.sessionOfRoom(room), ownParts: (ownParts ?? []).map(segment => segment.sessionId), parts, ...(last ? { lastAt: last.time, preview: last.who === 'User' ? last.text : `${last.who}：${last.text}` } : {}) }
+      return { ...room, ...(projectCards ? { projectCards: Object.values(projectCards).map(projectCardSummary) } : {}), sessionId: rt.sessionOfRoom(room), ownParts: (ownParts ?? []).map(segment => segment.sessionId), parts, ...(last ? { lastAt: last.time, preview: last.who === 'User' ? last.text : `${last.who}：${last.text}` } : {}) }
     }),
     // Deleted private Bots whose folder, memory and chats stay closed to the others.
     privateArchives: rt.archivesView(),
@@ -161,7 +163,6 @@ export function install(rt) {
     learningSettled: rt.learningSettledView(),
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
-    phone: rt.phoneView(),
     imStatus: rt.imStatusView?.() ?? {},
     imVia: rt.imViaView?.() ?? {},
     // Why this host cannot write the team, or null. It changes without a save — the
@@ -192,7 +193,7 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
 
   async function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -275,9 +276,7 @@ export function install(rt) {
             if (body.live === answer.key) return ok({ revision: state.revision, unchanged: true, liveKey: answer.key })
             return ok({ revision: state.revision, unchanged: true, liveKey: answer.key, ...answer.value })
           }
-          // A phone asks for photos by reference and fetches each once (`avatar`).
-          const out = { ...view(), liveKey: answer.key, ...answer.value }
-          return ok(body.avatars === 'ref' ? rt.slimAvatars(out) : out)
+          return ok({ ...view(), liveKey: answer.key, ...answer.value })
         }
         case 'models':
           await rt.catalog({ fresh: true })
@@ -616,11 +615,6 @@ export function install(rt) {
         case 'mail-sign-in-code':
           await rt.load()
           return ok(await rt.connectorEndpoint(endpoint, body))
-        case 'phone-set':
-        case 'phone-pair':
-        case 'phone-pair-cancel':
-        case 'phone-remove':
-          return ok(await rt.phoneEndpoint(endpoint, body))
         case 'capability-save':
         case 'capability-delete':
         case 'capability-approve':
@@ -646,19 +640,9 @@ export function install(rt) {
         case 'learning-answer':
           await rt.load()
           return ok(await rt.learningEndpoint(endpoint, body))
-        // The mobile API (mobile.js).
-        case 'hello':
-        case 'notices':
-        case 'avatar':
-        case 'room-chat':
-        case 'image':
         case 'file-download':
-        case 'markdown-image':
-        case 'usage-summary':
-        case 'memory-edit':
-        case 'memory-add':
           await rt.load()
-          return ok(await rt.mobileEndpoint(endpoint, body))
+          return ok(await fileDownload(rt, body))
         case 'answer-question': {
           if (typeof body.sessionId !== 'string') return fail('Nothing to send', 'bot/invalid')
           await rt.load()
@@ -688,8 +672,7 @@ export function install(rt) {
           await rt.save()
           return ok(true)
         }
-        // A photo for the next `send`, one per call: a phone's link carries a few MB per
-        // message, so photos travel one by one and the message names them.
+        // Upload each photo separately. The message references its staged images in order.
         case 'stage-image': {
           const mediaType = String(body.mediaType ?? '')
           const data = typeof body.data === 'string' ? body.data : ''
@@ -757,12 +740,6 @@ export function install(rt) {
           return ok(rt.dshUpdateStart?.())
         case 'repo-stars':
           return ok(await rt.repoStars())
-        case 'browser-frame': {
-          if (rt.browserFrame === undefined && rt.browserChannel === undefined) return fail('Bot browsers are off on this host', 'bot/browser-off')
-          const frame = typeof rt.browserFrame === 'function' ? await rt.browserFrame(String(body.botId ?? '')) : undefined
-          if (frame === undefined) return fail('This Bot has no open browser', 'bot/not-found')
-          return ok(frame)
-        }
         // The Desktop window's long poll for read_browser, and its answers.
         case 'browser-wait': {
           if (rt.browserChannel === undefined) return fail('Bot browsers are off on this host', 'bot/browser-off')
@@ -892,7 +869,6 @@ export function install(rt) {
   }
 
   rt.channelCall = handle
-  rt.phoneServe(handle)
 
   // How a user message reaches a Session: a Bot id, a group chat's id, or an earlier
   // part of either resolves to its current part. `content` is the prompt blocks DSH

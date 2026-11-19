@@ -1,20 +1,19 @@
+import { intakeLines } from './project-tasks.js'
 import { taskRoom } from './task-routing.js'
 
-// Only the two sessions already bound to the same Kanban project can relay an intake.
+// A project follows the group ID and its current admin across chat part changes.
 export function projectDestination(rt, room) {
   if (!taskRoom(room)) return
   const manager = room.members.map(rt.botOf).find(bot => bot && rt.isAdminOf(room, bot.id))
   if (!manager) return
   const sessionId = rt.chatOf(manager.id)
-  const project = rt.ctx.get?.('dshKanban')?.dispatchProjectFor?.(room.sessions?.[manager.id], sessionId)
-  if (project) return { manager, sessionId, project }
+  return { manager, sessionId, project: room.id }
 }
 
 export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
   const target = projectDestination(rt, room)
   if (!target || !intakeId || !Number.isSafeInteger(throughSeq)) throw new Error('This project intake has no bound manager chat.')
-  const lines = rt.ledger.records('group-' + room.id).filter(line => line.intakeId === intakeId &&
-    line.seq <= throughSeq && line.who === 'User' && !line.kind && !line.botId && typeof line.text === 'string')
+  const lines = intakeLines(rt, room, intakeId).filter(line => line.seq <= throughSeq)
   if (!lines.length || lines.at(-1).seq !== throughSeq) throw new Error('Original user intake not found.')
   const { manager, sessionId, project } = target
   const request = rt.requestIdentity({
@@ -24,9 +23,8 @@ export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
   const outcome = await rt.admitRequest(request, async () => {
     const text = [
       `Project ${project}, group "${room.name}", user intake ${intakeId}. Handle it here in your own manager chat.`,
-      'Use board_dispatch(active, includeMembers=true) once for open cards and member IDs. Read only plausible matching cards. Inspect the original image once; pass its attachment ID to assign. The developer owns source and database investigation. For a new card use the intake ID as the stable ref. Keep the original text and images. Plan all handoffs through final acceptance under project rules. Use the team member IDs.',
-      'Read the saved card back. Dispatch from here with message_bot, its persistent card UUID as taskId, reply_to=user, and a stable request_id for that card and round. Set card_round to the round you just verified. DS Bot includes the saved requirement, development handoff, checklist and attachment paths; message only needs additional scope or constraints.',
-      'Ask the owner to check the actual worktree and explicitly confirm starting to your own chat using message_bot with the same taskId. When you receive that confirmation, read the card and use board_dispatch(start), then read again and report the card ID and status to the group. A send receipt alone does not confirm work.',
+      'Use project_task list for open cards and member IDs. For a new requirement call assign with title, ownerId, plan and acceptance. To continue an existing requirement, attach this intake to its taskId. Read the card and verify the owner and round. Keep original attachments with the card.',
+      'For a new assignment send message_bot to the owner with taskId, card_round, reply_to=user and request_id. The plugin forwards the saved handoff and original attachments. Distinguish delivery from the owner explicitly confirming start with project_task start. Report the card ID and actual status to the group.',
       ...lines.flatMap(line => (line.images || []).map(image => `Group #${line.seq} image: ${image.name || ''} ${image.attachmentId || image.id || ''}`)),
       ...lines.map(line => `Group message #${line.seq}\n${line.text}`),
     ].join('\n\n')

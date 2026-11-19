@@ -923,7 +923,7 @@ test('a copied team shows its default team workspace before the workspace is reg
   assert.equal((await call('folders', {})).value.team, resolve(join(home, 'workspace')))
 })
 
-test('in the desktop app the user\'s own DSH data is no team workspace and no Bot\'s folder either', async (t) => {
+test('an additional protected DSH home is no team workspace and no Bot\'s folder either', async (t) => {
   const { root, state, call, stop } = await start()
   t.after(stop)
   const user = join(root, 'user-dsh')

@@ -1729,7 +1729,7 @@ export function install(rt) {
   const EARLIER_PAGE = 60
   function displayItems(partId, events, session, seedTurn) {
     const hidden = new Set(state.exchangeTurns[partId] ?? [])
-    // Files a turn presented, attached to its closing Bot row so the phone can save
+    // Files a turn presented, attached to its closing Bot row so the browser can save
     // them: the card shows name and type, the save action names seq and index.
     const presented = []
     // Call ids of the page's group_relay calls; their tool/result events carry the
@@ -1949,7 +1949,7 @@ export function install(rt) {
   }
   const toolLabel = name => STEP_LABELS[name] ?? TOOL_PHRASES.find(([pattern]) => pattern.test(name))?.[1]
 
-  // Per-turn folds of a page's tool calls, for `chat`/`room-chat` with
+  // Per-turn folds of a page's tool calls, for `chat` with
   // `steps: true`. Interactive calls stay out: they show as cards, not steps.
   function stepsItems(events, partId) {
     const hidden = new Set(state.exchangeTurns[partId] ?? [])

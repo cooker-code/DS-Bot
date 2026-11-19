@@ -9,8 +9,7 @@ export const SCRIPT_TIMEOUT = 20_000
 const CHILD = fileURLToPath(new URL('./script-child.js', import.meta.url))
 
 // The child sees none of the host's environment (keys, tokens, DSH_HOME). Windows needs
-// SystemRoot to start a process; the desktop app's host is Electron run as Node, and so
-// must the child be.
+// SystemRoot to start a process. An Electron host passes its Node mode to the child.
 function childEnv() {
   const env = {}
   if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot

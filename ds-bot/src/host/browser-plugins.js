@@ -1,7 +1,6 @@
 // The whole team uses one browser plugin. Each Bot still gets its own profile
 // directory, including the group Sessions where that Bot speaks.
 import { isAbsolute, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { mountBrowserPlugin } from './browser/mount.js'
 import { sessionComplete } from './browser/session-model.js'
@@ -10,28 +9,6 @@ import * as script from './browser/script.js'
 import * as task from './browser/task.js'
 
 export const browserPlugins = { refs, script, task }
-export function appBrowserEndpoint(botId, downloadRoots) {
-  if (typeof process.send !== 'function') throw new Error('The app browser relay is unavailable.')
-  const id = randomUUID()
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      process.off('message', receive)
-      reject(new Error('The app browser relay did not respond.'))
-    }, 10_000)
-    const receive = message => {
-      if (message?.type !== 'ds-bot:browser-endpoint-response' || message.id !== id) return
-      clearTimeout(timeout)
-      process.off('message', receive)
-      if (typeof message.url === 'string') resolve(message.url)
-      else reject(new Error(message.error || 'The app browser relay is unavailable.'))
-    }
-    process.on('message', receive)
-    process.send({ type: 'ds-bot:browser-endpoint', id, botId, downloadRoots }, error => {
-      if (error) receive({ type: 'ds-bot:browser-endpoint-response', id, error: error.message })
-    })
-  })
-}
-
 const NAMES = Object.keys(browserPlugins)
 const GRANT_KINDS = new Set(['post', 'upload', 'download', 'delete'])
 
@@ -140,7 +117,6 @@ export function install(rt) {
     return [...new Set([working, team].filter(root => typeof root === 'string' && isAbsolute(root)))]
   }
   const mounted = {}
-  rt.browserFrame = botId => mounted.frame?.(botId)
   mountBrowserPlugin(rt.ctx, {
     api: mounted,
     toolDefs: plugin.tools ?? plugin.toolDefs,
@@ -157,7 +133,6 @@ export function install(rt) {
     playwrightUrl,
     executablePath,
     downloadGraceMs,
-    connect: process.env.DS_BOT_APP === '1' && typeof process.send === 'function' ? appBrowserEndpoint : undefined,
     getHold: botId => rt.browserChannel?.holdOf(botId) ?? null,
     onHold: (botId, hold) => rt.browserChannel?.setHold(botId, hold && handoffHold(rt, botId, hold)),
     subscribeHolds: listener => rt.browserChannel?.subscribeHolds?.(listener),

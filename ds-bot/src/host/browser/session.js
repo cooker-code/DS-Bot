@@ -84,8 +84,7 @@ function inspectWriteTarget(el, { url, mode, active = false }) {
   return kind ? action(kind, label) : null
 }
 
-// playwright-core ships with DS Bot and drives the desktop app's own browser; a
-// full playwright the user installed also brings its own Chromium build.
+// A full Playwright installation can supply its Chromium build.
 async function loadChromium(playwrightUrl) {
   const loaded = playwrightUrl ? await import(playwrightUrl) : await import('playwright').catch(() => import('playwright-core'))
   const chromium = loaded.chromium ?? loaded.default?.chromium
@@ -94,38 +93,30 @@ async function loadChromium(playwrightUrl) {
 }
 
 /**
- * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadGraceMs?: number, downloadDir?: string | (() => Promise<string | undefined>), uploadRoots?: () => Promise<string[]>, connect?: (botId: string) => Promise<string>, getHold?: () => any, onHold?: (hold: any) => void }} options
+ * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadGraceMs?: number, downloadDir?: string | (() => Promise<string | undefined>), uploadRoots?: () => Promise<string[]>, getHold?: () => any, onHold?: (hold: any) => void }} options
  */
-export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, connect, getHold, onHold, uploadRoots }) {
+export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
   const getDownloadDir = typeof downloadDir === 'function' ? downloadDir : async () => downloadDir
   const userDataDir = join(profileRoot, botId)
   const chromium = await loadChromium(playwrightUrl)
-  const browser = connect
-    ? await chromium.connectOverCDP(await connect(botId))
-    : undefined
-  if (!connect) await mkdir(userDataDir, { recursive: true })
-  const context = browser
-    ? browser.contexts()[0]
-    : await chromium.launchPersistentContext(userDataDir, {
-      headless,
-      viewport: { width: 1280, height: 900 },
-      acceptDownloads: true,
-      ...(executablePath ? { executablePath } : {}),
-      args: ['--disable-dev-shm-usage'],
-    })
-  if (!context) throw new Error('The app browser relay has no browser context.')
+  await mkdir(userDataDir, { recursive: true })
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    headless,
+    viewport: { width: 1280, height: 900 },
+    acceptDownloads: true,
+    ...(executablePath ? { executablePath } : {}),
+    args: ['--disable-dev-shm-usage'],
+  })
   const page = context.pages()[0] ?? await context.newPage()
   const cookieFile = join(userDataDir, 'cookies.json')
-  if (!browser) {
-    try {
-      const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
-      if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
-    } catch { /* no cookies yet */ }
-  }
-  return createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, downloadGraceMs, getHold, onHold, uploadRoots })
+  try {
+    const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
+    if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
+  } catch { /* no cookies yet */ }
+  return createSession({ context, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, downloadGraceMs, getHold, onHold, uploadRoots })
 }
 
-export function createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
+export function createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
   const pages = new Set()
   const unknownByOrigin = new Map()
   const unknownPageOrigins = new WeakMap()
@@ -756,12 +747,6 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
       return finishAction(() => target.goBack({ waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => {}), target, false)
     },
     shot,
-    async frame() {
-      const target = activePage()
-      if (!target) return undefined
-      const image = await target.screenshot({ type: 'jpeg', quality: 40 })
-      return { mime: 'image/jpeg', data: image.toString('base64'), url: target.url(), title: await target.title().catch(() => '') }
-    },
     // `origin` names the call and Session that asked, so a card can answer them.
     handoff(reason, note, origin) {
       ready()
@@ -839,7 +824,6 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
       closed = true
       activeDownloads?.notify?.()
       for (const { download } of activeDownloads?.items ?? []) await download.cancel().catch(() => {})
-      if (browser) { await browser.close().catch(() => {}); return }
       const cookies = await context.cookies().catch(() => [])
       const kept = cookies.map(cookie => cookie.expires > 0 ? cookie : { ...cookie, expires: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 })
       await writeFile(cookieFile, JSON.stringify(kept)).catch(() => {})

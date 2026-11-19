@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ![version](https://img.shields.io/badge/version-v0.3_preview-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-4D6BFE) ![license](https://img.shields.io/badge/license-Apache_2.0-green)
 
-DS Bot is an open-source project built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH), available as a standalone desktop app or as a DSH plugin. It turns DSH into bots that you create, talk to and work with.
+DS Bot is an open-source plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). It turns DSH into bots that you create, talk to and work with.
 
 ## Sponsors
 
@@ -23,14 +23,6 @@ DS Bot is an open-source project built on [DeepSeek Harness](https://github.com/
 
 ## Install
 
-**Desktop app (Windows, macOS, Linux)**
-
-The desktop app brings its own DSH, so you don't need to install DSH first. Download the installer for your system from [Releases](https://github.com/Fei2411/DS-Bot/releases/latest), open it, and set up a model in Settings (it can also copy your existing bot team from DSH).
-
-If your system warns about an unsigned app: on Windows select **More info** → **Run anyway**; on macOS open **System Settings** → **Privacy & Security** and select **Open Anyway**.
-
-**As a plugin in DSH**
-
 First install DSH and set up at least one model in it. DS Bot uses the models from DSH.
 
 - **DSH Desktop**: In the sidebar, select **Plugins** → **Add plugin**, enter `ds-bot` (in mainland China, set **Registry** to **Mainland China mirror**), then select **Install** and **Enable now**.
@@ -40,10 +32,6 @@ First install DSH and set up at least one model in it. DS Bot uses the models fr
 npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add ds-bot
 npx @deepseek-ai/dsh@0.2.2-rc.1 web
 ```
-
-**Docker (NAS, Linux server)**
-
-See [`docker/README.md`](docker/README.md).
 
 ## Setup
 
@@ -93,9 +81,9 @@ There are a few limits to keep in mind: a local agent uses the CLI's own tools a
 
 ### Browser
 
-Each bot has its own isolated browser with separate sign-ins, and can import cookies from a file or from your local browsers. Turn on a browser plugin in Settings → Browser to let bots open and operate web pages on their own; posting, uploading, downloading and deleting need your approval, and sign-in, captchas or payments hand back to you with a card so you can take over and hand back at any time.
+In DSH Desktop, each bot has its own browser panel. You can open a page and ask the bot to read the active tab. Panel sign-ins are isolated per bot and last until you quit the host.
 
-The browser feature is available in the desktop app and DSH Desktop only (not in DSH Web), and only the desktop app keeps browser sign-ins after you quit and supports cookie import. On Windows, new Chrome and Edge cookies encrypted with v20 cannot be read directly — export them to a file with a browser extension first.
+Enable a browser plugin in Settings to let bots operate a separate Chromium profile. Actions such as posting, uploading, downloading and deleting follow the approval rules.
 
 ### Computer use
 
@@ -117,7 +105,7 @@ In Settings → Capabilities, you can manage shared MCP servers, skills and pack
 
 ### Office files
 
-Bots can create, check and edit Word (`.docx`), PowerPoint (`.pptx`) and Excel (`.xlsx`) documents directly, and render pages to images to check layout. The desktop app includes the full runtime out of the box; DSH Web does not bundle this runtime, so it can only check and edit existing documents, while creating files from scratch and rendering pages require the desktop app or DSH Desktop.
+Bots can create, check and edit Word (`.docx`), PowerPoint (`.pptx`) and Excel (`.xlsx`) documents directly, and render pages to images to check layout. DSH Desktop supplies the runtime for creating and rendering documents. DSH Web supports checking and editing existing files by default.
 
 ### Usage
 
@@ -127,7 +115,7 @@ In **Settings** → **Usage**, you can see token usage by time, by bot and by mo
 
 ## Data
 
-All data stays on your own computer: in the folder you chose on first start in the desktop app (`~/.ds-bot` by default), or in `bot/` and `sessions/` in the DSH home folder (`~/.dsh` by default) for the plugin. Uninstalling the app or the plugin does not delete this data.
+DSH stores the team and its conversations in `bot/` and `sessions/` under its home directory (`~/.dsh` by default). Uninstalling the plugin preserves these files.
 
 ## Development
 

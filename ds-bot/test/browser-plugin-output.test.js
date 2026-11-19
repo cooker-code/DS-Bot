@@ -217,12 +217,12 @@ test('browser tools refuse every operation while a user hold is active', async t
   }
 })
 
-test('browser endpoint connection uses the execution Bot identity, not tool arguments', async t => {
+test('browser session uses the execution Bot identity, not tool arguments', async t => {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await mountTools(ctx)
   t.after(async () => ctx.fiber.dispose())
-  let connected
+  let openedFor
   const plugin = inner => {
     mountBrowserPlugin(inner, {
       toolDefs: refsTools.filter(tool => tool.name === 'browser_open'),
@@ -230,9 +230,8 @@ test('browser endpoint connection uses the execution Bot identity, not tool argu
       keyOf: async () => 'a',
       profileRoot: '/tmp/browser-profiles',
       headless: true,
-      connect: async botId => { connected = botId; return 'ws://127.0.0.1:1' },
       openSession: async options => {
-        await options.connect?.(options.botId)
+        openedFor = options.botId
         return {
           async open() { return 'opened' },
           async close() {},
@@ -249,7 +248,7 @@ test('browser endpoint connection uses the execution Bot identity, not tool argu
     arguments: { url: 'http://127.0.0.1:43118/', botId: 'b' },
   })
   assert.equal(result.isError, false, result.error?.message)
-  assert.equal(connected, 'a')
+  assert.equal(openedFor, 'a')
 })
 
 test('a channel user hold closes the cached Playwright session and give-back reconnects', async t => {

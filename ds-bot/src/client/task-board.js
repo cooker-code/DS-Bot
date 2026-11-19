@@ -8,6 +8,20 @@ import { BotMark } from './mark.js'
 import { clockLabel } from './text.js'
 import { t } from './i18n.js'
 
+const PROJECT_STATUS = { assigned: 'Assigned', delivered: 'Awaiting start confirmation', active: 'In progress', review: 'Awaiting review' }
+
+function ProjectCard({ card, bot, admin }) {
+  return h('div', { className: 'bt-task', 'data-status': card.status },
+    h('div', { className: 'bt-task-head' },
+      bot ? h(BotMark, { bot, size: 22, state: card.status === 'active' ? 'work' : 'idle' }) : null,
+      h('span', { className: 'bt-task-name' }, bot?.name ?? card.ownerId),
+      h('span', { className: 'bt-task-status' }, t(PROJECT_STATUS[card.status])),
+      h('span', { className: 'bt-task-time' }, clockLabel(card.updatedAt))),
+    h('div', { className: 'bt-task-goal' }, card.title),
+    h('div', { className: 'bt-task-progress' }, t('Round {round}', { round: card.round }), ' · ', card.taskId),
+    card.status === 'review' && admin ? h('div', { className: 'bt-task-progress' }, t('Waiting for {names}', { names: admin.name })) : null)
+}
+
 const OPEN = ['active', 'review', 'blocked']
 const STATUS_KEY = { active: 'In progress', review: 'Awaiting review', blocked: 'Blocked', done: 'Done', cancelled: 'Cancelled' }
 // A block DS Bot set from how the member's work ended, not one the Bot reported.
@@ -78,14 +92,17 @@ export function TaskBoard({ room, roster, actions }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const all = Object.values(room.tasks ?? {}).sort((a, b) => a.startedAt - b.startedAt)
   const open = all.filter(task => OPEN.includes(task.status))
+  const cards = [...(room.projectCards ?? [])].sort((a, b) => b.updatedAt - a.updatedAt)
+  const count = cards.length + open.length
   const past = all.filter(task => !OPEN.includes(task.status)).reverse()
   const row = task => h(TaskRow, { key: task.id, task, bot: roster.byId?.[task.botId], room, actions })
   return h('div', { className: 'bt-tasks' },
     h('div', { className: 'bt-tasks-head' },
       h('div', { className: 'bt-section-title' }, t('Tasks')),
-      open.length > 0 ? h('span', { className: 'bt-tasks-count' }, open.length) : null),
+      count > 0 ? h('span', { className: 'bt-tasks-count' }, count) : null),
     h('div', { className: 'bt-task-list' },
-      open.length === 0 ? h('div', { className: 'bt-muted bt-tasks-empty' }, t('No task is running in this group.')) : open.map(row)),
+      cards.map(card => h(ProjectCard, { key: card.taskId, card, bot: roster.byId?.[card.ownerId], admin: roster.byId?.[room.admin] })),
+      count === 0 ? h('div', { className: 'bt-muted bt-tasks-empty' }, t('No task is running in this group.')) : open.map(row)),
     past.length > 0 ? h('button', { type: 'button', className: 'bt-more', 'aria-expanded': historyOpen, onClick: () => setHistoryOpen(value => !value) },
       historyOpen ? t('Hide history') : t('History ({count})', { count: past.length })) : null,
     historyOpen ? h('div', { className: 'bt-task-list bt-task-history' }, past.map(row)) : null)

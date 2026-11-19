@@ -8,7 +8,6 @@ import { pathToFileURL } from 'node:url'
 import { apply, createRuntime } from '../index.js'
 import { defaultBrowserHeadless } from '../src/host/browser-plugins.js'
 import { gateScope } from '../src/host/browser/gate.js'
-import { appBrowserEndpoint } from '../src/host/browser-plugins.js'
 import { mountBrowserPlugin } from '../src/host/browser/mount.js'
 import { systemPrompt as refsPrompt, toolDefs as refsTools } from '../src/host/browser/refs.js'
 import { fakeApproval, fakeContext } from './fake-ctx.js'
@@ -127,65 +126,6 @@ function fakeBrowserPage({ onClick } = {}) {
   context.close = async () => { await page.close() }
   return { page, context }
 }
-
-test('app browser endpoint carries download roots for the Bot resolved from the exec', async () => {
-  const originalSend = process.send
-  const roots = ['/workspace/b2', '/workspace']
-  let request
-  const tools = new Map()
-  let cleanup
-  process.send = (message, callback) => {
-    request = message
-    callback?.()
-    queueMicrotask(() => process.emit('message', {
-      type: 'ds-bot:browser-endpoint-response',
-      id: message.id,
-      url: 'ws://127.0.0.1:1234/devtools/browser/token',
-    }))
-    return true
-  }
-  try {
-    mountBrowserPlugin({
-      on() {},
-      effect(create) { cleanup = create() },
-      tools: { register(tool) { tools.set(tool.name, tool) } },
-    }, {
-      toolDefs: [{ name: 'browser_open', needsBrowser: true, execute: () => 'opened' }],
-      defineTool: value => value,
-      keyOf: async exec => exec.agent.id,
-      profileRoot: '/profiles',
-      downloadRoot: '/legacy-downloads',
-      downloadRoots: async botId => {
-        assert.equal(botId, 'b2')
-        return roots
-      },
-      uploadRoots: async botId => {
-        assert.equal(botId, 'b2')
-        return roots
-      },
-      headless: true,
-      connect: appBrowserEndpoint,
-      openSession: async options => {
-        assert.equal(options.botId, 'b2')
-        assert.equal(await options.downloadDir(), roots[0])
-        assert.deepEqual(await options.uploadRoots(), roots)
-        await options.connect(options.botId)
-        return { close: async () => {} }
-      },
-    })
-    const result = await tools.get('browser_open').execute({ botId: 'other' }, { agent: { id: 'b2' } })
-    assert.deepEqual(request, {
-      type: 'ds-bot:browser-endpoint',
-      id: request.id,
-      botId: 'b2',
-      downloadRoots: roots,
-    })
-    assert.equal(result, 'opened')
-  } finally {
-    await cleanup?.()
-    process.send = originalSend
-  }
-})
 
 // The download grace travels mount → openSession → createSession. A fake opener
 // pins the first link; the config test below pins the whole chain.
@@ -308,13 +248,12 @@ test('browserDownloadGraceMs from the config reaches the browser session', async
   assert.match(snapshot, /Download "report.csv".*after its browser action finished and was canceled/i)
 })
 
-test('concurrent first browser calls share opening and relay connection', async () => {
+test('concurrent first browser calls share a single browser launch', async () => {
   const tools = new Map()
   let cleanup
   let releaseOpen
   const waitForOpen = new Promise(resolve => { releaseOpen = resolve })
   let openCalls = 0
-  let connectCalls = 0
   let rootsCalls = 0
   mountBrowserPlugin({
     on() {},
@@ -330,13 +269,9 @@ test('concurrent first browser calls share opening and relay connection', async 
       return ['/workspace/b2', '/workspace']
     },
     headless: true,
-    connect: async () => {
-      connectCalls += 1
-      return 'ws://127.0.0.1:1234/devtools/browser/token'
-    },
     openSession: async options => {
       openCalls += 1
-      await options.connect(options.botId)
+      await options.downloadDir()
       await waitForOpen
       return { close: async () => {} }
     },
@@ -348,7 +283,6 @@ test('concurrent first browser calls share opening and relay connection', async 
   await new Promise(resolve => setImmediate(resolve))
 
   assert.equal(openCalls, 1)
-  assert.equal(connectCalls, 1)
   assert.equal(rootsCalls, 1)
 
   releaseOpen()
@@ -446,10 +380,9 @@ test('user takeover while opening closes the session once it resolves', async ()
   await cleanup?.()
 })
 
-test('user takeover refuses a browser call before opening or connecting', async () => {
+test('user takeover refuses a browser call before opening a session', async () => {
   const tools = new Map()
   let openCalls = 0
-  let connectCalls = 0
   mountBrowserPlugin({
     on() {},
     effect() {},
@@ -461,10 +394,6 @@ test('user takeover refuses a browser call before opening or connecting', async 
     profileRoot: '/profiles',
     headless: true,
     getHold: () => ({ by: 'user' }),
-    connect: async () => {
-      connectCalls += 1
-      return 'ws://127.0.0.1:1234/devtools/browser/token'
-    },
     openSession: async () => {
       openCalls += 1
       return { close: async () => {} }
@@ -476,7 +405,6 @@ test('user takeover refuses a browser call before opening or connecting', async 
     /The user has taken over this browser/,
   )
   assert.equal(openCalls, 0)
-  assert.equal(connectCalls, 0)
 })
 
 test('no browser plugin is mounted unless one is selected for the team', (t) => {

@@ -689,19 +689,6 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 .bt-set-form-foot{justify-content:flex-end}
 @media(max-width:600px){.bt-set-form-row{grid-template-columns:1fr}}
 
-/* Settings → Phone. */
-.bt-phone{display:flex;flex-direction:column;gap:22px}
-.bt-phone-server{gap:8px}
-.bt-set-card>.bt-phone-server{border-top:0;padding-top:2px}
-.bt-phone-server .bt-input{flex:1;min-width:0}
-.bt-phone-warn .bt-set-hint{color:var(--bt-danger)}
-.bt-phone-error{padding:0 4px}
-.bt-phone-pair{display:flex;align-items:center;gap:20px;padding:16px}
-.bt-phone-qr{flex:none;width:184px;height:184px;border-radius:8px}
-.bt-phone-qr rect{fill:var(--bt-qr-paper)}
-.bt-phone-qr path{fill:var(--bt-qr-ink)}
-.bt-phone-pair-copy{display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:20px}
-@media(max-width:700px){.bt-phone-pair{flex-direction:column;align-items:flex-start}}
 
 /* Settings → Connectors. */
 .bt-connector{display:flex;flex-direction:column;gap:12px;padding:14px 16px}
@@ -1137,7 +1124,7 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 }
 @media (prefers-reduced-motion:reduce){:root{--bt-fx-blur-2:none;--bt-fx-blur-3:none;--bt-fx-blur-4:none;--bt-fx-blur-5:none;--bt-fx-blur-6:none}}
 body[data-bt-effects=reduced],body[data-bt-effects=off]{--dsw-menu-backdrop-filter:none;--dsw-mask-blur:none;--dsw-specific-menu:var(--bt-main);--dsw-menu-surface-fill:var(--bt-main);--bt-glass-bg:var(--bt-card);--bt-fx-blur-2:none;--bt-fx-blur-3:none;--bt-fx-blur-4:none;--bt-fx-blur-5:none;--bt-fx-blur-6:none}
-body:is([data-bt-effects=reduced],[data-bt-effects=off]) :is(.bt-pill,.bt-island,.bt-drop,.bt-avedit,.bt-scrim,.bt-react-strip,.bt-menu,.bt-palette,.bt-import-menu,.bt-cbar,.bt-pmenu-pop,.bt-update-pop,.bt-bcard-x,.bt-us-tip){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+body:is([data-bt-effects=reduced],[data-bt-effects=off]) :is(.bt-pill,.bt-island,.bt-drop,.bt-avedit,.bt-scrim,.bt-react-strip,.bt-menu,.bt-palette,.bt-cbar,.bt-pmenu-pop,.bt-update-pop,.bt-bcard-x,.bt-us-tip){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 body:is([data-bt-effects=reduced],[data-bt-effects=off]) .bt-bcard-x{background:var(--bt-main)}
 body:is([data-bt-effects=reduced],[data-bt-effects=off]) .bt-us-tip{background:var(--bt-card)}
 body:is([data-bt-effects=reduced],[data-bt-effects=off]) :is(.bt-pill-mem-in,.bt-pill-go,.bt-pill-swap>*,.bt-toast[data-leaving]){filter:none!important}

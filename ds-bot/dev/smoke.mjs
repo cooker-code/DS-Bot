@@ -255,11 +255,19 @@ await step('user talks in the group', () => send(roomNamed('研发群').id, '大
     ?? expect(log.some(line => line.who !== 'User' && line.kind === undefined), 'no Bot answered')
 })
 
-await step('admin calls everyone', () => send(roomNamed('研发群').id, '讨论'), () => {
-  const log = roomNamed('研发群').log ?? []
-  const at = log.findLastIndex(line => line.who === 'User' && line.text === '讨论')
-  const answers = log.slice(at + 1).filter(line => line.who !== 'User' && line.kind === undefined)
-  return expect(answers.length >= 2, `expected at least two answers, got ${answers.length}`)
+await step('admin calls everyone', async () => {
+  const group = roomNamed('研发群')
+  const after = group.seq ?? 0
+  await send(group.id, '讨论')
+  // A relay can be handing work to its members while no model is calling.
+  const deadline = Date.now() + STEP_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    const log = roomNamed('研发群').log ?? []
+    const post = log.find(line => line.seq > after && line.who === 'User' && line.text === '讨论')
+    if (post && new Set(log.filter(line => line.seq > post.seq && line.botId && !line.kind).map(line => line.botId)).size >= 2) return
+    await sleep(400)
+  }
+  throw new Error('Two distinct members did not answer the discussion.')
 })
 
 await step('Chief posts to the group', () => send(chief().id, '群发 研发群: 今天下午开会'), () => {
@@ -404,6 +412,16 @@ await step('duplicate Coder', () => api('duplicate-bot', { id: botNamed('Coder')
 await step('set prefs', () => api('set-prefs', { theme: 'dark', accent: '#336699' }), () => expect(state().prefs.theme === 'dark' && state().prefs.accent === '#336699', 'prefs not saved'))
 
 const devRoomId = roomNamed('研发群')?.id
+await step('DS Bot dispatches a project card with the original image', async () => {
+  await api('update-room', { id: devRoomId, notice: '[taskId]' })
+  const image = await api('stage-image', { mediaType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGOwSdmCFTEMLQkAGLdVAYL+T7QAAAAASUVORK5CYII=' })
+  await api('send', { sessionId: devRoomId, text: 'native-project-image-smoke', images: [image.id] })
+}, async () => {
+  const view = await api('state')
+  const cards = view.rooms.find(room => room.id === devRoomId).projectCards ?? []
+  return expect(cards.length === 1, 'expected one project card')
+    ?? expect(cards[0].ownerId === botNamed('Coder').id && cards[0].round === 1 && cards[0].status === 'review', 'the owner did not receive, start and submit the image task')
+})
 await step('delete the group', () => api('delete-room', { id: devRoomId }), () => expect(Object.keys(state().rooms).length === 0, 'group still there')
   ?? expect(memoryFile('groups', devRoomId) === '', 'the group memory is still in place')
   ?? expect(readdirSync(join(HOME, 'bot', 'memory', 'archive')).some(entry => entry.startsWith(`group-${devRoomId}`)), 'the group memory is not in the archive'))

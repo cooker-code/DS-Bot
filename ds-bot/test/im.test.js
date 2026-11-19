@@ -1000,7 +1000,7 @@ test('reply origin: a stale card answered in a race does not claim the chat for 
   await s.flush()
   s.fake.sent.length = 0
   s.emitEvent('a', 'turn/end', {})
-  // The card is still on the phone, but the app settled it first: answering races it.
+  // The IM chat still shows the card, but the plugin settled it first: answering races it.
   s.rt.answerQuestion = async () => { throw Object.assign(new Error('This question is no longer open'), { code: 'bot/stale' }) }
   await s.fake.handlers.onAction({ chat: { key: 'dm-u1', kind: 'direct', title: 'U1' }, sender: { id: 'u1', name: 'U1' }, data: 'q:q1:0', messageId: 1 })
   await s.flush()

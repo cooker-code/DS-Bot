@@ -17,7 +17,7 @@ const { JSDOM } = createRequire(join(process.env.DSH_HARNESS ?? join(PLUGIN, '..
 // fixtures retain refs across commits and run their layout effects after each render.
 const { outputFiles } = await build({
   stdin: {
-    contents: "export { SHELL_CSS } from './src/client/styles.js'\nexport { SIDEBAR_CSS, TeamSidebar, PluginsButton } from './src/client/sidebar.js'\nexport { dshCollapsed, installFrameWatch } from './src/client/frame-watch.js'",
+    contents: "export { SHELL_CSS } from './src/client/styles.js'\nexport { SIDEBAR_CSS, TeamSidebar, BotReturn, PluginsButton } from './src/client/sidebar.js'\nexport { dshCollapsed, installFrameWatch } from './src/client/frame-watch.js'",
     resolveDir: PLUGIN,
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
@@ -60,7 +60,7 @@ const sandbox = {
   window: viewport,
 }
 runInNewContext(outputFiles[0].text, sandbox)
-const { SHELL_CSS, SIDEBAR_CSS, TeamSidebar, PluginsButton, dshCollapsed, installFrameWatch } = module.exports
+const { SHELL_CSS, SIDEBAR_CSS, TeamSidebar, BotReturn, PluginsButton, dshCollapsed, installFrameWatch } = module.exports
 
 function navigationSidebar(wide, { leftDrawer = false } = {}) {
   const calls = []
@@ -297,11 +297,10 @@ const showing = rules.filter(rule => /display:inline-flex/.test(rule.body))
 // The shell sidebar's own markup (dsh-client-ui-sidebar SidebarRoot), reduced to what the
 // team view reshapes: the switch is in the logo row, except in a macOS desktop window,
 // where it sits in the strip by the window buttons. `mac` is DSH Desktop with the system
-// title bar; `mac-frameless` is the packaged app, whose window has no system title bar and
-// so carries the title-bar attribute as well.
+// title bar.
 function shell({ platform, collapsed }) {
-  const darwin = platform === 'mac' || platform === 'mac-frameless'
-  const titlebar = platform === 'windows' || platform === 'mac-frameless'
+  const darwin = platform === 'mac'
+  const titlebar = platform === 'windows'
   const toggle = '<button class="x_iconButton x_toggle" aria-label="Toggle sidebar"></button>'
   const html = `<!doctype html><html${titlebar ? ' data-windows-titlebar' : ''}${darwin ? ' data-platform="darwin"' : ''}><body>
     <div${collapsed ? ' data-sidebar-collapsed="true"' : ''}>
@@ -339,7 +338,7 @@ for (const collapsed of [false, true]) {
 // #1430: the shell's own switch drew a tooltip shadow across the rail's edge. It lives in the
 // logo row, or in the top strip in a macOS desktop window, and none of the team view's
 // switches may share the screen with it.
-const PLATFORMS = ['web', 'windows', 'mac', 'mac-frameless']
+const PLATFORMS = ['web', 'windows', 'mac']
 for (const platform of PLATFORMS) {
   for (const collapsed of [false, true]) {
     test(`the shell's own sidebar switch is hidden: ${platform}, ${collapsed ? 'collapsed' : 'open'}`, () => {
@@ -352,20 +351,18 @@ for (const platform of PLATFORMS) {
 }
 
 test('the top strip stays as the window\'s drag area while its switch is hidden', () => {
-  for (const platform of ['mac', 'mac-frameless']) {
-    for (const collapsed of [false, true]) {
-      const { document, hidden } = shell({ platform, collapsed })
-      const strip = document.querySelector('.x_topStrip')
-      assert.ok(strip !== null, platform)
-      assert.equal(hidden(strip), false, `${platform} ${collapsed ? 'collapsed' : 'open'}`)
-      assert.equal(hidden(strip.querySelector('.x_toggle')), true)
-    }
+  for (const collapsed of [false, true]) {
+    const { document, hidden } = shell({ platform: 'mac', collapsed })
+    const strip = document.querySelector('.x_topStrip')
+    assert.ok(strip)
+    assert.equal(hidden(strip), false)
+    assert.equal(hidden(strip.querySelector('.x_toggle')), true)
   }
 })
 
 test('the team view\'s own switches keep the places they had on every platform', () => {
   for (const platform of PLATFORMS) {
-    const titlebar = platform === 'windows' || platform === 'mac-frameless'
+    const titlebar = platform === 'windows'
     for (const collapsed of [false, true]) {
       const { document, hidden } = shell({ platform, collapsed })
       const title = document.querySelector('.bt-title-toggle')
@@ -856,4 +853,17 @@ test('TeamSidebar leaves an already-collapsed DSH Desktop sidebar alone', async 
       document.documentElement.removeAttribute('data-bt-collapsing')
     }
   })
+})
+
+test('the Agent footer returns to the Bot surface in both sidebar widths', () => {
+  const modes = []
+  const props = { useSurface: select => select({ mode: 'agent' }), actions: { setSurface: mode => modes.push(mode) } }
+  for (const wide of [false, true]) {
+    const button = BotReturn({ ...props, wide })
+    assert.equal(button.props['aria-label'], 'Back to DS Bot')
+    assert.equal(button.props.title, 'Back to DS Bot')
+    assert.equal(button.props.children.some(child => child?.props?.children?.includes('Back to DS Bot')), wide)
+    button.props.onClick()
+  }
+  assert.deepEqual(modes, ['bot', 'bot'])
 })

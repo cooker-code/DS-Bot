@@ -1,7 +1,7 @@
 // Save for the cards DSH delivers in a Bot chat (the files a turn presented). The
 // card's action slot hands over the present route it would open; the host reads that
 // exact file back as bytes, and the browser hands them to the device through a
-// download — the same path a phone browser uses for any download.
+// download.
 import { createElement as h, useState } from 'react'
 import { fileChunks } from '../shared/file-chunks.js'
 import { call } from './api.js'

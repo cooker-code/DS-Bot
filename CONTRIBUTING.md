@@ -10,11 +10,11 @@ Collaborators of this repository push branches here and open pull requests into 
 
 ## The rules that matter most
 
-1. **Build on DSH; never patch it.** The Bot features are a DSH plugin: use the plugin APIs that DSH documents (Cordis services, the plugin client entry, profile patches). The desktop app starts DSH only through the entry points that DSH documents (`@deepseek-ai/dsh/profile-boot`, the `dsh` command). Do not patch DeepSeek Harness, and do not depend on files inside a DSH install. When a feature needs something that DSH does not offer, open an issue here first; the fix can belong in DSH.
+1. **Build on DSH; never patch it.** The Bot features are a DSH plugin: use the plugin APIs that DSH documents (Cordis services, the plugin client entry, profile patches). Do not patch DeepSeek Harness, and do not depend on files inside a DSH install. When a feature needs something that DSH does not offer, open an issue here first; the fix can belong in DSH.
 2. **Bots run in DSH Sessions.** A Bot keeps its identity while its work runs in DSH Sessions: one for its own chat, one for each group, a fresh one when the context fills up. Every turn goes through the normal DSH agent loop, tools and model routes. Do not add a second agent runtime.
 3. **No real secrets anywhere.** Do not commit API keys, tokens, cookies, `DSH_HOME` folders, logs or screenshots with personal data. The tests and the test bench use a scripted mock model and need no key.
 4. **Only original material.** Do not copy code, text, icons, logos or other graphics from other products or websites. Code under a license compatible with Apache 2.0 is the only exception: say where it comes from and add its notice to a `NOTICE` file. This rule is about DS Bot's own interface. To name a third-party product that DS Bot connects to (for example the agent CLI a Bot runs on), use that product's official logo, and list it in `NOTICE` with its source and owner.
-5. **Every change is tested.** Run the unit tests and the client check for every change (see [Test a change](#test-a-change)).
+5. **Match verification to the change.** Check text, links and executable examples for documentation changes. For code, run the tests covering the affected behavior. See [Test a change](#test-a-change).
 
 ## How we work
 
@@ -72,7 +72,7 @@ Keep one pull request to one issue. Split a large change into several pull reque
 
 1. In a pull request into `dev`, set the version in `ds-bot/package.json` and write the `CHANGELOG.md` section from the Changelog sentences of the merged pull requests.
 2. Open a pull request from `dev` into `main` titled `release: vX.Y.Z`. List every `Fixes #<number>` of the release in its description, so that these issues close when it is merged.
-3. Before you merge it, run the [release checklist](docs/dev/release-checklist.md) (in Chinese) on a real Windows machine, and on macOS when the change touches it, and post the result in the pull request. Merge it with a merge commit and publish a GitHub release `vX.Y.Z` on `main`, with "Set as the latest release" turned off: the workflow marks it latest itself once the installers, `SHA256SUMS.txt` and the download table are attached. The Release workflow checks that the tag matches the version and is on `main`, runs the checks and publishes the package to npm (a pre-release version under the npm tag `next`). Do not run `npm publish` by hand.
+3. Before you merge it, run the [release checklist](docs/dev/release-checklist.md) (in Chinese) on a real Windows machine, and on macOS when the change touches it, and post the result in the pull request. Merge it with a merge commit and publish a GitHub release `vX.Y.Z` on `main`, with "Set as the latest release" turned off: the workflow marks it latest itself once the plugin package is attached. The Release workflow checks that the tag matches the version and is on `main`, runs the checks and publishes the package to npm (a pre-release version under the npm tag `next`). Do not run `npm publish` by hand.
 4. For a hotfix, start `fix/hot-<name>` from `main`, open the pull request into `main`, release a patch version, then merge `main` into `dev`.
 
 ## Set up
@@ -117,20 +117,22 @@ The `@deepseek-ai/*` packages are peer dependencies: in a real install, the DSH 
 | `ds-bot/web-search.js` | The `auto` web-search provider. It does not depend on the Bot team code |
 | `ds-bot/cordis.patch.yml` | The profile patch that the plugin brings |
 | `ds-bot/test/` | Unit tests and fixtures |
-| `ds-bot/dev/` | The DSH packages for the unit tests (`harness/`), the mock model, the test bench, the smoke test, the character generator, the Desktop scripts for Linux, and two tools for real models: the steward evaluation and a logging pass-through |
+| `ds-bot/dev/` | The DSH packages for the unit tests (`harness/`), the mock model, the test bench, the smoke test, the character generator, and two tools for real models: the steward evaluation and a logging pass-through |
 
 ## Test a change
 
-Run these in `ds-bot/`:
+For documentation, check the text, links and examples. For code, select tests covering the change and its callers. Rebuild and check the generated client after editing its sources. Run `npm run test:all` locally only when the scope cannot be narrowed or the task requests a full regression. Coordinate one run across chats and rerun affected files after a fix.
+
+Use the relevant commands in `ds-bot/`:
 
 ```sh
 npm run build                          # src/client → client.js
-npm test                               # unit tests; they also fail if client.js is stale
+npm test -- test/group-search.test.js  # example: select the affected test files
 node scripts/build-client.mjs --check  # client.js matches src/client
 npm run lint                           # oxlint
 ```
 
-CI runs the same three checks on every pull request, on Linux and Windows. It also scans the tracked files for keys, tokens, personal paths and e-mail addresses, and for material that must stay local. To run the scan yourself, from the repository root:
+CI runs the full unit suite, generated client check and lint on every pull request, on Linux and Windows. It also scans the tracked files for keys, tokens, personal paths and e-mail addresses, and for material that must stay local. To run the scan yourself, from the repository root:
 
 ```sh
 mkdir -p /tmp/ds-bot-tree && git archive HEAD | tar -x -C /tmp/ds-bot-tree && node scripts/scan.mjs /tmp/ds-bot-tree
@@ -155,7 +157,7 @@ The mock model answers a fixed set of commands, so a bench costs no tokens. The 
 
 For a change to the context steward or its prompts (`src/host/steward.js`), also check it on a real model. `dev/steward-eval.mjs` runs its decisions on fixed conversation endings, and `dev/llm-tap.mjs` logs every call a real bench makes. Both cost tokens and explain their use at the top.
 
-For a change to the Bot browser, check it in DSH Desktop. On Linux, the scripts in `dev/desktop-linux/` run DSH Desktop under Xvfb; each script explains its use at the top.
+For a change to the Bot browser, check it in DSH Desktop.
 
 ## Write a change
 

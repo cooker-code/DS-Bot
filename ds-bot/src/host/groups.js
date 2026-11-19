@@ -287,8 +287,6 @@ export function install(rt) {
     room.seq += 1
     const record = { ...line, ...(!line.kind && scopeOf(line) ? { text: tagged(scopeOf(line), line.text) } : {}), seq: room.seq, time: line.time ?? Date.now() }
     rt.ledger.append(bookOf(room.id), record)
-    // The phone link hears every line the chat will draw (mobile.js).
-    rt.roomLineAdded?.(room, record)
     if (!memberLine(record)) return record
     room.log = [...room.log, cutLine(record)].slice(-ROOM_LOG_MAX)
     for (const listener of roomLineListeners) {
@@ -380,7 +378,7 @@ export function install(rt) {
   }
 
   // A failed background helper appends a structured notice directly to the group's
-  // ledger; the latest open group_relay anchor and room-chat read it on the revision
+  // ledger; the latest open group_relay anchor reads it on the revision
   // bump without synthesizing an empty turn or marking the member's own turn failed.
   const noteHelperFailure = async (sessionId, { stopReason, helper, closing } = {}) => {
     if (rt.readOnly() !== undefined) return

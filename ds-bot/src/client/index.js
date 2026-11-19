@@ -22,7 +22,7 @@ import { sameVersion } from './dsh-offer.js'
 import { QuestionCard, QuestionDock } from './questions.js'
 import { AnsweredReply, WidgetDock, WIDGET_CSS } from './widget-cell.js'
 import { CHANGES_CSS } from './changes-card.js'
-import { HandoffDock, HANDOFF_CSS } from './handoff-card.js'
+import { HANDOFF_CSS } from './handoff-card.js'
 import { AppAccessDock, ComputerHandoffDock, ComputerIndicator, COMPUTER_CSS } from './computer.js'
 import { installHeaderNavigation } from './header-navigation.js'
 import { AssistantCell, TriggerCell, TurnProcessCell, Nothing, CellEmpty, TurnTailCell, ToolCell } from './cells.js'
@@ -67,7 +67,7 @@ import { PASTE_CSS, PasteDock, PasteGuard } from './paste-card.js'
 import { OPENING_CSS, bindOpeningWait } from './opening.js'
 import { noticeApprovals } from './approval-notices.js'
 import { listedOpener } from './open-listed.js'
-import { needsIdleSample, pollDelay } from './polling.js'
+import { pollDelay } from './polling.js'
 import { installMotionRest } from './motion-rest.js'
 import { agentSessionToReuse, singleFlight } from './agent-new.js'
 import { TextSelectionAction, ANNOTATION_CSS } from './text-annotation.js'
@@ -213,14 +213,13 @@ export function apply(ctx) {
     }
     if (value.memoryNews !== undefined) noteMemoryNews(value.memoryNews)
     const current = roster.getSnapshot()
-    // Connector, capability and phone states change without a new revision.
+    // Connector and capability states change without a new revision.
     const live = {}
     if (value.partsRunning !== undefined && JSON.stringify(value.partsRunning) !== JSON.stringify(current.partsRunning ?? {})) live.partsRunning = value.partsRunning
     if (value.secretStore !== undefined && JSON.stringify(value.secretStore) !== JSON.stringify(current.secretStore ?? {})) live.secretStore = value.secretStore
     if (value.secrets !== undefined && JSON.stringify(value.secrets) !== JSON.stringify(current.secrets ?? [])) live.secrets = value.secrets
     if (value.connectors !== undefined && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live.connectors = value.connectors
     if (value.capabilityStatuses !== undefined && JSON.stringify(value.capabilityStatuses) !== JSON.stringify(current.capabilityStatuses ?? {})) live.capabilityStatuses = value.capabilityStatuses
-    if (value.phone !== undefined && JSON.stringify(value.phone) !== JSON.stringify(current.phone ?? null)) live.phone = value.phone
     if (value.learning !== undefined && JSON.stringify(value.learning) !== JSON.stringify(current.learning ?? {})) live.learning = value.learning
     if (value.learningSettled !== undefined && JSON.stringify(value.learningSettled) !== JSON.stringify(current.learningSettled ?? {})) live.learningSettled = value.learningSettled
     if (value.btwCards !== undefined && JSON.stringify(value.btwCards) !== JSON.stringify(current.btwCards ?? {})) live.btwCards = value.btwCards
@@ -308,7 +307,7 @@ export function apply(ctx) {
       if (stopped) return
       const value = await call('update-check', { fresh: false }).catch(() => null)
       if (stopped) return
-      if (value) update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
+      if (value) update.set(previous => ({ ...value, app: previous.app }))
       timer = setTimeout(loop, value?.phase === 'installing' || value?.dsh?.phase === 'installing' ? 2000 : 60 * 60_000)
     }
     wakeUpdate = loop
@@ -329,22 +328,8 @@ export function apply(ctx) {
     }, 'ds-bot: app update status')
   }
 
-  // The DS Bot app's own updater; its state goes beside the host's answer as ownApp,
-  // which the About row turns into the app's update state and buttons.
-  const ownAppUpdates = globalThis.dsBotApp?.updates ?? null
-  if (ownAppUpdates?.state && ownAppUpdates.subscribe) {
-    ctx.effect(() => {
-      let stopped = false
-      const take = (ownApp) => { if (!stopped && ownApp) update.set(previous => ({ ...previous, ownApp })) }
-      void ownAppUpdates.state().then(take, () => {})
-      const unsubscribe = ownAppUpdates.subscribe(take)
-      return () => { stopped = true; unsubscribe?.() }
-    }, 'ds-bot: own app update state')
-  }
-
-  // Bot browsers need a webview bridge: DSH Desktop's, or the desktop app's of the
-  // same shape. The host serves read_browser only in those two (`browser` in the state).
-  const bridge = (window.dshDesktop?.protocolVersion === 1 ? window.dshDesktop.browser : globalThis.dsBotApp?.browser) ?? null
+  // DSH Desktop exposes the webview bridge.
+  const bridge = (window.dshDesktop?.protocolVersion === 1 ? window.dshDesktop.browser : null) ?? null
   const browsers = bridge ? createBotBrowsers({ bridge, createSource }) : null
   if (browsers) {
     ctx.effect(() => {
@@ -781,31 +766,6 @@ export function apply(ctx) {
       browserNavigate: (tabId, input) => browsers.navigate(tabId, input),
       browserCommand: (tabId, name) => browsers.command(tabId, name),
       browserFocus: (tabId) => browsers.focus(tabId),
-      browserTakeover: bridge.views ? async botId => {
-        const result = await call('browser-takeover', { botId })
-        await bridge.views.hold(botId, true)
-        return result
-      } : undefined,
-      browserStop: bridge.views ? async botId => {
-        const result = await call('browser-stop', { botId })
-        await bridge.views.hold(botId, true)
-        return result
-      } : undefined,
-      // `answer` is a handoff card's { callId, outcome }; the panel's Give back sends none.
-      browserGiveBack: bridge.views ? async (botId, answer = {}) => {
-        const result = await call('browser-give-back', { botId, ...answer })
-        await bridge.views.hold(botId, false)
-        return result
-      } : undefined,
-      // Cookie imports, only where the bridge offers them (the desktop app): a file or an
-      // installed browser's profile is previewed, then applied into the Bot's storage key.
-      browserImport: typeof bridge.importSources === 'function' ? {
-        sources: () => bridge.importSources(),
-        pick: () => bridge.importPick(),
-        live: (source, close) => bridge.importLive(source, close),
-        apply: (botId, pending) => bridge.importApply(`bot:${botId}`, pending),
-        cancel: (pending) => bridge.importCancel(pending),
-      } : null,
     })
   }
   // Whether AccountLauncher holds the shell's settings seat; FooterAccount steps aside if so.
@@ -815,7 +775,7 @@ export function apply(ctx) {
   actions.closeSignIn = () => ui.set(state => ({ ...state, signIn: null }))
   actions.accountT = () => ctx.get('locale').bind('settings.account')
   // DSH's Plugins page (bundle install and management): its navigation face is
-  // absent where the peer may not list bundles, such as the app's own profile.
+  // absent where the peer may not list bundles, in restricted profiles.
   actions.hasPlugins = () => ctx.get('pluginNavigation') !== undefined
   actions.openPlugins = () => ctx.get('pluginNavigation')?.openList()
   // The Voice Input plugin's speech Remote; absent while that plugin is off.
@@ -824,8 +784,7 @@ export function apply(ctx) {
   // through the settings shell's coordinator.
   actions.openHarnessOnboarding = id => settingsShell?.openOnboarding(id)
   // With the plugin manager mounted, setup is its bundle page (the model's size
-  // and download notes live there). Where it is not mounted — the desktop app's
-  // profile has no plugin manager — the speech Remote prepares the provider
+  // and download notes live there). Where it is not mounted, the speech Remote prepares the provider
   // itself, and the voice pane follows its progress.
   actions.voiceSetup = (providerId) => {
     const navigation = ctx.get('pluginNavigation')
@@ -867,97 +826,13 @@ export function apply(ctx) {
   }
   actions.checkUpdate = async () => {
     const value = await call('update-check', { fresh: true })
-    update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
+    update.set(previous => ({ ...value, app: previous.app }))
     wakeUpdate()
   }
-  // The app's own updater answers through its bridge; the state it pushes back re-renders
-  // the About row.
-  actions.checkOwnApp = async () => { await ownAppUpdates?.check?.() }
-  actions.installOwnApp = async () => { await ownAppUpdates?.install?.() }
-  actions.openOwnApp = async () => { await ownAppUpdates?.open?.() }
   const browserPages = browsers?.pages ?? createSource({})
   const browserTabs = browsers?.tabs ?? createSource({})
-  const browserHolds = browsers?.holds ?? createSource({})
 
-  // The desktop app carries the floating indicator and the tray entries, and reads the
-  // OS idle time for the foreground gate; the entries and the pushes ride its bridge.
-  const appComputer = globalThis.dsBotApp
-  if (typeof appComputer?.computer === 'function') {
-    ctx.effect(() => {
-      const nameOf = id => roster.getSnapshot().byId[id]?.name ?? 'a Bot'
-      const sync = () => {
-        const live = computer.getSnapshot()
-        const name = id => nameOf(id)
-        const look = id => lookOf(roster.getSnapshot().byId[id])
-        const rows = (live.leases ?? []).map(entry => ({
-          botId: entry.botId,
-          name: name(entry.botId),
-          app: entry.kind === 'foreground' ? t('In the foreground') : entry.appName,
-          label: entry.kind === 'foreground' ? t('{name} · foreground', { name: name(entry.botId) }) : `${name(entry.botId)} · ${entry.appName}`,
-          color: look(entry.botId).color,
-          avatar: look(entry.botId).image,
-        }))
-        for (const [botId, entry] of Object.entries(live.bots ?? {})) {
-          if (entry.waitingFor === 'user-idle') rows.push({ botId, waiting: true, name: name(botId), app: t('waits for the computer'), label: t('{name} waits for the computer', { name: name(botId) }), color: look(botId).color, avatar: look(botId).image })
-        }
-        appComputer.computer({
-          rows,
-          labels: { stop: t('Stop'), stopAll: t('Stop all'), letGo: t('Let it continue') },
-        })
-      }
-      sync()
-      return computer.subscribe(sync)
-    }, 'ds-bot: computer indicator')
-  }
-  if (typeof appComputer?.computerCursor === 'function') {
-    ctx.effect(() => {
-      // Cursor events get their own long-poll: the shared state poll drops to
-      // 10 s while the window is hidden, far too slow for an on-screen cursor.
-      let dead = false
-      const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
-      const run = async () => {
-        let after = 0
-        while (!dead) {
-          if (roster.getSnapshot().computer?.enabled !== true) { await pause(2000); continue }
-          try {
-            const reply = await call('computer-cursor-wait', { after })
-            for (const event of reply?.events ?? []) {
-              if (Number.isFinite(event.seq) && event.seq > after) after = event.seq
-              if (Number.isFinite(event.t) && Number.isFinite(reply?.now) && reply.now - event.t > 3000) continue
-              appComputer.computerCursor({ ...event, color: lookOf(roster.getSnapshot().byId[event.botId]).color, avatar: lookOf(roster.getSnapshot().byId[event.botId]).image })
-            }
-          } catch {
-            await pause(2000)
-          }
-        }
-      }
-      void run()
-      return () => { dead = true }
-    }, 'ds-bot: computer cursor')
-  }
-  if (typeof appComputer?.idleSeconds === 'function') {
-    ctx.effect(() => {
-      const push = () => {
-        const current = roster.getSnapshot()
-        if (current.computer?.enabled !== true) return
-        // Read OS idle time whenever a Bot can claim foreground control or is waiting for idle.
-        if (!needsIdleSample(computer.getSnapshot(), current.computer)) return
-        void Promise.resolve(appComputer.idleSeconds()).then((idle) => {
-          if (Number.isFinite(idle)) call('computer-user-active', { idleSeconds: idle }).catch(() => {})
-        }).catch(() => {})
-      }
-      const timer = setInterval(push, 2000)
-      return () => { clearInterval(timer) }
-    }, 'ds-bot: computer user active')
-  }
-  if (typeof appComputer?.onComputerAction === 'function') {
-    appComputer.onComputerAction(({ kind, botId }) => {
-      if (kind === 'stop') void actions.computerStop(botId)
-      else if (kind === 'stopall') void actions.computerStop(null, true)
-      else if (kind === 'letgo') void actions.computerAllowForeground(botId)
-    })
-  }
-  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, computer, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update, frame, sidebarPref, settingsShellHeld } })
+  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, computer, cards, heldCards, browserPages, browserTabs, surface, update, frame, sidebarPref, settingsShellHeld } })
   // Since DSH 0.2.1-alpha.3 user text is drawn by rules and a content factory, not the
   // primitives' text projection; the user's bubble draws with either (user-message.js).
   const hostDrawsUserText = typeof ctx.uiConversation.userText?.register === 'function'
@@ -1258,8 +1133,7 @@ export function apply(ctx) {
     // sits on that turn's tail, ahead of the time separator.
     () => shadow('conversation.chat.turnTail', { id: 'bot-btw', order: 800, priority: BOT_PRIORITY, inject: face }, BtwTurnTail),
     () => shadow('conversation.chat.turnTail', { id: 'bot-learning', order: 850, priority: BOT_PRIORITY, inject: face }, LearningTurnTail),
-    // The cards of the files a turn delivered get a Save action beside DSH's own
-    // actions, so a phone browser can put the file on the device.
+    // Save a delivered file from its card in the browser.
     () => ctx.slots.inject('deliverables.file.actions', () => ctx.slots.register({ name: 'deliverables.file.actions', id: 'bot-file-save', locale: 'chat' }, SaveFileAction)),
     // A Bot condenses its conversation without telling anyone; the chat keeps showing
     // every message.
@@ -1303,7 +1177,6 @@ export function apply(ctx) {
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),
     () => shadow('conversation.input.dock', { id: 'bot-connector', order: -89, inject: face }, ConnectorDock),
     () => shadow('conversation.input.dock', { id: 'bot-mail', order: -88, inject: face }, MailDock),
-    () => shadow('conversation.input.dock', { id: 'bot-handoff', order: -85, inject: face }, HandoffDock),
     () => shadow('conversation.input.dock', { id: 'bot-computer-handoff', order: -84, inject: face }, ComputerHandoffDock),
     () => shadow('conversation.input.dock', { id: 'bot-computer-app', order: -83, inject: face }, AppAccessDock),
     () => shadow('conversation.input.dock', { id: 'bot-learning', order: 850, priority: BOT_PRIORITY, inject: face }, LearningDock),

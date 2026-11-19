@@ -22,7 +22,6 @@ export function install(rt) {
   const { ctx, state } = rt
 
   const teamFolder = () => ctx.workspaceRegistry.get?.(state.workspaceId)?.path
-  // The desktop app names the folder the user chose for the Bots' files.
   const defaultTeamFolder = () => rt.config.workspace ?? (process.env.DS_BOT_WORKSPACE?.trim() || join(rt.home, 'workspace'))
   // A member's own pick inside one group, made with working_directory there: a path,
   // or null for the team workspace, which a missing entry would read as the Bot's
@@ -62,7 +61,7 @@ export function install(rt) {
     if (room !== undefined) return workDirOf({ roomId: room.id }) ?? teamFolder()
     return workDirOf({ botId: rt.selfOf?.(id), roomId: rt.groupOwners?.get(id)?.roomId }) ?? teamFolder()
   }
-  // The desktop app runs its own DSH and names the user's, which Bots must not write either.
+  // A separately configured user DSH home is protected as well.
   const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
 
   // A Bot that could write where DSH or the team keeps its data could change its own

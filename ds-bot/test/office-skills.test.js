@@ -72,17 +72,8 @@ describe('office skill provider', () => {
 })
 
 describe('office node selection', () => {
-  test('uses DS_BOT_OFFICE_NODE when the file exists', () => {
-    const { node } = officeNode({ DS_BOT_OFFICE_NODE: process.execPath })
-    assert.equal(node, process.execPath)
-  })
-  test('ignores DS_BOT_OFFICE_NODE that does not exist', () => {
-    const { node } = officeNode({ DS_BOT_OFFICE_NODE: '/no/such/node-here' })
-    // In the test harness the host is plain Node, so execPath applies.
-    assert.equal(node, process.execPath)
-  })
   test('falls back to the host interpreter under plain Node', () => {
-    const { node } = officeNode({})
+    const { node } = officeNode()
     assert.equal(node, process.execPath)
   })
 })

@@ -195,6 +195,20 @@ function decide(body) {
     const resultText = typeof result.content === 'string' ? result.content : textOf(result.content)
     const call = [...messages].reverse().find(m => m.role === 'assistant' && Array.isArray(m.content) && m.content.some(b => b.type === 'tool_use'))
     const used = call?.content.find(b => b.type === 'tool_use' && b.id === result.tool_use_id) ?? call?.content.find(b => b.type === 'tool_use')
+    if (used?.name === 'project_task' && messages.some(m => textOf(m.content).includes('native-project-image-smoke'))) {
+      if (result.is_error) return [text('Project task failed: ' + resultText)]
+      const card = JSON.parse(resultText)
+      switch (used.input.action) {
+        case 'list': {
+          const owner = card.members.find(member => member.name === 'Coder')
+          return [tool('project_task', { action: 'assign', ownerId: owner.id, title: 'Check the project attachment', plan: 'Coder checks the image and returns evidence to Chief.', acceptance: 'Coder receives the original image.' })]
+        }
+        case 'assign': return [tool('project_task', { action: 'read', taskId: card.taskId })]
+        case 'read': return [tool('message_bot', { to: 'Coder', taskId: card.taskId, card_round: card.round, request_id: 'smoke-' + card.taskId, message: 'Check the image.', reply_to: 'user' })]
+        case 'start': return [tool('project_task', { action: 'submit', taskId: card.taskId, round: card.round, result: 'Received the original project attachment.' })]
+        default: return [text('Submitted project evidence.')]
+      }
+    }
     // "长任务 N [K]": N steps in one turn, each adding about K thousand characters (default 4).
     const openerAt = messages.findLastIndex(m => m.role === 'user' && !isResults(m) && /^长任务\s*\d+/.test(textOf(m.content).trimStart()))
     if (openerAt !== -1 && used?.name === 'list_bots') {
@@ -284,7 +298,9 @@ function decide(body) {
     }
   }
 
-  const userText = textOf(last?.content).trim()
+  // DSH may append a workspace-instruction refresh to the user's command.
+  // The mock matches the command; prose in that refresh must not trigger another tool.
+  const userText = textOf(last?.content).replace(/\s*<system-reminder>\s*Updated instructions from:[\s\S]*$/, '').trim()
   // "撑爆": the provider rejects the request as past its window.
   if (userText.startsWith('撑爆')) return 'overflow'
   // A file in the message (a long Bot message, a file the user sent): DSH gives its saved
@@ -311,6 +327,13 @@ function decide(body) {
   const lastAsk = lastCall?.content.find(b => b.type === 'tool_use' && b.name === 'ask_user')
   const answeredAsk = lastAsk && (lastAsk.input?.options ?? []).map(option => option?.label ?? option).find(label => userText.includes(label))
   if (isRelay && tools.has('group_relay')) return [tool('group_relay', {})]
+  if (tools.has('project_task') && userText.includes('native-project-image-smoke')) {
+    if (userText.includes('Handle it here in your own manager chat.')) return [tool('project_task', { action: 'list' })]
+    const id = /^\[([0-9a-f-]{36})\]/m.exec(userText)?.[1]
+    if (id && userText.includes('Confirm with project_task start') && blocks.some(block => block.type === 'image')) {
+      return [tool('project_task', { action: 'start', taskId: id, round: 1 })]
+    }
+  }
   if (answeredAsk && !userText.trim().startsWith('[')) {
     return [text(`好，就从「${answeredAsk}」开始。`), text('我先把要点理一下，稍后给你一个方案。')]
   }

@@ -2743,14 +2743,10 @@ const cardA = '11111111-1111-4111-8111-111111111111'
 const cardB = '22222222-2222-4222-8222-222222222222'
 const taskNotice = { notice: 'Prefix card messages with [taskId].' }
 
-test('bound project intake reaches the private manager once, with its image, and the owner can confirm work there', async t => {
+test('DS Bot assigns a group intake, delivers its original image once, and records the owner starting and submitting', async t => {
   const attachments = fakeAttachments()
   const receipt = await attachments.saveImage({ mediaType: 'image/jpeg', width: 1, height: 1, data: new Uint8Array([1]) })
-  const host = await start(t, taskNotice, { attachments, dshKanban: {
-    developmentHandoff: (session, id, owner, round) => session === 'a' && id === cardA && owner === 'b' && round === 1 ?
-      'Original acceptance, worktree and annotation.jpg' : undefined,
-    dispatchProjectFor: (group, privateChat) => group === 'ga' && privateChat === 'a' ? 'example' : undefined,
-  } })
+  const host = await start(t, taskNotice, { attachments })
   const original = host.say('Inspect the unmarked request source')
   original.content.push({ type: 'image', attachment: receipt })
   const ended = host.round('intake', original)
@@ -2763,29 +2759,59 @@ test('bound project intake reaches the private manager once, with its image, and
   const line = rt.ledger.records('group-r1').find(row => row.who === 'User')
   await forwardProjectIntake(rt, room, line.intakeId, line.seq)
   assert.equal(host.agentOf('a').calls.length, 1)
-  const args = { to: 'Writer', taskId: cardA, card_round: 1, message: 'Confirm start only', reply_to: 'user', request_id: 'work-1' }
+  const project = (args, session = 'a') => host.tool('project_task', args, session).then(JSON.parse)
+  const assignment = { action: 'assign', title: 'Inspect request source', ownerId: 'b', plan: 'Investigate then return evidence', acceptance: 'Source is identified' }
+  await assert.rejects(project({ ...assignment, ownerId: 'outside' }), /group/)
+  await assert.rejects(project({ ...assignment, roomId: 'r1' }, 'b'), /manager chat/)
+  const [first, repeat] = await Promise.all([project(assignment), project(assignment)])
+  assert.deepEqual(first, repeat)
+  const id = first.taskId
+  assert.equal(first.status, 'assigned')
+  assert.equal((await project({ action: 'list' })).cards.length, 1)
+  await assert.rejects(project({ ...assignment, title: 'Conflicting replay' }), /different details/)
+  const saved = await project({ action: 'read', taskId: id })
+  assert.deepEqual(saved.requirements[0].images, [receipt])
+  const args = { to: 'Writer', taskId: id, card_round: 1, message: 'Confirm start only', reply_to: 'user', request_id: 'work-1' }
   await assert.rejects(host.tool('message_bot', { ...args, card_round: 2 }, 'a'), /current round/)
+  await assert.rejects(host.tool('message_bot', { ...args, to: 'Tester' }, 'a'), /assigned owner/)
   const sent = await host.tool('message_bot', args, 'a')
-  assert.equal(await host.tool('message_bot', args, 'a'), sent)
+  assert.equal(await host.tool('message_bot', { ...args, request_id: 'duplicate' }, 'a'), sent)
   assert.equal(host.agentOf('b').calls.length, 1)
+  assert.ok(Object.values(rt.state.requests).every(record => !record.receipt?.includes('Inspect the unmarked request source')))
+  assert.equal((await project({ action: 'read', taskId: id })).status, 'delivered')
   const work = host.begin('b')
-  assert.equal(work.source.taskId, cardA)
+  assert.equal(work.source.taskId, id)
+  assert.deepEqual(work.content.find(block => block.type === 'image').attachment, receipt)
   const packet = JSON.parse(sent.split('\nCard handoff: ')[1])
   assert.equal(packet.exchangeId, work.source.exchangeId)
   assert.ok(text(work).includes(packet.text))
-  assert.match(packet.text, /Original acceptance, worktree and annotation.jpg/)
-  assert.match(packet.text, /explicit start confirmation/)
+  assert.match(packet.text, /Inspect the unmarked request source/)
+  assert.match(packet.text, /Source is identified/)
+  assert.equal((await project({ action: 'start', taskId: id, round: 1 }, 'b')).status, 'active')
+  assert.equal((await project({ action: 'submit', taskId: id, round: 1, result: 'Verified the source in the record' }, 'b')).status, 'review')
+  assert.equal(JSON.parse(readFileSync(join(rt.home, 'state.json'))).rooms.r1.projectCards[id].rounds[0].dispatchId, work.source.exchangeId)
   host.finish('a', 'Waiting for confirmation')
-  await host.tool('message_bot', { to: 'Chief', taskId: cardA, message: 'Worktree verified. Started.', reply_to: 'user', request_id: 'start-1' }, 'b')
-  assert.equal(host.begin('a').source.taskId, cardA)
+  await host.tool('message_bot', { to: 'Chief', taskId: id, message: 'Worktree verified. Started.', reply_to: 'user', request_id: 'start-1' }, 'b')
+  assert.equal(host.begin('a').source.taskId, id)
   assert.match(text(host.agentOf('a').calls.at(-1)), /Worktree verified/)
+  const handoff = await project({ action: 'handoff', taskId: id, round: 1, ownerId: 'c', plan: 'Independently verify the source' })
+  assert.equal(handoff.round, 2)
+  await assert.rejects(project({ action: 'submit', taskId: id, round: 1, result: 'Late result' }, 'b'), /current card round/)
+  await assert.rejects(host.tool('message_bot', { ...args, to: 'Tester', card_round: 2 }, 'a'), /different request/)
+  await host.tool('message_bot', { ...args, to: 'Tester', card_round: 2, request_id: 'work-2' }, 'a')
+  const review = host.begin('c')
+  assert.match(text(review), /Previous delivery: Verified the source in the record/)
+  assert.deepEqual(review.content.find(block => block.type === 'image').attachment, receipt)
+  const view = (await host.call('state')).value.rooms.find(r => r.id === 'r1')
+  assert.equal(view.projectCards.length, 1)
+  assert.equal(view.projectCards[0].ownerId, 'c')
+  assert.equal(view.projectCards[0].round, 2)
+  assert.equal(view.projectCards[0].rounds, undefined, 'whole assignment histories stay out of the roster payload')
 })
 
 test('three bound image intakes reach the private manager while unrelated group work is still running', async t => {
   const attachments = fakeAttachments()
-  const host = await start(t, taskNotice, { attachments, dshKanban: {
-    dispatchProjectFor: (group, chat) => group === 'ga' && chat === 'a' ? 'example' : undefined,
-  } })
+  const host = await start(t, taskNotice, { attachments })
   host.round('busy', host.say(`[${cardA}] Unrelated group work`))
   await until(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
@@ -2832,7 +2858,7 @@ test('three bound image intakes reach the private manager while unrelated group 
   }
 })
 
-test('card A receives a quoted image while another card and unassigned intake wait in order', async t => {
+test('card A gets its quoted image while card B waits and a fresh intake reaches the manager privately', async t => {
   const host = await start(t, taskNotice)
   const runs = [host.round('A', host.say(`[${cardA}] Accept the A candidate`))]
   await until(() => host.agentOf('ga').calls.length === 1)
@@ -2841,7 +2867,7 @@ test('card A receives a quoted image while another card and unassigned intake wa
   host.emit('ga', 'tool/call', { callId: 'accept-a', name: 'verify' })
   runs.push(host.round('B', host.say(`[${cardB}] Change pagination B`)))
   runs.push(host.round('intake', host.say('@Writer New independent export request')))
-  await until(() => rt.roomOf('r1').taskQueue?.length === 2)
+  await until(() => rt.roomOf('r1').taskQueue?.length === 1 && host.agentOf('a').calls.length === 1)
   assert.deepEqual(host.agentOf('gb').calls, [])
   const attachment = { id: 'A-image', name: 'page.png', mimeType: 'image/png' }
   const addendum = host.say(`> [${cardA}] Accept the A candidate\n\nUse the corrected screenshot.`)
@@ -2864,13 +2890,12 @@ test('card A receives a quoted image while another card and unassigned intake wa
   assert.match(text(b), /pagination B/)
   assert.doesNotMatch(text(b), /A accepted|Accept the A|corrected screenshot|export request/)
   host.finish('ga', 'B received')
-  await until(() => host.agentOf('ga').calls.length === 4)
-  const intake = host.begin('ga')
+  const intake = host.begin('a')
   assert.ok(intake.source.intakeId)
   assert.equal(intake.source.taskId, undefined)
   assert.doesNotMatch(text(intake), /pagination B|A accepted/)
   assert.match(text(intake), /export request/)
-  host.finish('ga', 'Which page needs exporting?')
+  host.finish('a', 'Which page needs exporting?')
   await until(() => runs.every(result => result() !== undefined))
   const log = rt.ledger.records('group-r1')
   assert.ok(log.some(row => row.taskId === cardA && row.text === `[${cardA}] A accepted`))
@@ -2926,8 +2951,8 @@ test('a card supplement can pass an unrelated buffered user message', async t =>
   assert.match(text(host.agentOf('ga').calls[1]), /Corrected acceptance steps/)
   assert.doesNotMatch(text(host.agentOf('ga').calls[1]), /Different requirement/)
   host.finish('ga', 'verified')
-  await until(() => host.agentOf('ga').calls.length === 3)
-  assert.ok(host.begin('ga').source.intakeId)
-  host.finish('ga', 'Needs a new card')
+  await until(() => host.agentOf('a').calls.length === 1)
+  assert.ok(host.begin('a').source.intakeId)
+  host.finish('a', 'Needs a new card')
   await until(() => running() !== undefined)
 })

@@ -31,7 +31,7 @@ runInNewContext(bundle.outputFiles[0].text, {
     return {}
   },
 })
-const { AboutPage, ownAppRow } = module.exports
+const { AboutPage } = module.exports
 
 // The DS Bot row in Settings → About, with the row's hint and its buttons' text, class
 // and clicks. `update` is the value the update source holds.
@@ -53,55 +53,9 @@ function page(update) {
   }
 }
 
-// 公开#499: in the desktop app the DS Bot row shows the app's own update state.
-test('the six app update states set the DS Bot row\'s hint and button', () => {
-  const cases = [
-    [{ phase: 'checking' }, 'Checking for updates…', []],
-    [{ phase: 'current' }, 'Up to date', [{ text: 'Check for updates', className: 'bt-soft bt-soft-sm', action: 'checkOwnApp' }]],
-    [{ phase: 'downloading', version: '0.2.2' }, 'Downloading 0.2.2…', []],
-    [{ phase: 'downloaded', version: '0.2.2' }, '0.2.2 is ready; it installs when you restart',
-      [{ text: 'Restart to update', className: 'bt-fb-primary', action: 'installOwnApp' }]],
-    [{ phase: 'available', version: '0.2.2', page: 'https://github.com/Fei2411/DS-Bot/releases/tag/v0.2.2' }, '0.2.2 is available',
-      [{ text: 'Download', className: 'bt-soft bt-soft-sm', action: 'openOwnApp' }]],
-    [{ phase: 'failed' }, 'Could not check for updates.', [{ text: 'Check for updates', className: 'bt-soft bt-soft-sm', action: 'checkOwnApp' }]],
-  ]
-  for (const [ownApp, hint, buttons] of cases) {
-    const view = page({ source: 'app', ownApp })
-    assert.equal(view.hint, hint)
-    assert.equal(view.buttons.length, buttons.length)
-    for (const [index, expected] of buttons.entries()) {
-      assert.equal(view.buttons[index].text, expected.text)
-      assert.equal(view.buttons[index].className, expected.className)
-      view.buttons[index].click()
-      assert.deepEqual(view.calls, [expected.action])
-      view.calls.length = 0
-    }
-  }
-})
-
-test('without an app update state the row keeps today\'s text and no button', () => {
-  for (const ownApp of [undefined, null, 'checking', {}]) {
-    const view = page({ source: 'app', ownApp })
-    assert.equal(view.hint, 'Updates come with the DS Bot app.')
-    assert.deepEqual(view.buttons, [])
-  }
-})
-
-test('an app update state is ignored outside the app', () => {
-  const view = page({ source: 'registry', checkedAt: Date.now(), latest: '0.2.1', ownApp: { phase: 'downloaded', version: '0.2.2' } })
+test('the registry install shows its check time and update control', () => {
+  const view = page({ source: 'registry', checkedAt: Date.now(), latest: '0.2.1' })
   assert.match(view.hint, /^Up to date · Checked /)
   assert.equal(view.buttons.length, 1)
   assert.equal(view.buttons[0].text, 'Check for updates')
-})
-
-test('ownAppRow maps each phase to its hint and button kind', () => {
-  assert.equal(ownAppRow(null), null)
-  assert.equal(ownAppRow('downloaded'), null)
-  // The bundled module's realm has its own Object, so compare the fields.
-  const checking = ownAppRow({ phase: 'checking' })
-  assert.equal(checking.hint, 'Checking for updates…')
-  assert.equal(checking.button, null)
-  const downloaded = ownAppRow({ phase: 'downloaded', version: '0.2.2' })
-  assert.equal(downloaded.hint, '0.2.2 is ready; it installs when you restart')
-  assert.equal(downloaded.button, 'restart')
 })

@@ -9,7 +9,6 @@ import { dshVersion } from '../diagnostics.js'
 import { LEGACY_EXECUTABLES, LEGACY_NAME } from '../legacy.mjs'
 import { classify, isComputerTool, levelAllows, LEVELS, DRIVER_GLOBAL, DRIVER_REFUSED } from './catalog.js'
 import { createLeases } from './leases.js'
-import { prepareComputerHelper } from './mac-helper.js'
 import { REPLY_KIND } from '../constants.js'
 import { output } from '../tools.js'
 
@@ -180,14 +179,6 @@ export function install(rt) {
         }
         const provider = await importPackage(name).catch(error => { throw missing(error, [name]) })
         const config = process.platform === 'darwin' ? { agentPreset: false } : {}
-        const { DS_BOT_RUNTIME_DIR: runtimeDir, DS_BOT_COMPUTER_HELPER_HOME: home } = process.env
-        if (process.platform === 'darwin' && runtimeDir && home) {
-          try {
-            config.helperPath = await prepareComputerHelper({ runtimeDir, home })
-          } catch (error) {
-            throw new Error(`Could not prepare the macOS computer-use helper: ${String(error?.message ?? error)}`, { cause: error })
-          }
-        }
         if (stopped || !enabled()) return
         providerFiber = ctx.plugin(provider, config)
         await providerFiber.await?.()
@@ -762,7 +753,7 @@ export function install(rt) {
     return answer === 'once' ? 'allow' : `The user did not allow ${bot.name} to use ${app.name}.`
   }
 
-  // ---- User-presence gating (the desktop app reports idle seconds) ----
+  // ---- User-presence gating ----
   const userBusy = () => userActive !== undefined && Date.now() - userActive.at < USER_ACTIVE_STALE_MS && userActive.idleSeconds * 1000 < IDLE_GATE_MS
 
   // ---- The guard ----

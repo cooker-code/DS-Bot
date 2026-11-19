@@ -93,7 +93,7 @@ test('the band starts under DS Bot\'s header over the scroller and ends above DS
   scroller.getBoundingClientRect = () => ({ top: 0, bottom: 800, left: 300, right: 1200, height: 800 })
   head.getBoundingClientRect = () => ({ top: 10, bottom: 50, left: 300, right: 1200, height: 40 })
   assert.deepEqual(readingBand(scroller), { top: 58, bottom: 660, left: 300, right: 1200 })
-  // The desktop app's composer sits below its scroller, so nothing is taken off.
+  // A composer can sit below its scroller, so nothing is taken off.
   scroller.style.removeProperty('--dsh-composer-height')
   // A header beside the scroller (another pane's) is not this chat's.
   head.getBoundingClientRect = () => ({ top: 10, bottom: 50, left: 0, right: 280, height: 40 })

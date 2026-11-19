@@ -549,7 +549,7 @@ export function install(rt) {
       const currentSid = chatOf(botId)
       if (sessionIdOf(currentSid) !== undefined) chatOwners.set(currentSid, botId)
       // Parts opened while the Bot was busy are its own chat too: a turn there may use
-      // the team tools, and the phone still sees only the current part. Their earlier
+      // the team tools. Their earlier
       // parts stay the Bot's as well, so their history still reads on that thread.
       for (const part of bot.openParts ?? []) {
         const partSid = sessionIdOf(part?.sessionId)
