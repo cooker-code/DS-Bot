@@ -2,6 +2,7 @@
 // triggered, the waiters and inboxes of group rounds, and routing a finished turn's reply.
 //
 // Turn tracking: which turns were triggered by another Bot, and what they said.
+import { scopeFields, scopeOf } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { carrierKeyOf } from '@deepseek-ai/dsh-scope'
 import { HANDOFF_ACK, LATE_ANSWER, MESSAGE_INLINE_MAX, REFERENCE_KIND, REPLY_KIND, SOURCE_KIND, STEER_CUT } from './constants.js'
@@ -75,7 +76,7 @@ export function answerSender(rt, id, source, text, long) {
     fromId: rt.selfOf(id),
     toId: source.senderSessionId,
     ...(target ? { sessionId: target } : {}),
-    text: body,
+    ...scopeFields(scopeOf(source)), text: body,
     ...(length === undefined ? {} : { files: long.files, length }),
     role: 'reply',
     replyTo: source.exchangeId,
@@ -975,7 +976,7 @@ export function install(rt) {
           queueRoomMessage(rt.roomOf(id).id, {
             text: textOf(event.data.content).replace(/^\[Group post from (?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, ''),
             ...(files.length > 0 ? { files } : {}),
-            botId: source.senderSessionId,
+            botId: source.senderSessionId, ...scopeFields(scopeOf(source)),
             name: source.senderName,
             reportBack: source.reportBack === true,
             ...(source.claims === undefined ? {} : { claims: source.claims }),
@@ -1174,7 +1175,7 @@ export function install(rt) {
             toId: rt.selfOf(id),
             // A result handed back to the turn's own part, or to the successor part after a switch.
             ...(targetSessionId !== undefined ? { sessionId: targetSessionId } : {}),
-            text: result.text,
+            ...scopeFields(scopeOf(result.info)), text: result.text,
             role: result.info.role,
             exchangeId: result.info.exchangeId,
             replyTo: result.info.replyTo,
@@ -1317,7 +1318,7 @@ export function install(rt) {
             fromId: request.info.senderSessionId,
             toId: rt.selfOf(id),
             sessionId: id,
-            text: request.text,
+            ...scopeFields(scopeOf(request.info)), text: request.text,
             role: request.info.role,
             exchangeId: request.info.exchangeId,
             ...(request.info.role === 'room' ? { roomId: request.info.roomId, askedBy: request.info.askedBy, note: 'you read this call during your last task; answer it now' } : {}),
@@ -1327,6 +1328,9 @@ export function install(rt) {
           }).catch(error => rt.warn('ds-bot: deferred request delivery failed: %s', error))
         }
         if (rt.groupOwners.has(id)) void rt.goalSettled?.(rt.roomOf(rt.groupOwners.get(id).roomId)).catch(error => rt.warn('ds-bot: goal settle in %s failed: %s', id, error))
+        const finishedRoom = rt.roomOf(rt.groupOwners.get(id)?.roomId)
+        if (finishedRoom?.taskQueue?.length) setImmediate(() => void rt.resumeRoomTasks?.(finishedRoom).catch(error => rt.warn('ds-bot: could not resume queued tasks: %s', error)))
+
         break
       }
     }

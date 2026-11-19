@@ -57,3 +57,27 @@ test('a reference takes out only its own "@label", so a typed call with the same
   assert.deepEqual(names(mentionsIn('@Kate, @K', [...members, { name: 'Kate' }], [{ labels: ['K'] }])), { all: false, found: ['Kate'] })
   assert.deepEqual(names(mentionsIn('@K notes and @K', members, [{ labels: ['K notes'] }])), { all: false, found: ['K'] })
 })
+
+test('a member returning to A sees only A turns, tool results and attachments, with host instructions intact', async () => {
+  const { taskHistory } = await import('../src/host/task-routing.js')
+  const open = taskId => ({ role: 'user', source: { kind: 'bot', taskId } })
+  const a = open('A')
+  const b = open('B')
+  const rules = { role: 'developer', content: 'tool boundaries' }
+  const aTool = { role: 'tool', content: 'A evidence' }
+  const bImage = { role: 'user', source: { kind: 'attachments' }, content: 'B.png' }
+  const aReply = { role: 'assistant', content: 'A done' }
+  const direct = { role: 'user', source: { kind: 'user' }, content: 'unassigned' }
+  const messages = [rules, a, aTool, aReply, b, bImage, direct, a]
+  assert.deepEqual(taskHistory(messages, 'A', 'bot'), [rules, a, aTool, aReply, a])
+})
+
+test('contradictory quoted task IDs are rejected before intake or delivery', async () => {
+  const { inboundScope, outgoingScope } = await import('../src/host/task-routing.js')
+  const a = '11111111-1111-4111-8111-111111111111'
+  const b = '22222222-2222-4222-8222-222222222222'
+  assert.equal(inboundScope({ text: `> [${a}] First message\n\n补图` }), a)
+  assert.throws(() => inboundScope({ text: `> [${a}] First\n\n[${b}] Second` }), /Conflicting/)
+  assert.throws(() => outgoingScope({ taskId: a }, b, 'Another card', true, true), /different task/)
+  assert.throws(() => outgoingScope(undefined, 'run-1', 'Another card', true), /UUID/)
+})

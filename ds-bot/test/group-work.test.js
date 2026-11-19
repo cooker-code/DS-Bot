@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { afterRound } from './relay-rows.js'
+import { forwardProjectIntake } from '../src/host/project-intake.js'
 import { createRuntime } from '../index.js'
 import { fakeAttachments, fakeContext } from './fake-ctx.js'
 import { LONG_HEAD, MESSAGE_INLINE_MAX, ROOM_STEP_GAP_MS, ROOM_WORK_GRACE_MS } from '../src/host/constants.js'
@@ -111,7 +112,7 @@ async function start(t, room, services, extraRooms, bots, llm, top, files = {}) 
     let result
     const stop = new AbortController()
     t.after(() => stop.abort())
-    void tool('group_relay', {}, sessionId, { callId, signal: stop.signal }).then(async (value) => { result = await afterRound(rt, sessionId, value) })
+    void tool('group_relay', {}, sessionId, { agent: { id: sessionId, inbox: agentOf(sessionId).inbox }, callId, signal: stop.signal }).then(async (value) => { result = await afterRound(rt, sessionId, value) })
     const read = () => result
     read.cancel = () => { stop.abort(); rt.stopRoomRound(rt.roomOf(sessionId)?.id ?? sessionId) }
     return read
@@ -2736,4 +2737,197 @@ test('stopping a group while its round finishes starts nothing afterwards', asyn
   await settle(() => first() !== undefined && !rt.roomActive('r1'))
   for (let i = 0; i < 20; i += 1) await new Promise(resolve => setImmediate(resolve))
   assert.equal(host.agentOf('gc').calls.length, 0, 'nothing started after the stop')
+})
+
+const cardA = '11111111-1111-4111-8111-111111111111'
+const cardB = '22222222-2222-4222-8222-222222222222'
+const taskNotice = { notice: 'Prefix card messages with [taskId].' }
+
+test('bound project intake reaches the private manager once, with its image, and the owner can confirm work there', async t => {
+  const attachments = fakeAttachments()
+  const receipt = await attachments.saveImage({ mediaType: 'image/jpeg', width: 1, height: 1, data: new Uint8Array([1]) })
+  const host = await start(t, taskNotice, { attachments, dshKanban: {
+    developmentHandoff: (session, id, owner, round) => session === 'a' && id === cardA && owner === 'b' && round === 1 ?
+      'Original acceptance, worktree and annotation.jpg' : undefined,
+    dispatchProjectFor: (group, privateChat) => group === 'ga' && privateChat === 'a' ? 'example' : undefined,
+  } })
+  const original = host.say('Inspect the unmarked request source')
+  original.content.push({ type: 'image', attachment: receipt })
+  const ended = host.round('intake', original)
+  await until(() => ended() !== undefined)
+  const manager = host.begin('a')
+  assert.match(text(manager), /Inspect the unmarked request source/)
+  assert.deepEqual(manager.content.find(block => block.type === 'image').attachment, receipt)
+  assert.equal(host.agentOf('ga').calls.length, 0)
+  const room = rt.roomOf('r1')
+  const line = rt.ledger.records('group-r1').find(row => row.who === 'User')
+  await forwardProjectIntake(rt, room, line.intakeId, line.seq)
+  assert.equal(host.agentOf('a').calls.length, 1)
+  const args = { to: 'Writer', taskId: cardA, card_round: 1, message: 'Confirm start only', reply_to: 'user', request_id: 'work-1' }
+  await assert.rejects(host.tool('message_bot', { ...args, card_round: 2 }, 'a'), /current round/)
+  const sent = await host.tool('message_bot', args, 'a')
+  assert.equal(await host.tool('message_bot', args, 'a'), sent)
+  assert.equal(host.agentOf('b').calls.length, 1)
+  const work = host.begin('b')
+  assert.equal(work.source.taskId, cardA)
+  const packet = JSON.parse(sent.split('\nCard handoff: ')[1])
+  assert.equal(packet.exchangeId, work.source.exchangeId)
+  assert.ok(text(work).includes(packet.text))
+  assert.match(packet.text, /Original acceptance, worktree and annotation.jpg/)
+  assert.match(packet.text, /explicit start confirmation/)
+  host.finish('a', 'Waiting for confirmation')
+  await host.tool('message_bot', { to: 'Chief', taskId: cardA, message: 'Worktree verified. Started.', reply_to: 'user', request_id: 'start-1' }, 'b')
+  assert.equal(host.begin('a').source.taskId, cardA)
+  assert.match(text(host.agentOf('a').calls.at(-1)), /Worktree verified/)
+})
+
+test('three bound image intakes reach the private manager while unrelated group work is still running', async t => {
+  const attachments = fakeAttachments()
+  const host = await start(t, taskNotice, { attachments, dshKanban: {
+    dispatchProjectFor: (group, chat) => group === 'ga' && chat === 'a' ? 'example' : undefined,
+  } })
+  host.round('busy', host.say(`[${cardA}] Unrelated group work`))
+  await until(() => host.agentOf('ga').calls.length === 1)
+  host.begin('ga')
+  const images = await Promise.all([1, 2, 3].map(i => attachments.saveImage({
+    name: `annotation-${i}.jpg`, mediaType: 'image/jpeg', width: 1, height: 1, data: new Uint8Array([i]),
+  })))
+  const read = rt.imagesForGroup
+  let reads = 0
+  rt.imagesForGroup = async (...args) => {
+    reads++
+    await new Promise(resolve => setTimeout(resolve, 120))
+    return read(...args)
+  }
+  t.after(() => { rt.imagesForGroup = read })
+  const began = performance.now()
+  const receipts = []
+  const remove = rt.onRoomLine((_room, line) => {
+    if (line.who === 'DS Bot' && /Forwarded group message/.test(line.text)) receipts.push(Math.round(performance.now() - began))
+  })
+  t.after(remove)
+  for (let i = 0; i < images.length; i++) {
+    const post = host.say(`selection-${i + 1}`)
+    post.content.push({ type: 'image', attachment: images[i] })
+    host.round('intake-' + i, post)
+  }
+  // Bound the old serial path as well, so regressions report timings and clean up.
+  let released = false
+  const timeout = setTimeout(() => { released = true; host.finish('ga', 'Done') }, 400)
+  try {
+    await until(() => receipts.length === 3)
+    t.diagnostic(`group receipts (ms): ${receipts.join(', ')}; group image readings: ${reads}`)
+    assert.equal(released, false, 'intake waited behind an unrelated group round')
+    assert.equal(reads, 0)
+    const messages = host.agentOf('a').calls
+    assert.equal(new Set(messages.map(message => message.source.intakeId)).size, 3)
+    for (const [i, img] of images.entries()) {
+      const matching = messages.filter(message => text(message).includes('selection-' + (i + 1)))
+      assert.equal(matching.length, 1)
+      assert.deepEqual(matching[0].content.filter(b => b.type === 'image').map(b => b.attachment), [img])
+    }
+  } finally {
+    clearTimeout(timeout)
+    if (!released) host.finish('ga', 'Done')
+  }
+})
+
+test('card A receives a quoted image while another card and unassigned intake wait in order', async t => {
+  const host = await start(t, taskNotice)
+  const runs = [host.round('A', host.say(`[${cardA}] Accept the A candidate`))]
+  await until(() => host.agentOf('ga').calls.length === 1)
+  const opening = host.begin('ga')
+  assert.equal(opening.source.taskId, cardA)
+  host.emit('ga', 'tool/call', { callId: 'accept-a', name: 'verify' })
+  runs.push(host.round('B', host.say(`[${cardB}] Change pagination B`)))
+  runs.push(host.round('intake', host.say('@Writer New independent export request')))
+  await until(() => rt.roomOf('r1').taskQueue?.length === 2)
+  assert.deepEqual(host.agentOf('gb').calls, [])
+  const attachment = { id: 'A-image', name: 'page.png', mimeType: 'image/png' }
+  const addendum = host.say(`> [${cardA}] Accept the A candidate\n\nUse the corrected screenshot.`)
+  addendum.content.push({ type: 'image', attachment })
+  runs.push(host.round('A2', addendum))
+  await until(() => host.agentOf('ga').calls.length === 2)
+  const more = host.agentOf('ga').inbox.nextStep.at(-1)
+  assert.equal(more.source.taskId, cardA)
+  assert.equal(more.source.exchangeId, opening.source.exchangeId)
+  assert.deepEqual(more.content.find(block => block.type === 'image').attachment, attachment)
+  assert.doesNotMatch(text(more), /pagination B|export request/)
+  host.emit('ga', 'user/message', { content: more.content, source: more.source })
+  await assert.rejects(host.tool('message_bot', { to: 'Writer', message: 'please verify', taskId: cardB }, 'ga'), /different task/)
+  assert.deepEqual(host.agentOf('gb').calls, [])
+  host.emit('ga', 'tool/result', { callId: 'accept-a' })
+  host.finish('ga', 'A accepted')
+  await until(() => host.agentOf('ga').calls.length === 3)
+  const b = host.begin('ga')
+  assert.equal(b.source.taskId, cardB)
+  assert.match(text(b), /pagination B/)
+  assert.doesNotMatch(text(b), /A accepted|Accept the A|corrected screenshot|export request/)
+  host.finish('ga', 'B received')
+  await until(() => host.agentOf('ga').calls.length === 4)
+  const intake = host.begin('ga')
+  assert.ok(intake.source.intakeId)
+  assert.equal(intake.source.taskId, undefined)
+  assert.doesNotMatch(text(intake), /pagination B|A accepted/)
+  assert.match(text(intake), /export request/)
+  host.finish('ga', 'Which page needs exporting?')
+  await until(() => runs.every(result => result() !== undefined))
+  const log = rt.ledger.records('group-r1')
+  assert.ok(log.some(row => row.taskId === cardA && row.text === `[${cardA}] A accepted`))
+  assert.ok(log.some(row => row.taskId === cardB && row.text === `[${cardB}] B received`))
+  assert.ok(log.filter(row => row.taskId === cardA).every(row => !/pagination B|export request/.test(row.text)))
+  const bRows = rt.groupRowsView('r1', runs[1]().from, undefined, runs[1]().anchor)
+  assert.ok(bRows.rows.some(row => row.text?.includes('B received')))
+  assert.ok(bRows.rows.every(row => !row.text?.includes('A accepted')))
+})
+
+test('project dispatch validates the card before sending and never merges unread different cards', async t => {
+  const host = await start(t, taskNotice)
+  await assert.rejects(host.tool('message_bot', { to: 'Writer', message: 'unbound' }, 'a'), /needs.*taskId/)
+  await assert.rejects(host.tool('post_to_group', { group: 'Ops', message: 'unbound' }, 'b'), /needs.*taskId/)
+  await assert.rejects(host.tool('message_bot', { to: 'Writer', taskId: cardA, message: `[${cardB}] conflicting` }, 'a'), /differ/)
+  assert.deepEqual(host.agentOf('b').calls, [])
+  for (const taskId of [cardA, cardB]) {
+    await host.tool('message_bot', { to: 'Writer', taskId, message: 'Develop', reply_to: 'user' }, 'a')
+  }
+  assert.deepEqual(host.agentOf('b').calls.map(msg => msg.source.taskId), [cardA, cardB])
+  assert.ok(host.agentOf('b').calls.every(msg => text(msg).startsWith(`[${msg.source.taskId}]`)))
+  host.begin('b')
+  await assert.rejects(host.tool('post_to_group', { group: 'Ops', taskId: cardA, message: 'Wrong reply' }, 'b'), /different task/)
+  await host.tool('post_to_group', { group: 'Ops', message: 'My result' }, 'b')
+  const posted = host.takePost()
+  assert.equal(posted.source.taskId, cardB)
+  assert.match(text(posted), new RegExp('\\[' + cardB + '\\] My result'))
+})
+
+test('a saved task queue resumes without mixing pending cards on startup', async t => {
+  const queue = [cardA, cardB].map(taskId => ({ taskId, text: `[${taskId}] check` }))
+  const host = await start(t, { ...taskNotice, taskQueue: queue })
+  await until(() => host.agentOf('ga').calls.length === 1)
+  assert.equal(host.begin('ga').source.taskId, cardA)
+  host.finish('ga', 'accepted first')
+  await until(() => host.agentOf('ga').calls.length === 2)
+  assert.equal(host.begin('ga').source.taskId, cardB)
+  host.finish('ga', 'accepted second')
+  await until(() => rt.roomRounds('r1').length === 0)
+  assert.equal(rt.roomOf('r1').taskQueue?.length ?? 0, 0)
+})
+
+test('a card supplement can pass an unrelated buffered user message', async t => {
+  const host = await start(t, taskNotice)
+  const running = host.round('A', host.say(`[${cardA}] Inspect`))
+  await until(() => host.agentOf('ga').calls.length === 1)
+  host.begin('ga')
+  const inbox = host.agentOf('r1').inbox
+  inbox.nextTurn.push({ ...host.say('Different requirement'), id: 'unassigned' })
+  inbox.nextStep.push({ ...host.say(`> [${cardA}] Inspect\n\nCorrected acceptance steps`), id: 'supplement' })
+  rt.nudgeRoom('r1')
+  await until(() => host.agentOf('ga').calls.length === 2)
+  assert.match(text(host.agentOf('ga').calls[1]), /Corrected acceptance steps/)
+  assert.doesNotMatch(text(host.agentOf('ga').calls[1]), /Different requirement/)
+  host.finish('ga', 'verified')
+  await until(() => host.agentOf('ga').calls.length === 3)
+  assert.ok(host.begin('ga').source.intakeId)
+  host.finish('ga', 'Needs a new card')
+  await until(() => running() !== undefined)
 })

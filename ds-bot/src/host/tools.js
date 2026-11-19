@@ -1,5 +1,6 @@
 // Team tools: the roster, bot-to-bot messages, group chat settings and posts, and the
 // question and view cards. Group rounds and reading chats are in groups.js.
+import { outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readAvatar } from './avatar.js'
@@ -253,6 +254,8 @@ export function install(rt) {
     description: 'Send a message to another Bot on the team. If that Bot is working, it reads your message at its next step and can change course, then answers once that work is done; if it is idle, it starts on it right away. Its reply arrives later as a new message to you; with reply_to "user" it answers the user in its own chat instead. Do not message a Bot that is waiting for the result of the work you are doing (the Bot that asked you for it, or one above that): your answer reaches it by itself once you end your turn and everything you handed on is back. In a group chat it reaches only members of that group, as writing "@Name" there does. With request_id you name the request yourself: a repeat of that name with the same message is not sent again, but gives the receipt of the first call back.',
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
+      taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
+      card_round: { type: 'integer', description: 'After verifying board_dispatch(read), a bound project manager can include the saved development handoff automatically. Send its round, taskId, reply_to=user, and request_id to the assigned owner. Put only extra instructions in message.' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
       reply_to: {
         type: 'string',
@@ -280,15 +283,22 @@ export function install(rt) {
       if (String(args.message ?? '').trim() === '') return 'Write a message to send.'
       const name = typeof args.request_id === 'string' ? args.request_id.trim() : ''
       if (name.length > NAME_MAX) return `The request_id is ${name.length} characters long; a request name is at most ${NAME_MAX}.`
-      const text = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
       const room = rt.roomOf(rt.groupOwners.get(exec.agent?.id)?.roomId)
+      const source = rt.live.get(exec.agent?.id)?.info
+      const sharedTaskRoom = room ?? Object.values(state.rooms).find(r => taskRoom(r) && r.members.includes(sender.id) && r.members.includes(target.id))
+      const key = outgoingScope(source, args.taskId, args.message, taskRoom(sharedTaskRoom), sharedTaskRoom && rt.isAdminOf(sharedTaskRoom, sender.id))
+      if (key?.startsWith('intake-')) refuse('Identify the persistent card before assigning work.')
+      const message = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
+      const cardDispatch = args.card_round !== undefined
+      if (cardDispatch && (!key || room || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a private card handoff with taskId, current card_round, reply_to=user and request_id.')
+      let text = tagged(key, message)
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
       const request = name === '' ? undefined : rt.requestIdentity({
         caller: sender.id,
         context: room === undefined ? 'chat' : `room:${room.id}`,
         name,
         payload: {
-          to: target.id,
+          to: target.id, ...scopeFields(key), ...(cardDispatch ? { card_round: args.card_round } : {}),
           message: String(args.message ?? '').replace(/\r\n?/g, '\n').trim(),
           reply_to: args.reply_to === 'user' ? 'user' : 'me',
           when: args.when === 'queue' ? 'queue' : 'now',
@@ -307,9 +317,19 @@ export function install(rt) {
         const seen = await rt.knownRequest(request)
         if (seen !== undefined) return answer(seen)
       }
+      if (cardDispatch) {
+        const brief = rt.ctx.get?.('dshKanban')?.developmentHandoff?.(exec.agent?.id, key, target.id, args.card_round)
+        if (!brief) refuse('Read the assigned backlog card and verify its owner and current round before dispatch.')
+        const ack = `Check the assigned worktree, branch, HEAD and status once. If they match, immediately message ${sender.name} with this taskId and your explicit start confirmation. Report a mismatch instead of confirming. Inspect implementation details after the start confirmation, within the stated scope.`
+        text = tagged(key, [message, brief, ack].join('\n\n'))
+      }
       if (room !== undefined) {
         const refusal = groupRefusal(room, sender, target)
         if (refusal !== undefined) refuse(refusal)
+        if (key && scopeOf(source) !== key) {
+          const send = async () => { await rt.postToRoom(room, sender, tagged(key, `@${target.name} ${args.message}`), scopeFields(key)); return `Queued card ${key} for ${target.name}.` }
+          return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
+        }
         const send = () => callInGroup(exec, room, sender, target, text.trim())
         return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
       }
@@ -336,7 +356,7 @@ export function install(rt) {
         // sender's own chat are two conversations, though: one answer could come back to
         // only one of them, so their requests are sent and answered apart.
         const earlier = unreadRequest(agent, sender.id, toUser)
-        const joinable = earlier !== undefined
+        const joinable = !cardDispatch && earlier !== undefined && scopeOf(earlier.message.source) === key
           && (toUser || ((earlier.message.source.senderPart ?? undefined) === fromPart && rt.sameWork(earlier.message.source.exchangeId, work)))
         const before = joinable ? bodyOf(earlier.message) : undefined
         let long = await rt.attachLong(before ? `${before.text}\n\n${text}` : text, `Message from ${sender.name}.txt`)
@@ -346,12 +366,13 @@ export function install(rt) {
         const joins = before !== undefined && agent.inbox?.remove?.(earlier.message.id) === true
         if (before !== undefined && !joins) long = await rt.attachLong(text, `Message from ${sender.name}.txt`) ?? long
         const working = rt.live.get(chat)?.turn !== undefined
-        const steer = (args.when !== 'queue' && !toUser) || (joins && earlier.steered)
+        const activeKey = scopeOf(rt.live.get(chat)?.info)
+        const steer = activeKey === key && ((args.when !== 'queue' && !toUser) || (joins && earlier.steered))
         const exchangeId = joins ? earlier.message.source.exchangeId : randomUUID()
         if (joins) rt.forgetDelivery?.(exchangeId)
-        else if (!toUser) rt.openWork(exchangeId, { from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
+        else if (!toUser) rt.openWork(exchangeId, { ...scopeFields(key), from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
         try {
-          await rt.deliver({ fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+          await rt.deliver({ ...scopeFields(key), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
         } catch (error) {
           // The delivery stays noted for the next start while its Bot exists
           // (resume.js), and the resent request still answers up the tree, so the
@@ -377,9 +398,10 @@ export function install(rt) {
         // going on elsewhere (a group, or another live part of its own chat) goes on
         // without it.
         const elsewhere = activeSessions(target.id).running.filter(sessionId => sessionId !== chat)
-        if (elsewhere.length === 0) return out
+        const packet = cardDispatch ? '\nCard handoff: ' + JSON.stringify({ exchangeId, text }) : ''
+        if (elsewhere.length === 0) return out + packet
         const stop = rt.isMain(sender.id) ? ' If it must not go on there, use stop_bot.' : ''
-        return `${out} Your message does not reach its work in ${elsewhere.map(whereOf).join(' and ')}.${stop}`
+        return `${out} Your message does not reach its work in ${elsewhere.map(whereOf).join(' and ')}.${stop}${packet}`
       }
       return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
     },
@@ -777,6 +799,7 @@ export function install(rt) {
     description: 'Post a message into a group chat as yourself. A Main Bot may post into any group, any other Bot into a group it is in. A Main Bot\'s or the group admin\'s post starts a round: members reply in the group, where the user reads them. Another member\'s post calls only the members it names with "@Name"; without one it is only written into the group.',
     parameters: {
       group: GROUP_REF,
+      taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
       message: { type: 'string', required: true, description: 'What to say; write "@Name" to choose who answers, and a name without "@" to only mention a member' },
       report_back: { type: 'boolean', description: 'Also send the members\' replies back to you as a new message when the round ends' },
     },
@@ -793,7 +816,8 @@ export function install(rt) {
       const info = rt.live.get(exec.agent?.id)?.info
       if (info?.role === 'room' && info.roomId === room.id) return `You are speaking in "${room.name}" right now. Write your message as your reply instead.`
       const folder = rt.sessionFolder?.(exec.agent?.session ?? exec.agent)
-      const text = absoluteLinks(String(args.message ?? '').trim(), folder)
+      const key = outgoingScope(info, args.taskId, args.message, taskRoom(room), rt.isAdminOf(room, self))
+      const text = tagged(key, absoluteLinks(String(args.message ?? '').trim(), folder))
       if (text === '') return 'Write a message to post.'
       // Counted on the whole message. A post past MESSAGE_INLINE_MAX keeps only its
       // first LONG_HEAD characters, and the round reads this list instead of that text.
@@ -819,7 +843,7 @@ export function install(rt) {
       try {
         // A post that wants the replies names the conversation it was written
         // from, so the report comes back there instead of the own chat.
-        await rt.postToRoom(room, sender, long.text, { mentions, ...(claims ? { claims } : {}), ...(reportBack ? { reportBack: true, ...callerRoom(exec) } : {}), ...(member ? { member: true } : {}), ...(sub ? { sub } : {}), ...(long.length ? { length: long.length } : {}) }, long.files)
+        await rt.postToRoom(room, sender, long.text, { ...scopeFields(key), mentions, ...(claims ? { claims } : {}), ...(reportBack ? { reportBack: true, ...callerRoom(exec) } : {}), ...(member ? { member: true } : {}), ...(sub ? { sub } : {}), ...(long.length ? { length: long.length } : {}) }, long.files)
       } catch (failure) {
         if (sub !== undefined) rt.dropWork(sub)
         return `Could not post in "${room.name}": ${failure.message}`
