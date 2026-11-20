@@ -263,6 +263,8 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // Hours come back in this browser's time zone, so days start at local midnight.
     usage: () => call('usage', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
     // The details panel's status line: turns, speed, cache hits and context for one Bot.
+    roomContext: roomId => call('room-context', { roomId }),
+    memberSummary: (roomId, botId, sessionId) => call('member-summary', { roomId, botId, sessionId }),
     runStats: botId => call('run-stats', { botId }),
     // `summarize` starts a summary when the entries changed; `regenerate` always does.
     memoryView: (id, flags = {}) => call('memory-view', { ...memoryOf(id), ...flags }),

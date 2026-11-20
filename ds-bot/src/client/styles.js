@@ -496,6 +496,12 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .bt-kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:20px;color:var(--bt-ink-2)}
 .bt-kv span:last-child{color:var(--bt-ink);font-variant-numeric:tabular-nums}
+.bt-member-context,.bt-group-context small{display:block;color:var(--bt-ink-2);font-size:12px;overflow-wrap:anywhere}
+.bt-group-context details>div{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.bt-group-context summary{cursor:pointer}
+.bt-context-help{position:relative}
+.bt-context-help button{border:1px solid currentColor;border-radius:50%;background:transparent;color:inherit;width:20px;height:20px;padding:0}
+.bt-context-help [role=tooltip]{position:absolute;right:0;bottom:100%;z-index:4;width: min(190px,50vw);padding:8px;background:Canvas;color:CanvasText;border:1px solid;border-radius:6px}
 .bt-run-stats{display:flex;flex-wrap:wrap;justify-content:center;gap:0 6px;margin-top:-6px;font-size:12px;line-height:18px;color:var(--bt-ink-2);font-variant-numeric:tabular-nums}
 .bt-run-sep{color:var(--bt-ink-3)}
 .bt-danger{color:var(--bt-danger)}

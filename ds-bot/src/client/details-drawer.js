@@ -7,6 +7,7 @@ import { call } from './api.js'
 import { GlobeIcon, Favicon, PanelMenu, menuItemFor } from './browser-pane.js'
 import { drawerMenuKeys } from './side-model.js'
 import { useEscape } from './overlay-hooks.js'
+import { GroupContext, MemberContext, useGroupContext } from './group-context.js'
 import { BotSettingsForm, InlineText } from './bot-settings.js'
 import { GroupSettingsForm, GroupTodos, ROOM_MODES, roomSubtitle, shownMode } from './group-settings.js'
 import { ModelMenu, modelOf } from './model-menu.js'
@@ -172,7 +173,7 @@ const markOf = entry => (entry?.state === 'ask' ? 'alert' : entry?.state === 'wo
 
 // One member: its mark, name and what it is doing on one surface that opens its chat;
 // Stop beside it while it works here, and the approvals it waits on below.
-function MemberRow({ member, entry, room, roster, actions }) {
+function MemberRow({ member, entry, room, roster, actions, stats }) {
   return h('div', { role: 'listitem', className: 'bt-member' },
     h('div', { className: 'bt-member-row' },
       h('button', { type: 'button', className: 'bt-member-open', title: t("Open {name}'s chat", { name: member.name }), onClick: () => actions.openSession(member.id) },
@@ -181,27 +182,33 @@ function MemberRow({ member, entry, room, roster, actions }) {
           h('span', { className: 'bt-member-line' },
             h('span', { className: 'bt-member-name' }, member.name),
             room.admin === member.id ? h('span', { className: 'bt-tag' }, t('Admin')) : null),
-          h(MemberState, { entry, bot: member, room, roster }))),
+          h(MemberState, { entry, bot: member, room, roster }), h(MemberContext, { room, member, stats }))),
       h(StopMemberWork, { entry, bot: member, room, actions })),
     h(MemberApprovals, { entry, bot: member, actions }))
 }
 
 // A group's overview: what members read, who is in it, who answers, and what it
 // remembers. Changes are made in its settings.
-function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) {
+function GroupOverview({ room, roster, actions, run, usage, useWork, openSettings }) {
   const members = room.members.map(id => roster.byId[id]).filter(Boolean)
+  const readings = useGroupContext(room, actions)
+  const stats = Object.fromEntries(members.map(member => {
+    const reading = readings?.[member.id]
+    return [member.id, reading?.id === room.currentMemberSessions?.[member.id] ? reading : undefined]
+  }))
   const { entries } = useMemberWork(room, useWork)
   return [
     room.notice
       ? h(About, { key: 'notice', title: 'Notice', text: room.notice })
       : h('button', { key: 'notice', type: 'button', className: 'bt-more', onClick: openSettings }, t('Add a notice in group settings')),
     h(GroupTodos, { key: 'todos', room, actions }),
+    h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
     h('div', { key: 'members' },
       h('div', { className: 'bt-members-head' },
         h('div', { className: 'bt-section-title' }, t('Members · {count}', { count: members.length })),
         h(StopRoomWork, { room, entries, actions })),
       h('div', { className: 'bt-members', role: 'list' }, members.map(member => h(MemberRow, {
-        key: member.id, member, entry: entries.find(item => item.id === member.id), room, roster, actions,
+        key: member.id, member, stats: stats[member.id], entry: entries.find(item => item.id === member.id), room, roster, actions,
       })))),
     h('div', { key: 'tasks' }, h(TaskBoard, { room, roster, actions })),
     h('div', { key: 'goal' }, h('div', { className: 'bt-section-title' }, t('Goal')),
@@ -381,7 +388,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
       tabs.map(key => h('button', { key, type: 'button', role: 'tab', className: 'bt-tab', 'aria-selected': tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))) : null,
     h('div', { key: `body:${tab}`, className: 'bt-drawer-body', 'data-move': move },
       errorLine,
-      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, usage, useWork, openSettings: () => setView('settings') }) : null,
+      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, run, usage, useWork, openSettings: () => setView('settings') }) : null,
       bot && tab === 'computer' ? h(ComputerView, { bot, actions, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [
         h(RunStats, { key: 'stats', bot, part, running, actions }),

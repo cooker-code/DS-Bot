@@ -711,6 +711,7 @@ export function install(rt) {
       if (byAdmin && admin === actorId) throw new Error('Hand the admin role to another member before leaving the group')
       admin = null
     }
+    if (patch.contextPolicy !== undefined && !['system', 'summary'].includes(patch.contextPolicy)) throw new Error('Unknown context policy')
     if (patch.mode !== undefined && !ROOM_MODES.includes(patch.mode)) throw new Error(`Reply mode must be one of ${ROOM_MODES.join(', ')}`)
     const notice = patch.notice === undefined ? undefined : cleanNotice(patch.notice)
     if (patch.workDir !== undefined && byAdmin) throw new Error(`Only the user or a Main Bot can set the folder of "${room.name}"`)
@@ -758,6 +759,7 @@ export function install(rt) {
     room.members = members
     if (admin !== (room.admin ?? null)) changes.push(admin ? `made ${rt.botOf(admin).name} the admin` : 'removed the admin')
     room.admin = admin
+    if (patch.contextPolicy !== undefined) room.contextPolicy = patch.contextPolicy
     if (patch.mode !== undefined && patch.mode !== room.mode) {
       room.mode = patch.mode
       changes.push(patch.mode === 'admin' ? 'plain messages now go to the admin first' : 'every member now replies in turn')
