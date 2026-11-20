@@ -76,7 +76,7 @@ jq -n --arg bot "$bot_id" '{botId:$bot,name:"analyze-task-progress",attached:tru
 
 首次导入成功返回技能名。重名时先回读现有类型与内容，内容相同就复用。`bot-capability` 返回更新后的技能名数组，再通过 `state.bots[].capabilities` 核对绑定。导入目录的现有接口拒绝同名覆盖，删除会解除其他 Bot 和能力包的引用。不要为更新说明直接删除共享目录。文本技能用 `capability-save` 可保留绑定。对于本地 Codex，绑定从下一次符合条件的消息生效。API 回读证明配置保存，实际加载还需要相应会话的运行证据。
 
-项目提供了[十二个岗位的预置说明](../../../../docs/bot-role-profiles.zh.md)。用 [provision_role.py](../scripts/provision_role.py) 在已认证团队按需创建、更新或补绑定。脚本先核对目标和共享技能是否存在，按同名复用 Bot，逐项补差异，最后按 ID 回读。中断后可重跑。它沿用已配模型、目录、其他技能和权限。成员入群由群管理员按具体项目单独配置。
+项目提供了[预置岗位简介](../../../../docs/bot-role-profiles.zh.md)。用 [provision_role.py](../scripts/provision_role.py) 在已认证团队按需创建、更新或补绑定。脚本先核对目标和共享技能是否存在，按同名复用 Bot，逐项补差异，最后按 ID 回读。中断后可重跑。它沿用已配模型、目录、其他技能和权限。成员入群由群管理员按具体项目单独配置。
 
 ```sh
 roles=.agents/skills/ds-bot-doc/scripts/provision_role.py
