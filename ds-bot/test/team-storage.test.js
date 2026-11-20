@@ -49,7 +49,7 @@ test('the installed schema and the proposed split schema both cover the legacy r
 
     db.exec('DETACH room')
     attach('b.sqlite', 'room')
-    db.exec(sql.split(/-- @database room\r?\n/)[1])
+    db.exec(sql.split('-- @database room\n')[1])
     seedRoom('b', 1)
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM room.room_member_settings').get().n, 0)
     assert.deepEqual({ ...db.prepare('SELECT work_dir,model FROM bot_base.bots').get() }, { work_dir: '/base', model: 'M1' })

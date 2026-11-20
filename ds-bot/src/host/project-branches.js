@@ -68,7 +68,7 @@ async function checkouts(repo) {
   for (const record of output.split('\0\0')) {
     const lines = record.split('\0')
     const branch = lines.find(line => line.startsWith('branch refs/heads/'))?.slice('branch refs/heads/'.length)
-    if (branch) trees.set(branch, { workDir: resolve(lines[0].slice('worktree '.length)), prunable: lines.some(l => /^prunable( |$)/.test(l)) })
+    if (branch) trees.set(branch, { workDir: lines[0].slice('worktree '.length), prunable: lines.some(l => /^prunable( |$)/.test(l)) })
   }
   return trees
 }

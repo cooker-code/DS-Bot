@@ -109,7 +109,7 @@ test('a v1 room upgrades transactionally and keeps plan inputs and old keys acro
   storage.import(team,guard)
   const path = join(dir,'rooms','id-r','room.sqlite')
   const ddl = readFileSync(new URL('../src/host/team-storage/split-schema.sql',import.meta.url),'utf8')
-  const v1 = ddl.split(/-- @database room\r?\n/)[1].split('-- @room-upgrade 2')[0]
+  const v1 = ddl.split('-- @database room\n')[1].split('-- @room-upgrade 2')[0]
   rmSync(path)
   const old = new DatabaseSync(path)
   try {
@@ -162,7 +162,7 @@ test('a populated v2 room upgrades atomically with its original input, retired r
   const source = path + '.fixture'
   renameSync(path, source)
   const ddl = readFileSync(new URL('../src/host/team-storage/split-schema.sql', import.meta.url), 'utf8')
-  const v2 = ddl.split(/-- @database room\r?\n/)[1].split('-- @room-upgrade 3')[0]
+  const v2 = ddl.split('-- @database room\n')[1].split('-- @room-upgrade 3')[0]
   const old = new DatabaseSync(path)
   let pk
   try {
@@ -217,7 +217,7 @@ test('a v4 room keeps its card and branch inventory through rollback, upgrade an
   const old = new DatabaseSync(path)
   try {
     const ddl = readFileSync(new URL('../src/host/team-storage/split-schema.sql', import.meta.url), 'utf8')
-    old.exec(ddl.split(/-- @database room\r?\n/)[1].split('-- @room-upgrade 5')[0].replaceAll('room.', 'main.'))
+    old.exec(ddl.split('-- @database room\n')[1].split('-- @room-upgrade 5')[0].replaceAll('room.', 'main.'))
     old.prepare('ATTACH DATABASE ? AS fixture').run(fixturePath)
     for (const { name } of old.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()) {
       const cols = old.prepare('SELECT name FROM pragma_table_info(?)').all(name).map(col => col.name).join(',')
