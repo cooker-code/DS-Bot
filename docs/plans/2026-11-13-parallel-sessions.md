@@ -23,23 +23,26 @@ not quietly fall back to the two-view shape.
 - A Bot's own chat is one or more **threads**. The current thread is `sessionId` with
   its earlier parts in `segments`; a thread opened while the Bot is busy stays live in
   `openParts`, with its own earlier parts.
-- **New session while the Bot works**: the new part starts at once in the foreground
-  and the part it replaces keeps running in the background. That background part is
-  not archived and its turn is not stopped; the new part starts with a fresh context
-  and no handoff note (the user asked for a new conversation).
-- **New session while the Bot is idle** keeps the existing behavior: a manual switch
-  with the deterministic handoff package, and the old part is archived.
-- The details panel lists the sessions of every Bot (not only local-agent Bots): the
-  current part, the live background parts, then the earlier parts. A background part
-  shows a **Running** mark read from the host's live turns (`rt.live`), so the user
-  sees that a second session is consuming model calls.
+- **New session** starts an empty, independent conversation in the Bot's current
+  working folder. The previous thread keeps its history and any turn in progress.
+  Automatic context rollover still hands the conversation on within its own thread.
+- The details panel shows one list ordered by the session's last activity. Each
+  row uses the group name and part number (such as `Design-2`) or the Bot's
+  own name and private session number (such as `Chief-1`). Current and earlier
+  parts both show their creation and last activity times. A group row opens
+  its group conversation. New session and Edit manage the Bot's private sessions.
+- **Edit** shows a checkbox on each private row. **Delete** shows the selected count and
+  asks for confirmation. Cancel returns to the selection. Confirm removes the
+  selected sessions from the Bot and archives their DSH history. Running sessions
+  must finish or be stopped first. Other sessions keep their history. When all
+  sessions are removed the Bot gets an empty conversation in its working folder.
 - Opening a background part makes it current; the two threads swap and both keep their
   own earlier parts. Nothing is archived or stopped by the swap. Opening a **running**
   part is read-only: the composer takes no input (Enter and the send button are
   blocked) until its turn ends, and a **Stop** action ends it. Two live sessions mean
   two model calls; the list says so.
-- `chatOf(botId)` still returns the current part. Phone, IM, group chats and the Bot's
-  identity are unchanged; they keep seeing the current part.
+- `chatOf(botId)` still returns the current part. Private deliveries use that
+  part. Group deliveries use the current member session in their own room.
 
 ## Run mode
 
@@ -49,16 +52,13 @@ no step until it has moved. A background part can never stay on the other run mo
 
 ## Busy checks
 
-`newPart` used to refuse while the Bot worked because its only path was a switch. It now
-has two judged paths: idle → the existing switch; busy → a new part opens and the old
-one stays live. `switchPart` still refuses to open an **archived** part while the
-current turn runs (that switch archives what it replaces); opening a **live** part needs
-no such wait because nothing is archived.
+A manual new conversation can start while the current session is idle or running.
+Selecting any listed private Session can happen during another Session’s turn. Selecting an archived Session reopens its original transcript as a live thread. Other sessions keep their turns, history, pending cards and schedules.
 
 ## Archiving
 
-A switch to another part archives the part it replaces, as before. A background part is
-archived only when its own thread moves on (context line, failed turn, run-mode change),
+A background part is
+archived when the user deletes it or when its own thread moves on (context line, failed turn, run-mode change),
 after its input has moved to the fresh part. Making another part current never archives
 or stops it. Deleting a Bot releases every thread's sessions.
 
@@ -93,6 +93,9 @@ Bot's chat as one place follows the thread a part belongs to instead:
 
 - Two windows side by side (the next step; this change is "parallel work", not "two
   visible windows"), and the two-view shape above.
-- Group chats: membership and group sessions are untouched.
-- The phone app: it keeps showing the current part.
+- Group membership is managed in group settings.
 - The Bot identity model: still one Bot, one identity, one memory.
+
+## 变更
+
+- 2026-11-20：个人详情用一个列表显示所有会话，每行直接写「群名-段号」或「Bot 名-段号」，按最后活跃时间排序。当前段与历史段都显示创建时间和最后活跃时间。旧时间不可取得时显示「—」。

@@ -18,7 +18,7 @@ const seed = () => ({
     a: { id: 'a', name: 'Chief', role: 'Boss', sessionId: 'a', createdAt: 1 },
     b: { id: 'b', name: 'Writer', role: 'Write', sessionId: 'b', createdAt: 2 },
   },
-  rooms: { r1: { id: 'r1', name: 'Ops', members: ['a', 'b'], mode: 'admin', admin: 'b', named: true, sessions: { b: 'gb' }, log: [], seq: 0, seen: {} } },
+  rooms: { r1: { id: 'r1', name: 'Ops', taskManagementEnabled: false, members: ['a', 'b'], mode: 'admin', admin: 'b', named: true, sessions: { b: 'gb' }, log: [], seq: 0, seen: {} } },
   agents: {},
   exchanges: [],
   exchangeTurns: {},
@@ -181,7 +181,7 @@ test('a member still going keeps its turn; one quiet for the whole wait is misse
   await settle(() => result() !== undefined)
   assert.deepEqual(result().replies.map(reply => [reply.kind, reply.name]), [['missed', 'Writer']])
 
-  host.emit('gb', 'assistant/message', { message: { content: [{ type: 'text', text: '[PASS]' }] } })
+  host.emit('gb', 'assistant/message', { message: { content: [{ type: 'text', text: '' }] } })
   host.emit('gb', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
   await settle(() => true)
   assert.equal(host.agentOf('r1').calls.length, 0)

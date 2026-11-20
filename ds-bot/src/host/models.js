@@ -1,3 +1,4 @@
+import { memberModel } from './team-storage/member-settings.js'
 // Models. Every Bot runs on one model of its own, fixed when it is created and changed
 // only in its settings or by a Main Bot. The team's first Main Bot has none until the
 // user picks one in its chat. The Session keeps the selection durably.
@@ -10,7 +11,8 @@ const CATALOG_TTL_MS = 10_000
 const ROUTE_WAIT_MS = 30_000
 // The DeepSeek account's sign-in grant (dsh-deepseek-account-platform).
 const ACCOUNT_RECORD = 'deepseek-account-platform/default'
-const TRANSIENT_LLM_CODES = new Set(['TRANSPORT', 'TIMEOUT'])
+const TRANSIENT_LLM_CODES = new Set(['TRANSPORT', 'TIMEOUT', 'MALFORMED_RESPONSE'])
+const MALFORMED_RETRIES = 2
 
 function retryPolicyOf(ctx, provider) {
   try {
@@ -56,6 +58,8 @@ function abortedAssembler(failure) {
 }
 
 function canRetryPolicy(policy, code, retry) {
+  if (policy?.mode !== 'normal' && policy?.mode !== 'always') return false
+  if (code === 'MALFORMED_RESPONSE') return retry <= (policy.mode === 'normal' ? Math.min(MALFORMED_RETRIES, policy.maxRetries) : MALFORMED_RETRIES)
   if (policy.mode === 'always') return true
   if (policy.mode !== 'normal') return false
   return Array.isArray(policy.retryableCodes) && policy.retryableCodes.includes(code) && retry <= policy.maxRetries
@@ -63,7 +67,7 @@ function canRetryPolicy(policy, code, retry) {
 
 // Auxiliary calls (memory, learning, handoff, steward, OCR, side chats, browser_task)
 // bypass the agent loop's `agent/request-error` hook, so `dsh-llm-retry` never sees
-// their transport or stream-idle failures. Retry those transient codes on the same
+// their transport, stream-idle or malformed-response failures. Retry those transient codes on the same
 // route with the provider's own retry policy, discarding partial chunks from failed attempts.
 export async function assembleLlmStream(ctx, options, { signal, backoff, random = Math.random } = {}) {
   const service = serviceOf(ctx, 'llm')
@@ -104,6 +108,24 @@ export async function assembleLlmStream(ctx, options, { signal, backoff, random 
 
 export function install(rt) {
   const { ctx, state } = rt
+
+  const malformedRetries = new WeakMap()
+  ctx.on?.('agent/request-error', async (payload, next) => {
+    const decided = await next()
+    const { agent, turn, step, signal, failure } = payload
+    if (decided !== undefined || failure?.code !== 'MALFORMED_RESPONSE' || signal?.aborted || !rt.isBotSession(agent.id)) return decided
+    let retries = malformedRetries.get(agent)
+    if (retries?.turn !== turn || retries?.step !== step) {
+      retries = { turn, step, count: 0 }
+      malformedRetries.set(agent, retries)
+    }
+    const policy = payload.retryPolicy ?? retryPolicyOf(ctx, payload.provider)
+    if (!canRetryPolicy(policy, failure.code, retries.count + 1)) return undefined
+    retries.count += 1
+    rt.warn(`Retrying malformed model response for ${agent.id} (turn ${turn}, step ${step}, retry ${retries.count}/${MALFORMED_RETRIES})`)
+    if (!await waitRetryDelay(250, signal)) return undefined
+    return { kind: 'retry' }
+  }, { prepend: true })
 
   let closing = false
   let modelsSynced = null
@@ -188,6 +210,8 @@ export function install(rt) {
     if (service === undefined) return answerable(catalogCache.value)
     const entries = []
     for (const provider of service.listProviders()) {
+      // A local-agent route owned by another adapter is not offered by DS Bot.
+      if (rt.isLocalAgentRoute?.(provider.id) && rt.isLocalAgentAvailable?.(provider.id) === false) continue
       let models = []
       try { models = await service.listModels(provider.id) } catch { continue }
       for (const model of models) {
@@ -258,6 +282,7 @@ export function install(rt) {
   // a CLI. Its CLI is asked only when DS Bot does not know the model yet.
   async function resolveLocalModel(ref) {
     const { provider, model } = splitRef(ref)
+    if (rt.isLocalAgentAvailable?.(provider) === false) throw new Error(`Model ${ref} is not available: its local agent route is not registered`)
     const service = llm()
     if (service === undefined) throw new Error('DS Bot is shutting down')
     const known = await service.listModels(provider).catch(() => [])
@@ -286,7 +311,9 @@ export function install(rt) {
   // model that is no longer served falls back to the last one it ran on, then the
   // default; a fallback is never one that needs a key, nor a local agent. A local
   // agent that is gone stays the Bot's: its turn fails with the repair card.
-  async function desiredModel(bot) {
+  async function desiredModel(bot, room) {
+    const override = memberModel(bot, room)
+    if (override) return override
     if (!bot.model) return undefined
     if (isLocal(bot.model)) return bot.model
     const entries = await catalog()
@@ -361,19 +388,23 @@ export function install(rt) {
   async function applyModel(bot, { force = false } = {}) {
     if (llm() === undefined) return undefined
     const ref = await desiredModel(bot)
-    if (ref === undefined) return ref
     const effort = await desiredEffort(bot, ref)
     if (llm() === undefined) return
-    const ownChanged = force || bot.appliedModel !== ref || (bot.appliedEffort ?? undefined) !== effort
+    const ownChanged = ref !== undefined && (force || bot.appliedModel !== ref || (bot.appliedEffort ?? undefined) !== effort)
     const route = { ...splitRef(ref), ...(effort === undefined ? {} : { reasoningEffort: effort }) }
     // A Bot's model is the model of every part of its own chat, the background ones
     // included: a part left on the old route would keep answering with the old model
     // while the settings show the new one. A part that cannot take it fails the change.
     if (ownChanged) for (const sessionId of ownChatSessions(bot)) await selectSessionModel(sessionId, route)
     for (const sessionId of rt.groupSessionsOf(bot.id)) {
+      const roomId = rt.groupOwners?.get(sessionId)?.roomId
+      const room = roomId === undefined ? undefined : rt.roomOf(roomId)
+      const groupRef = memberModel(bot, room) ?? ref
+      if (groupRef === undefined) continue
+      const groupRoute = groupRef === ref ? route : { ...splitRef(groupRef), reasoningEffort: await desiredEffort(bot, groupRef) }
       const applied = sessionSelections.get(sessionId)
-      if (!force && applied !== undefined && sameSelection(applied, route)) continue
-      await selectSessionModel(sessionId, route)
+      if (!force && applied !== undefined && sameSelection(applied, groupRoute)) continue
+      await selectSessionModel(sessionId, groupRoute)
         .catch(error => rt.warn('ds-bot: model for %s in a group not applied: %s', bot.name, error))
     }
     if (llm() === undefined || !ownChanged) return ref

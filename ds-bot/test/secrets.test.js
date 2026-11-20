@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { ShellEnvRegistry } from '@deepseek-ai/dsh-shell-env'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { install as installDiagnostics } from '../src/host/diagnostics.js'
 import { inject as hostInject, name as hostName } from '../src/host/entry.js'
@@ -163,8 +164,7 @@ test('a card saves a key the Bot never sees, and the shell gets it', async (t) =
   assert.match((await bench.call('secret-set', { requestId: request.id, value })).error.message, /already answered/)
 
   const file = join(bench.home, 'secrets.json')
-  // Windows has no POSIX mode bits: a writable file always stats as 0o666 there.
-  if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600)
+  assert.equal(statSync(file).mode & 0o777, 0o600)
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).secrets[0].value, value)
   assert.deepEqual(readdirSync(bench.home).filter(name => name.endsWith('.tmp')), [])
   team = await bench.view()
@@ -172,12 +172,12 @@ test('a card saves a key the Bot never sees, and the shell gets it', async (t) =
   assert.deepEqual(team.secrets.map(secret => secret.name), ['DEMO_TOKEN'])
   // Nothing the browser gets holds the value.
   assert.ok(!JSON.stringify(team).includes(value))
-  assert.ok(!readFileSync(join(bench.home, 'state.json'), 'utf8').includes(value))
+  assert.ok(!JSON.stringify(savedTeam(bench.home)).includes(value))
 
   const note = bench.delivered.at(-1)
   assert.equal(note.sessionId, 'b2')
   assert.equal(note.source.role, 'secret')
-  assert.match(note.text, /^\[Secret card\]\nThe user saved DEMO_TOKEN for every Bot\. Use it as \$DSH_SECRET_DEMO_TOKEN in bash, or \$env:DSH_SECRET_DEMO_TOKEN in PowerShell\./)
+  assert.match(note.text, /^\[Secret card\]\nThe user saved DEMO_TOKEN for every Bot\. Use it as \$DSH_SECRET_DEMO_TOKEN in bash\./)
   assert.ok(!note.text.includes(value))
 
   // Every Bot (own chat or group Session) gets the variable; other Sessions do not.

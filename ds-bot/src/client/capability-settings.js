@@ -1,6 +1,21 @@
-import { createElement as h, Fragment, useEffect, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import { PlusIcon } from './icons.js'
+import { base64Of } from './speech.js'
 import { t } from './i18n.js'
+
+// Directory handles also expose empty folders. The directory input supplies
+// relative paths on hosts without the File System Access API.
+async function* folderEntries(directory, prefix = '') {
+  for await (const entry of directory.values()) {
+    const path = prefix + entry.name
+    if (entry.kind === 'directory') {
+      yield { path, directory: true }
+      yield* folderEntries(entry, path + '/')
+    } else {
+      yield { path, file: await entry.getFile() }
+    }
+  }
+}
 
 const blank = () => ({ name: '', kind: 'mcp', description: '', transport: 'stdio', command: '', argsText: '', envText: '{}', url: '', headersText: '{}', content: '', items: [] })
 const parseMap = (text, label) => {
@@ -109,7 +124,7 @@ function CapabilityRow({ item, onEdit, onDelete, onApprove, confirming }) {
       h('span', { className: 'bt-connector-actions' },
         item.kind === 'mcp' && item.transport === 'stdio' && !item.approved
           ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: onApprove }, t('Allow')) : null,
-        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: onEdit }, t('Edit')),
+        item.folderId ? null : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: onEdit }, t('Edit')),
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: onDelete }, confirming ? t('Click again to delete.') : t('Delete')))))
 }
 
@@ -122,6 +137,39 @@ export function CapabilitiesPage({ roster, actions, run }) {
     const timer = setTimeout(() => setConfirming(''), 4000)
     return () => clearTimeout(timer)
   }, [confirming])
+  const input = useRef(null)
+  const [importing, setImporting] = useState(false)
+  const importFolder = async entries => {
+    setImporting(true)
+    try {
+      const payload = []
+      for await (const { file, path, directory } of entries) {
+        if (directory) payload.push({ path, directory: true })
+        else payload.push({ path, bytes: base64Of(new Uint8Array(await file.arrayBuffer())) })
+      }
+      if (!payload.some(entry => entry.path === 'SKILL.md' && !entry.directory)) throw new Error(t('The selected folder needs a SKILL.md at its root.'))
+      await actions.importSkillFolder(payload)
+    } finally {
+      setImporting(false)
+    }
+  }
+  const chooseFolder = async () => {
+    if (!window.showDirectoryPicker || window.self !== window.top) { input.current?.click(); return }
+    let dir
+    try {
+      dir = await window.showDirectoryPicker({ mode: 'read' })
+    } catch (error) {
+      if (error?.name === 'AbortError') return
+      if (error?.name === 'NotSupportedError' || error?.name === 'SecurityError') { input.current?.click(); return }
+      throw error
+    }
+    await importFolder(folderEntries(dir))
+  }
+  const pickedFiles = event => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (files.length) void run(importFolder(files.map(file => ({ file, path: file.webkitRelativePath.split('/').slice(1).join('/') }))))
+  }
   const startNew = () => setDraft(blank())
   const edit = item => setDraft({
     ...blank(),
@@ -138,9 +186,13 @@ export function CapabilitiesPage({ roster, actions, run }) {
     void run(actions.deleteCapability(item.name))
   }
   return h('section', { className: 'bt-set-section' },
-    h('div', { className: 'bt-la-sec-head' },
+    h('div', { className: 'bt-la-sec-head bt-capabilities-head' },
       h('h3', null, t('Shared capabilities')),
-      draft ? null : h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-with-icon', onClick: startNew }, h(PlusIcon), t('Add capability'))),
+      draft ? null : h('div', { className: 'bt-connector-actions bt-skill-actions' },
+        h('input', { ref: input, type: 'file', webkitdirectory: '', multiple: true, hidden: true, onChange: pickedFiles }),
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: importing, onClick: () => void run(chooseFolder()) },
+          importing ? t('Importing…') : t('Import skill folder')),
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-with-icon', onClick: startNew }, h(PlusIcon), t('Add capability')))),
     draft ? h(CapabilityForm, { draft, setDraft, items, actions, onClose: () => setDraft(null) }) : null,
     h('div', { className: 'bt-set-card bt-connectors-card' },
       items.length === 0 ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No capabilities saved')))
@@ -158,12 +210,15 @@ export function BotCapabilitiesCard({ bot, roster, actions, run, Card, SwitchRow
   const items = [...(roster.capabilities ?? [])].sort((a, b) => Number(b.kind === 'pack') - Number(a.kind === 'pack') || a.name.localeCompare(b.name))
   const attached = new Set(bot.capabilities ?? [])
   const statuses = roster.capabilityStatuses?.[bot.id] ?? {}
+  const codex = (bot.model ?? bot.appliedModel ?? '').split('/')[0] === 'local-codex-cli'
   if (items.length === 0) return null
   return h(Card, { title: t('Capabilities') },
     items.map(item => h(SwitchRow, {
       key: item.name,
       label: item.name,
-      hint: attached.has(item.name) ? statusText(statuses[item.name]) : undefined,
+      hint: attached.has(item.name)
+        ? codex && item.kind === 'skill' ? t('Applies from the next message.') : statusText(statuses[item.name])
+        : undefined,
       on: attached.has(item.name),
       onChange: enabled => void run(actions.setBotCapability(bot.id, item.name, enabled)),
     })))

@@ -95,8 +95,6 @@ export function install(rt) {
       archiveBotMemory: async () => {},
       archiveGroupMemory: async () => {},
       memoryEndpoint: async () => { throw new Error('Memory is turned off on this host') },
-      memoryEdit: async () => { throw new Error('Memory is turned off on this host') },
-      memoryAdd: async () => { throw new Error('Memory is turned off on this host') },
       memoryNews: () => ({}),
       memoryReviews: () => 0,
     })
@@ -1233,13 +1231,10 @@ export function install(rt) {
     until: entry.meta.until ?? null, pinned: isPinned(entry), expired: isExpired(entry, today()),
   }))
 
+  // A Bot's memory calls run on what the Bot runs on: a local agent Bot's on its own
+  // CLI and model (see botShot).
   async function modelFor(bot) {
-    const desired = await rt.desiredModel(bot)
-    // A local agent CLI answers through its own subscription, not a model API:
-    // its memory reads the team's default model when one is set, and the profile
-    // default when it is not, like any other Bot with no model of its own.
-    const team = rt.isLocalAgentRef?.(state.prefs.defaultBotModel) === true ? undefined : state.prefs.defaultBotModel
-    const ref = rt.isLocalAgentRef?.(desired) === true ? (team ?? await rt.defaultModel()) : desired ?? await rt.defaultModel()
+    const ref = await rt.desiredModel(bot) ?? await rt.defaultModel()
     const route = splitRef(ref)
     if (route === undefined) throw new Error('No model is available. Add one in Settings > Models.')
     return route
@@ -1301,6 +1296,14 @@ export function install(rt) {
   // is tried once more on the profile default.
   async function botShot(bot, system, text, tag) {
     const own = await modelFor(bot)
+    // A local agent CLI answers in a one-off read-only session; a fallback never
+    // leaves the Bot's run mode.
+    if (rt.isLocalAgentRoute?.(own.provider) === true) {
+      const reply = String(await rt.localAgentAsk(tag?.sessionId ?? rt.chatOf?.(bot.id) ?? bot.id, { route: own.provider, model: own.model, system, prompt: text, kind: tag?.kind ?? 'memory', signal: AbortSignal.timeout(MODEL_TIMEOUT_MS) }) ?? '').trim()
+      // As on a model: an empty answer is no answer, so nothing saved is replaced by it.
+      if (reply === '') throw new Error(`${own.provider}/${own.model} wrote nothing; no answer was written`)
+      return reply
+    }
     try {
       return await oneShot(own, system, text, tag)
     } catch (error) {
@@ -1442,32 +1445,6 @@ export function install(rt) {
     const topic = body.topic === null || body.topic === undefined ? undefined : cleanTopic(body.topic)
     await removeEntry({ scope, topic, match: String(body.text ?? ''), actor: USER, label: panelLabel(panel, scope) })
     return await memoryView(panelBody(panel))
-  }
-
-  // The user's own words for one entry, from a window that edits the list in place
-  // (the mobile API): no model call, the same checks as the tools.
-  const userEntry = (raw) => {
-    const text = cleanEntry(raw)
-    const problem = entryProblem(text)
-    if (problem) throw Object.assign(new Error(problem), { code: 'bot/invalid' })
-    return text
-  }
-  const userTopic = raw => (raw === null || raw === undefined || raw === '' ? undefined : cleanTopic(raw))
-  async function memoryEdit(body) {
-    const panel = panelOf(body)
-    const scope = panel.scopes[body.scope] ?? panel.scopes[panel.group ? 'group' : 'own']
-    const text = userEntry(body.next)
-    const meta = { source: 'memory panel', by: 'user', added: today() }
-    await replaceEntry({ scope, topic: userTopic(body.topic), match: String(body.text ?? ''), text, meta, actor: USER, label: panelLabel(panel, scope) })
-    return memoryView(panelBody(panel))
-  }
-  async function memoryAdd(body) {
-    const panel = panelOf(body)
-    const scope = panel.scopes[body.scope] ?? panel.scopes[panel.group ? 'group' : 'own']
-    const text = userEntry(body.text)
-    const meta = { source: 'memory panel', by: 'user', added: today() }
-    await addEntry({ scope, topic: userTopic(body.topic), text, meta, actor: USER, label: panelLabel(panel, scope) })
-    return memoryView(panelBody(panel))
   }
 
   // One team entry the user brings in front of every Bot, or sends back to wait in a topic.
@@ -1793,7 +1770,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    memoryEnabled: true, renewMemory, archiveBotMemory, archiveGroupMemory, memoryEndpoint, memoryEdit, memoryAdd, memoryReviews,
+    memoryEnabled: true, renewMemory, archiveBotMemory, archiveGroupMemory, memoryEndpoint, memoryReviews,
     memoryNews: () => Object.fromEntries(news), botShot, tidyMemoryNow: tidyNow,
   })
 }

@@ -52,23 +52,9 @@ test('the catalog classifies every provider call into observe, background, foreg
   // unknown methods fail closed to foreground
   assert.equal(classify('cua', { method: 'reboot' }).kind, 'foreground')
   assert.equal(classify('cua', {}).kind, 'foreground')
-  // cua-driver read-only names
-  for (const name of ['list_apps', 'list_windows', 'get_window_state', 'get_accessibility_tree', 'verify_state', 'parse_visual_regions', 'get_desktop_state', 'get_screen_size', 'get_cursor_position', 'zoom', 'debug_window_info', 'get_browser_state', 'get_session', 'list_sessions', 'get_session_state', 'get_agent_cursor_state', 'get_recording_state', 'get_config', 'check_permissions', 'health_report']) {
-    assert.equal(classify(`cua_driver_native__${name}`, {}).kind, 'observe', name)
-  }
-  // driver foreground: window raising and cursor-moving names, and an explicit ask
-  for (const name of ['bring_to_front', 'move_cursor', 'escalate_session', 'set_agent_cursor_enabled']) {
-    assert.equal(classify(`cua_driver_native__${name}`, {}).kind, 'foreground', name)
-  }
-  for (const name of ['click', 'double_click', 'right_click', 'drag', 'type_text', 'press_key', 'hotkey', 'set_value', 'scroll', 'launch_app', 'kill_app', 'invoke_menu', 'browser_click', 'browser_type']) {
-    assert.equal(classify(`cua_driver_native__${name}`, {}).kind, 'background', name)
-  }
-  assert.equal(classify('cua_driver_native__click', { foreground: true }).kind, 'foreground')
-  assert.equal(classify('cua_driver_native__mystery', {}).kind, 'foreground')
   // not a computer tool
   assert.equal(classify('message_bot', {}), undefined)
   assert.equal(isComputerTool('cua'), true)
-  assert.equal(isComputerTool('cua_driver_native__click'), true)
   assert.equal(isComputerTool('schedule_list'), false)
 })
 
@@ -116,9 +102,7 @@ test('protected apps match by id, name and executable', () => {
     { name: 'DSH Computer Use Dev' },
     { name: 'DeepSeek Harness' },
     { name: 'Keychain Access' },
-    { name: 'Credential Manager' },
     { path: '/Applications/DSH Computer Use.app/Contents/MacOS/dsh-cua-native' },
-    { path: 'C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe' },
   ]) assert.equal(isProtectedApp(app), true, JSON.stringify(app))
   assert.equal(isProtectedApp({ name: 'Notes' }), false)
   assert.equal(isProtectedApp({ id: 'com.apple.Notes' }), false)
@@ -172,44 +156,6 @@ test('the guard refuses in order: switch, Bot, level, control, protected, consen
   // A call another Bot's lease refuses takes no lease of its own.
   const other = await call('w1', 'cua', { method: 'click', params: { appHandle: 'h1' } })
   assert.equal(other, 'allowed')
-})
-
-test('cua-driver consent: first call asks, This time lasts the session, Deny refuses it', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const allow = async () => 'allowed'
-  const call = (sessionId, name, args = {}) => gate({ name, arguments: args, agent: { id: sessionId }, callId: `c-${sessionId}` }, allow)
-  // unknown pid: refused until the Bot lists windows
-  const unknown = await call('w1', 'cua_driver_native__click', { pid: 42 })
-  assert.equal(unknown.kind, 'deny')
-  assert.match(unknown.reason, /list/i)
-  // record the pid through a list result
-  const execute = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  await execute({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-1' }, async () => ({ windows: [{ pid: 42, name: 'Notes', path: '/Applications/Notes.app' }] }))
-  // the first input call opens an ask; answering resolves it
-  const pending = call('w1', 'cua_driver_native__click', { pid: 42 })
-  await new Promise(resolve => setImmediate(resolve))
-  const asks = rt.computerLive().asks
-  assert.equal(Object.keys(asks).length, 1)
-  const ask = Object.values(asks)[0]
-  const id = ask.id // the card answers with the id inside the payload, not the map key
-  assert.equal(typeof id, 'string')
-  assert.equal(ask.appName, 'Notes')
-  assert.equal(await rt.computerEndpoint('app-answer', { id, answer: 'once' }), true)
-  assert.equal(await pending, 'allowed')
-  // same session asks no more for the allowed app; another app asks again
-  assert.equal(await call('w1', 'cua_driver_native__click', { pid: 42 }), 'allowed')
-  await execute({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-2' }, async () => ({ windows: [{ pid: 43, name: 'Mail' }] }))
-  const denied = call('w1', 'cua_driver_native__type_text', { pid: 43 })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask2 = Object.entries(rt.computerLive().asks)[0]
-  assert.notEqual(ask2, undefined)
-  await rt.computerEndpoint('app-answer', { id: ask2[0], answer: 'deny' })
-  assert.equal((await denied).kind, 'deny')
 })
 
 test('macOS consent answerer: grants allow, the card answers, Always records, DSH Always is never returned', async (t) => {
@@ -292,7 +238,7 @@ test('the provider mounts when the switch comes on and reports its status', asyn
   assert.deepEqual(rt.computerStatus(), { state: 'ready', name: 'fake-provider' })
   // registry + provider fibers mounted, provider with the platform config
   assert.equal(fibers.length, 2)
-  assert.deepEqual(fibers[1].config, process.platform === 'darwin' ? { agentPreset: false } : {})
+  assert.deepEqual(fibers[1].config, { agentPreset: false })
   // switching off disposes the provider
   await rt.computerEndpoint('set-enabled', { enabled: false })
   assert.deepEqual(rt.computerStatus(), { state: 'off' })
@@ -428,23 +374,6 @@ test('a plain Session is refused on the provider DS Bot mounted', async (t) => {
   await rt.computerEndpoint('provider-retry', {})
   assert.equal(rt.computerStatus().state, 'ready')
   assert.equal((await gateOf(ctx)('plain', 'cua', { method: 'click', params: {} })).kind, 'deny')
-})
-
-test('Windows Bots that can operate apps are told how input really lands', async (t) => {
-  const { ctx, home, rt } = setup()
-  const platform = Object.getOwnPropertyDescriptor(process, 'platform')
-  t.after(async () => { Object.defineProperty(process, 'platform', platform); await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  Object.defineProperty(process, 'platform', { ...platform, value: 'win32' })
-  const services = { loader: { import: async name => ({ name }) }, agents: { list: () => [] } }
-  ctx.get = name => services[name]
-  withProvider(ctx, services)
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('provider-retry', {})
-  const text = () => ctx.sections.get('computer-use:ds-bot').text({ agent: { id: 'w1' } })
-  assert.match(text(), /If the text field supports set_value/)
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'view' })
-  assert.doesNotMatch(text(), /set_value/)
 })
 
 test('the helper is protected by its real bundle id', async () => {
@@ -654,27 +583,6 @@ test('Stop all stops only Bots that hold a lease, are in-flight, or are bot/wait
   assert.deepEqual([...stopped].sort(), ['w1'])
 })
 
-test('the Windows path also asks consent for observe calls on a known app', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'view' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const allow = async () => 'allowed'
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'l' },
-    async () => ({ windows: [{ pid: 7, name: 'Notes' }] }))
-  // a screenshot of the known pid asks; list calls do not
-  assert.equal(await gate({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'c1' }, allow), 'allowed')
-  const pending = gate({ name: 'cua_driver_native__get_desktop_state', arguments: { pid: 7 }, agent: { id: 'w1' }, callId: 'c2' }, allow)
-  await new Promise(resolve => setImmediate(resolve))
-  assert.equal(Object.keys(rt.computerLive().asks).length, 1)
-  const [id] = Object.entries(rt.computerLive().asks)[0]
-  await rt.computerEndpoint('app-answer', { id, answer: 'once' })
-  assert.equal(await pending, 'allowed')
-})
-
 test('computer_handoff: the hold answers done, skip and takeover', async (t) => {
   const { ctx, home, rt } = setup()
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
@@ -841,75 +749,6 @@ test('a group computer_handoff docks by its hold id and the answer reaches the B
   assert.equal(rt.computerLive().holds?.w1, undefined)
 })
 
-test('cua-driver resolves a window_id or an element token to the app, and refuses what it cannot', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (name, args = {}) => gate({ name, arguments: args, agent: { id: 'w1' }, callId: `c-${name}` }, allow)
-  // a targeted call with nothing to resolve against is refused before consent
-  const blind = await call('cua_driver_native__click', {})
-  assert.equal(blind.kind, 'deny')
-  assert.match(blind.reason, /list_windows/)
-  // untargeted capture and desktop-state reads are refused at every level
-  assert.equal((await call('cua_driver_native__get_desktop_state', {})).kind, 'deny')
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'view' })
-  assert.equal((await call('cua_driver_native__zoom', {})).kind, 'deny')
-  // list_windows stays allowed metadata
-  assert.equal(await call('cua_driver_native__list_windows', {}), 'allowed')
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  // get_window_state records the window and its element tokens
-  await track({ name: 'cua_driver_native__get_window_state', arguments: { window_id: 7 }, agent: { id: 'w1' }, callId: 'state-1' },
-    async () => ({ window_id: 7, pid: 42, name: 'Notes', path: '/Applications/Notes.app', elements: [{ token: 'el-9' }] }))
-  // a window_id call resolves to Notes and asks once, then runs
-  const pending = call('cua_driver_native__click', { window_id: 7 })
-  await new Promise(resolve => setImmediate(resolve))
-  const [id, ask] = Object.entries(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Notes')
-  await rt.computerEndpoint('app-answer', { id, answer: 'once' })
-  assert.equal(await pending, 'allowed')
-  // an element token from the same window resolves to the same app
-  assert.equal(await call('cua_driver_native__click', { target: 'el-9' }), 'allowed')
-  // an unknown window is refused
-  const unknown = await call('cua_driver_native__click', { window_id: 99 })
-  assert.equal(unknown.kind, 'deny')
-})
-
-test('revoke clears a This time under every key, so the next call asks again', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (args = {}) => gate({ name: 'cua_driver_native__click', arguments: args, agent: { id: 'w1' }, callId: 'c-revoke' }, allow)
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-1' }, async () => ({ windows: [{ pid: 42, name: 'Notes', path: '/Applications/Notes.app' }] }))
-  // Always grant, then a This time decision in the same Session
-  const grantAsk = call({ pid: 42 })
-  await new Promise(resolve => setImmediate(resolve))
-  await rt.computerEndpoint('app-answer', { id: Object.keys(rt.computerLive().asks)[0], answer: 'always' })
-  assert.equal(await grantAsk, 'allowed')
-  // revoke the grant and record a Session decision under a different key, then revoke again
-  await rt.computerEndpoint('revoke-app', { botId: 'w1', appKey: '/Applications/Notes.app' })
-  const onceAsk = call({ pid: 42 })
-  await new Promise(resolve => setImmediate(resolve))
-  await rt.computerEndpoint('app-answer', { id: Object.keys(rt.computerLive().asks)[0], answer: 'once' })
-  assert.equal(await onceAsk, 'allowed')
-  await rt.computerEndpoint('revoke-app', { botId: 'w1', appKey: '/Applications/Notes.app' })
-  // the This time is gone with it: the next call opens the card again
-  const again = call({ pid: 42 })
-  await new Promise(resolve => setImmediate(resolve))
-  assert.equal(Object.keys(rt.computerLive().asks).length, 1)
-  await rt.computerEndpoint('app-answer', { id: Object.keys(rt.computerLive().asks)[0], answer: 'deny' })
-  assert.equal((await again).kind, 'deny')
-})
-
 test('computer-shot serves only screenshots the module recorded, with a safe MIME', async (t) => {
   const services = { attachments: { readFileStream: async function* () { yield Buffer.from('img') } } }
   const { ctx, home, rt } = setup({ services })
@@ -929,98 +768,6 @@ test('computer-shot serves only screenshots the module recorded, with a safe MIM
   await track({ name: 'cua', arguments: { method: 'screenshot', params: {} }, agent: { id: 'w1' }, callId: 'shot-2' },
     async () => ({ attachment: { attachmentId: 'rec-2', mimeType: 'image/jpeg' } }))
   assert.match((await rt.computerEndpoint('shot', { attachmentId: 'rec-2' })).dataUrl, /^data:image\/jpeg;base64,/)
-})
-
-test('same-named apps do not share an approval; a name-only consent still matches', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (args = {}) => gate({ name: 'cua_driver_native__click', arguments: args, agent: { id: 'w1' }, callId: `c-${args.pid}` }, allow)
-  // app A at path X gets an Always grant
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-a' }, async () => ({ windows: [{ pid: 42, name: 'Notes', path: '/a/Notes.app' }] }))
-  const askA = call({ pid: 42 })
-  await new Promise(resolve => setImmediate(resolve))
-  await rt.computerEndpoint('app-answer', { id: Object.keys(rt.computerLive().asks)[0], answer: 'always' })
-  assert.equal(await askA, 'allowed')
-  // app B: same name, another path — it asks again
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-b' }, async () => ({ windows: [{ pid: 43, name: 'Notes', path: '/b/Notes.app' }] }))
-  const askB = call({ pid: 43 })
-  await new Promise(resolve => setImmediate(resolve))
-  assert.equal(Object.keys(rt.computerLive().asks).length, 1)
-  await rt.computerEndpoint('app-answer', { id: Object.keys(rt.computerLive().asks)[0], answer: 'deny' })
-  assert.equal((await askB).kind, 'deny')
-  // the macOS consent question carries only a name; that path stays name-matched
-  const consent = ctx.listeners.get('user-questions/request').find(fn => fn.name === 'computerConsent')
-  const w1 = rt.botOf('w1')
-  const question = { questions: [{ id: 'cua-app-access', intent: { subject: { name: 'Notes' } } }], agent: { id: 'w1', session: { id: 'w1' } }, signal: new AbortController().signal }
-  // drop the path-keyed grants and keep a name-only Always grant
-  w1.computer = { apps: { notes: { name: 'Notes', grantedAt: 0 } } }
-  const answer = await consent(question, async () => 'next')
-  assert.deepEqual(answer.answers[0].selected, ['Allow for this session'])
-})
-
-test('browser tools need a resolvable target, and the driver-refused methods deny at every level', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'foreground' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (name, args = {}) => gate({ name, arguments: args, agent: { id: 'w1' }, callId: `c-${name}` }, allow)
-  // the refused list denies at every level, before any consent or target work
-  for (const method of ['set_config', 'start_recording', 'stop_recording', 'replay_trajectory', 'install_ffmpeg']) {
-    const denied = await call(`cua_driver_native__${method}`, {})
-    assert.equal(denied.kind, 'deny', method)
-    assert.match(denied.reason, /may not use/, method)
-  }
-  // get_browser_state and the browser_* tools are no longer global: no target, no call
-  assert.match((await call('cua_driver_native__get_browser_state', {})).reason, /list_windows/)
-  assert.match((await call('cua_driver_native__browser_navigate', { url: 'https://example.com' })).reason, /list_windows/)
-  // with a recorded window they resolve their app and reach consent like any target
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-b' },
-    async () => ({ windows: [{ window_id: 5, pid: 44, name: 'Browser', path: '/Applications/Browser.app' }] }))
-  const pending = call('cua_driver_native__browser_navigate', { window_id: 5, url: 'https://example.com' })
-  await new Promise(resolve => setImmediate(resolve))
-  assert.equal(Object.keys(rt.computerLive().asks).length, 1)
-  await rt.computerEndpoint('app-answer', { id: Object.keys(rt.computerLive().asks)[0], answer: 'once' })
-  assert.equal(await pending, 'allowed')
-})
-
-test('launch_app resolves by its own name or path: consent, protected check, recorded app', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (args = {}) => gate({ name: 'cua_driver_native__launch_app', arguments: args, agent: { id: 'w1' }, callId: 'launch' }, allow)
-  // no identifying argument: refused
-  const blind = await call({})
-  assert.equal(blind.kind, 'deny')
-  // a protected path is refused without a card
-  const protectedCall = await call({ path: '/Applications/DSH Computer Use.app' })
-  assert.equal(protectedCall.kind, 'deny')
-  assert.match(protectedCall.reason, /protected/)
-  // an unprotected app asks by card, then runs
-  const pending = call({ name: 'Notes', path: '/Applications/Notes.app' })
-  await new Promise(resolve => setImmediate(resolve))
-  const [id, ask] = Object.entries(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Notes')
-  await rt.computerEndpoint('app-answer', { id, answer: 'once' })
-  assert.equal(await pending, 'allowed')
-  // the launched app is recorded: a later call on its window resolves without a card
-  await track({ name: 'cua_driver_native__launch_app', arguments: { path: '/Applications/Notes.app' }, agent: { id: 'w1' }, callId: 'launch-2' },
-    async () => ({ pid: 50, name: 'Notes', path: '/Applications/Notes.app', window_id: 9 }))
-  assert.equal(await gate({ name: 'cua_driver_native__click', arguments: { window_id: 9 }, agent: { id: 'w1' }, callId: 'c9' }, allow), 'allowed')
 })
 
 test('the Bot cursor: relative, pixel and index calls publish a point', async (t) => {
@@ -1062,46 +809,6 @@ test('the Bot cursor: relative, pixel and index calls publish a point', async (t
   // a call on an unknown window publishes nothing
   await track(cua('click', { appHandle: 'h1', windowId: 99, index: 1 }, 'c4'), okResult)
   assert.equal(rt.computerLive().cursors.find(event => event.botId === 'w1').mode, 'window')
-})
-
-test('driver cursors: session injection, refused cursor tools, one disable per session', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const executions = []
-  ctx.tools = {
-    get: (name) => {
-      if (name === 'cua_driver_native__set_agent_cursor_enabled') return { execute: async (args) => { executions.push(['disable', args]); return { value: {} } } }
-      if (name === 'cua_driver_native__get_agent_cursor_state') return { execute: async (args) => { executions.push(['state', args]); return { isError: false, value: { position: { x: 311, y: 222 } } } } }
-      return { inputSchema: { properties: { session: {}, pid: {} } } }
-    },
-  }
-  rt.botOf('w1').computer = { apps: { 'com.apple.Notes': { name: 'Notes', id: 'com.apple.Notes', grantedAt: 0 } } }
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-1' }, async () => ({ windows: [{ pid: 42, name: 'Notes', path: '/Applications/Notes.app', bundleId: 'com.apple.Notes' }] }))
-  // a call whose schema carries session gets a stable per-Bot session injected
-  const exec = { name: 'cua_driver_native__click', arguments: { pid: 42 }, agent: { id: 'w1' }, callId: 'c1' }
-  await gate(exec, allow)
-  assert.match(exec.arguments.session, /^dsbot-[0-9a-f]+$/)
-  await track(exec, async () => ({ isError: false, value: { done: true } }))
-  // disable ran once for the session; the state query published the point
-  assert.equal(executions.filter(e => e[0] === 'disable').length, 1)
-  await new Promise(resolve => setImmediate(resolve))
-  const cursor = rt.computerLive().cursors.find(event => event.botId === 'w1')
-  assert.equal(cursor.x, 311)
-  assert.equal(cursor.y, 222)
-  assert.equal(cursor.ripple, true)
-  // the cursor tools themselves are refused to Bots
-  assert.equal((await gate({ name: 'cua_driver_native__set_agent_cursor_enabled', arguments: { session: 'x', enabled: true }, agent: { id: 'w1' }, callId: 'c2' }, allow)).kind, 'deny')
-  // a tool whose schema has no session property gets nothing injected
-  ctx.tools.get = () => ({ inputSchema: { properties: { pid: {} } } })
-  const bare = { name: 'cua_driver_native__click', arguments: { pid: 42 }, agent: { id: 'w1' }, callId: 'c3' }
-  await gate(bare, allow)
-  assert.equal(bare.arguments.session, undefined)
 })
 
 test('cursor-wait returns fresh events, wakes on publish, and times out empty', async (t) => {
@@ -1159,166 +866,4 @@ test('computer-shot serves a real screenshot attachment by its mediaType', async
   assert.equal(shot?.dataUrl, `data:image/webp;base64,${Buffer.from('PNGDATA').toString('base64')}`)
   // an id this module never recorded is not readable
   assert.equal(await rt.computerEndpoint('shot', { attachmentId: 'sha256:other' }), null)
-})
-
-// A tool result as the DSH MCP bridge hands it to the tool runtime: the driver's own
-// JSON stays under structuredContent, with the text rendering beside it.
-const mcpResult = (structuredContent, text = 'ok') => ({
-  isError: false,
-  content: [{ type: 'text', text }],
-  value: { content: [{ type: 'text', text }], structuredContent },
-})
-
-test('cua-driver registers apps and windows from the canonical MCP result', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (name, args = {}) => gate({ name: `cua_driver_native__${name}`, arguments: args, agent: { id: 'w1' }, callId: `c-${name}-${JSON.stringify(args)}` }, allow)
-
-  // list_apps: one running app with a window, one installed but not running.
-  await track({ name: 'cua_driver_native__list_apps', arguments: {}, agent: { id: 'w1' }, callId: 'apps-1' },
-    async () => mcpResult({
-      apps: [
-        { pid: 42, name: 'Notes', bundle_id: 'com.apple.Notes', launch_path: '/Applications/Notes.app', running: true, active: false, windows: [{ window_id: 7, pid: 42, app_name: 'Notes', title: 'Notes' }] },
-        { pid: 0, name: 'Mail', bundle_id: 'com.apple.Mail', launch_path: '/Applications/Mail.app', running: false, active: false, windows: [] },
-      ],
-    }))
-  // A running app is known by pid and its window; the app identity keeps the bundle id
-  // and path, so the grant is recorded against the same identity a later list returns.
-  const pending = call('click', { pid: 42 })
-  await new Promise(resolve => setImmediate(resolve))
-  const [, ask] = Object.entries(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Notes')
-  await rt.computerEndpoint('app-answer', { id: ask.id, answer: 'always' })
-  assert.equal(await pending, 'allowed')
-  const grant = Object.values(rt.botOf('w1').computer.apps).find(entry => entry.id === 'com.apple.Notes')
-  assert.equal(grant?.name, 'Notes')
-  assert.equal(await call('click', { window_id: 7 }), 'allowed')
-  // The not-running app's pid 0 was not registered as a usable app.
-  assert.equal((await call('click', { pid: 0 })).kind, 'deny')
-
-  // list_windows: app_name names the app, and a protected app is refused before consent.
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'wins-1' },
-    async () => mcpResult({ windows: [
-      { window_id: 8, pid: 43, app_name: 'Mail', title: '', z_index: 1, is_on_screen: true },
-      { window_id: 9, pid: 5, app_name: 'System Settings', title: 'Settings', z_index: 2, is_on_screen: true },
-    ] }))
-  const mail = call('click', { pid: 43 })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask2 = Object.values(rt.computerLive().asks)[0]
-  assert.equal(ask2.appName, 'Mail')
-  await rt.computerEndpoint('app-answer', { id: ask2.id, answer: 'once' })
-  assert.equal(await mail, 'allowed')
-  const protectedCall = await call('click', { window_id: 9 })
-  assert.equal(protectedCall.kind, 'deny')
-  assert.match(protectedCall.reason, /protected/)
-
-  // get_window_state: a window and its real element_token resolve to that window's app.
-  await track({ name: 'cua_driver_native__get_window_state', arguments: { pid: 44, window_id: 11 }, agent: { id: 'w1' }, callId: 'state-1' },
-    async () => mcpResult({ pid: 44, window_id: 11, app_name: 'Reminders', elements: [{ element_index: 0, role: 'button', element_token: 'el-9' }] }))
-  const token = call('click', { element_token: 'el-9' })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask3 = Object.values(rt.computerLive().asks)[0]
-  assert.equal(ask3.appName, 'Reminders')
-  await rt.computerEndpoint('app-answer', { id: ask3.id, answer: 'once' })
-  assert.equal(await token, 'allowed')
-})
-
-test('cua-driver registers launch_app from structuredContent and leaves text-only results alone', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (name, args = {}) => gate({ name: `cua_driver_native__${name}`, arguments: args, agent: { id: 'w1' }, callId: `c-${name}-${JSON.stringify(args)}` }, allow)
-
-  // launch_app answers with the app and its windows under structuredContent.
-  await track({ name: 'cua_driver_native__launch_app', arguments: { bundle_id: 'com.apple.Mail' }, agent: { id: 'w1' }, callId: 'launch-1' },
-    async () => mcpResult({ pid: 43, bundle_id: 'com.apple.Mail', name: 'Mail', launch_state: 'window_ready', windows: [{ window_id: 9, pid: 43, app_name: 'Mail', title: 'Inbox' }] }, 'Launched Mail (pid 43)'))
-  const launched = call('click', { pid: 43 })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask = Object.values(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Mail')
-  await rt.computerEndpoint('app-answer', { id: ask.id, answer: 'once' })
-  assert.equal(await launched, 'allowed')
-  assert.equal(await call('click', { window_id: 9 }), 'allowed')
-
-  // A provider that returns text only records nothing: no app is learned from prose.
-  const textOnly = { isError: false, content: [{ type: 'text', text: 'windows: 55 Notes' }], value: { content: [{ type: 'text', text: 'windows: 55 Notes' }] } }
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'text-1' }, async () => textOnly)
-  const blind = await call('click', { pid: 55 })
-  assert.equal(blind.kind, 'deny')
-  assert.match(blind.reason, /list/i)
-})
-
-test('cua-driver keeps the plain top-level array result', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (args) => gate({ name: 'cua_driver_native__click', arguments: args, agent: { id: 'w1' }, callId: `c-${JSON.stringify(args)}` }, allow)
-  // An older provider returns the window list as the value itself, not in an object.
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'array-1' },
-    async () => [{ pid: 55, name: 'Notes', window_id: 55 }])
-  const byPid = call({ pid: 55 })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask = Object.values(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Notes')
-  await rt.computerEndpoint('app-answer', { id: ask.id, answer: 'once' })
-  assert.equal(await byPid, 'allowed')
-  assert.equal(await call({ window_id: 55 }), 'allowed')
-})
-
-test('cua-driver keeps the title-only window record', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (args) => gate({ name: 'cua_driver_native__click', arguments: args, agent: { id: 'w1' }, callId: `c-${JSON.stringify(args)}` }, allow)
-  // A window with no pid still names its app by title and resolves by window id.
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'title-1' },
-    async () => ({ windows: [{ title: 'Notes', window_id: 56 }] }))
-  const pending = call({ window_id: 56 })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask = Object.values(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Notes')
-  await rt.computerEndpoint('app-answer', { id: ask.id, answer: 'once' })
-  assert.equal(await pending, 'allowed')
-})
-
-test('cua-driver keeps a numeric element token', async (t) => {
-  const { ctx, home, rt } = setup()
-  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'background' })
-  const gate = ctx.listeners.get('tools/pre-execute').find(fn => fn.name === 'computerGate')
-  const track = ctx.listeners.get('tools/execute').find(fn => fn.name === 'computerTrack')
-  const allow = async () => 'allowed'
-  const call = (args) => gate({ name: 'cua_driver_native__click', arguments: args, agent: { id: 'w1' }, callId: `c-${JSON.stringify(args)}` }, allow)
-  // Old get_window_state results carried a numeric token; the read side accepts it.
-  await track({ name: 'cua_driver_native__get_window_state', arguments: { window_id: 57 }, agent: { id: 'w1' }, callId: 'num-1' },
-    async () => ({ pid: 58, window_id: 57, name: 'Notes', elements: [{ token: 9001 }] }))
-  const pending = call({ token: 9001 })
-  await new Promise(resolve => setImmediate(resolve))
-  const ask = Object.values(rt.computerLive().asks)[0]
-  assert.equal(ask.appName, 'Notes')
-  await rt.computerEndpoint('app-answer', { id: ask.id, answer: 'once' })
-  assert.equal(await pending, 'allowed')
 })

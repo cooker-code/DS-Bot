@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 import { install as installRequests } from '../src/host/requests.js'
@@ -329,7 +330,7 @@ test('the receipt of a request is kept in the team file', async (t) => {
   t.after(async () => { await stop(); cleanup(home) })
 
   await tool('message_bot', { to: 'Writer', message: 'do the thing', request_id: 'r-1' }, 'a')
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = savedTeam(home)
   const receipts = Object.values(saved.requests)
   assert.equal(receipts.length, 1)
   assert.equal(receipts[0].outcome, 'delivered')
@@ -355,6 +356,6 @@ for (const reason of ['stopped', 'lock lost']) {
     await assert.rejects(attempt, /cannot save|cannot be saved/i)
     await closing
     assert.equal(host.agentOf('b').calls.length, 0)
-    assert.equal(Object.keys(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).requests ?? {}).length, 0)
+    assert.equal(Object.keys(savedTeam(home).requests ?? {}).length, 0)
   })
 }

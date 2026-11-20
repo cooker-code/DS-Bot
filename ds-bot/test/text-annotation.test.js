@@ -89,24 +89,25 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 5))
 
 test('an annotation becomes one Markdown message with a multiline quote', () => {
   assert.equal(quoteMarkdown('First\r\nSecond\rThird'), '> First\n> Second\n> Third')
-  assert.equal(annotatedMessage('First\nSecond', '  Explain this.\nWith two lines.  '), '> First\n> Second\n> \n> Explain this.\n> With two lines.')
+  assert.equal(annotatedMessage('First\nSecond', '  Explain this.\nWith two lines.  '), '> First\n> Second\n\nExplain this.\nWith two lines.')
   assert.equal(annotatedMessage('A quote', ' \n '), '> A quote')
 })
 
-test('composer insertion keeps the annotation inside the host quote', () => {
+test('adding a note leaves it outside the native quote, including after a rejected edit', () => {
   const inserted = []
+  const draft = { quoted: false }
   const actions = {
     insertQuote: text => { inserted.push(['quote', text]); return true },
     captureInsertion: () => ({ draftRev: 3 }),
-    insertText: (text, span) => { inserted.push(['text', text, span]); return true },
+    insertText: () => false,
   }
-  assert.equal(insertAnnotation(actions, 'A quote', ' Note'), true)
-  assert.deepEqual(inserted, [['quote', 'A quote\n\nNote']])
+  assert.equal(insertAnnotation(actions, 'A quote', ' Note', draft), false)
+  actions.insertText = (text, span) => { inserted.push(['text', text, span]); return true }
+  assert.equal(insertAnnotation(actions, 'A quote', ' Note', draft), true)
+  assert.deepEqual(inserted, [['quote', 'A quote'], ['text', 'Note', { draftRev: 3 }]])
   inserted.length = 0
-  assert.equal(insertAnnotation(actions, 'A quote', ' \n'), true)
+  assert.equal(insertAnnotation(actions, 'A quote', ' \n', { quoted: false }), true)
   assert.deepEqual(inserted, [['quote', 'A quote']])
-  actions.insertQuote = () => false
-  assert.equal(insertAnnotation(actions, 'A quote', 'Note'), false)
 })
 
 test('Enter adds, Ctrl or Command+Enter sends, and Shift+Enter or IME composition stays in the field', () => {
@@ -149,7 +150,7 @@ test('adding from a Bot selection sends quote and annotation to the current comp
   assert.equal(event.stopped, 1)
   assert.equal(findAll(app.render(), 'section')[0].props['data-leaving'], true)
   await settle()
-  assert.deepEqual(app.inserted, [['quote', 'The selected text\n\nExplain this']])
+  assert.deepEqual(app.inserted, [['quote', 'The selected text'], ['text', 'Explain this', { draftRev: 2 }]])
   assert.deepEqual(app.sent, [])
   assert.deepEqual(app.calls, { clear: 1, dismiss: 1 })
 })
@@ -159,7 +160,7 @@ test('Ctrl+Enter sends the annotated quote to a group through the existing send 
   findAll(app.openEditor(), 'textarea')[0].props.onChange({ target: { value: 'Check this part' } })
   findAll(app.render(), 'textarea')[0].props.onKeyDown(key({ ctrlKey: true }))
   await settle()
-  assert.deepEqual(app.sent, [['room', '> The selected text\n> \n> Check this part']])
+  assert.deepEqual(app.sent, [['room', '> The selected text\n\nCheck this part']])
   assert.deepEqual(app.inserted, [])
   assert.equal(app.calls.clear, 1)
   assert.equal(app.calls.dismiss, 1)

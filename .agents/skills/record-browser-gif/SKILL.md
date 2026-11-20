@@ -28,7 +28,7 @@ description: 把浏览器 / Web 界面操作录成优化过的 GIF：优先用�
 
 1. 工作树必须干净，用 `git rev-parse HEAD` 记录确切提交，并构建这棵记录过的树：界面改动在 `ds-bot/` 里跑 `npm run build`（`src/client` → `client.js`）。拿别的提交的构建产物录屏是错误归因。
 2. 用测试台架从该树启动 DSH Web：`dev/bench.sh <name> <web-port> <mock-port> reset`（台架需要一个 deepseek-harness 检出：`../deepseek-harness` 或 `DSH_HARNESS`，版本见 README）。台架把插件 link 到当前 checkout——host 代码改动重启生效，`src/client` 改动 `npm run build` 后刷新页面生效；数据全部落在 gitignored 的 `.dsh-test-<name>/`，`reset` 会先清空 Bot 团队和会话。每个端口只起一个服务。浏览器同样用全新隔离的 context 或 profile；浏览器工作流建不了隔离环境时，先清掉该 origin 的 cookie 和站点存储再导航，避免残留的客户端状态污染证据。
-3. 台架默认跑 mock 模型（`dev/mock-llm.mjs`）。要录真实模型回合，在该台架自己的数据目录里配置真实 provider（通过它的 Web 设置页）；绝不要把台架或任何测试指向 `~/.dsh`、桌面应用的数据或用户正在跑的 DSH（仓库硬规则第 5 条）。演示桌面应用窗口（`app/ui` 或 Electron 行为）时改在 `app/` 里用一次性数据目录启动：`DS_BOT_HOME=<throwaway-dir> npm start`（见 `app/README.md`）。
+3. 台架默认跑 mock 模型（`dev/mock-llm.mjs`）。要录真实模型回合，在该台架自己的数据目录里配置真实 provider（通过它的 Web 设置页）；绝不要把台架或任何测试指向 `~/.dsh`或用户正在跑的 DSH（仓库硬规则第 5 条）。
 4. 一个 storyboard 算一次证据运行：发布的每一帧都来自同一个服务、同一组状态根、同一个工作区 / 会话和同一次模型场景运行。采集自动化失败就丢弃它的帧、从全新状态根重跑；绝不拼接不同运行的帧。
 5. 录制结束或切换 PR 时停掉自己起的服务：`dev/bench.sh <name> <web-port> <mock-port> stop`（台架按 pid 文件停进程组）。不要用宽泛的 `pkill -f`——它可能匹配并杀掉发起它的 shell，包括你自己的。
 

@@ -2,13 +2,14 @@ import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore 
 import { currentPart, isHiddenTurn } from './text.js'
 import { CheckIcon, CopyIcon } from './icons.js'
 import { ModelKeyCard, manageModels } from './model-menu.js'
-import { knownFailure } from './diagnostics.js'
+import { knownFailure, modelFailureLine } from './diagnostics.js'
 import { hostText, t } from './i18n.js'
+import { redactCredentials } from '../shared/redact-credentials.js'
 
 // -------------------------------------------------------------------------
 // A failed turn in a Bot's chat: what went wrong and what the user can do about it,
-// in place of DSH's row. The copy and the fixes go by DSH's stable failure code, never
-// by the provider's message, which shows only under Technical details. The chat node
+// in place of DSH's row. Network failures also show the transport detail inline.
+// The fixes go by DSH's failure code. The chat node
 // carries no HTTP status or request id; the host keeps them, with the failing route's
 // provider, on the Bot as `blocked` while a credential or balance failure stands.
 
@@ -132,7 +133,7 @@ export function failureFacts(data, blocked) {
   const requestId = data.requestId ?? blocked?.requestId
   if (requestId) facts.push(['Request ID', t('Request ID'), requestId])
   // DSH already blanks an AUTH message; it never shows here either way.
-  if (data.code !== 'AUTH' && data.message) facts.push(['Message', t('Provider message'), data.message])
+  if (data.code !== 'AUTH' && data.message) facts.push(['Message', t('Provider message'), redactCredentials(data.message)])
   return facts
 }
 
@@ -170,7 +171,10 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
   const [joining, setJoining] = useState(null)
   const blocked = bot?.blocked?.code === data.code ? bot.blocked : undefined
   const provider = blocked?.provider ?? host?.provider ?? providerOf(bot, roster)
-  const text = failureText(data.code, { name: bot?.name ?? t('This Bot'), provider: providerName(roster, provider), status: data.status ?? blocked?.status })
+  const name = bot?.name ?? t('This Bot')
+  const status = data.status ?? blocked?.status
+  const text = modelFailureLine(name, data.code, status, data.message, { privateChat: true })
+    ?? failureText(data.code, { name, provider: providerName(roster, provider), status })
   const facts = failureFacts(data, blocked)
   const current = bot !== undefined && currentPart(bot) === sessionId && !later
   // The key route never takes the account's credential, so a sign-in alone leaves the Bot
@@ -238,7 +242,7 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
     const toggles = keyHere && (fix === 'key' || fix === 'rekey')
     return h('button', { key: fix, type: 'button', className, 'aria-expanded': toggles ? keying : undefined, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn))
   }
-  const retryButton = primary => h('button', { key: 'retry', type: 'button', className: primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm', disabled: retry !== 'idle', onClick: resume }, retry === 'idle' ? t('Retry') : t('Retrying…'))
+  const retryButton = primary => h('button', { key: 'retry', type: 'button', className: primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm', disabled: retry !== 'idle', onClick: resume }, retry === 'idle' ? t('Retry') : retry === 'sent' ? t('Sent') : t('Retrying…'))
   const row = retryFirst
     ? [retryButton(true), ...fixes.map(fix => button(fix, false))]
     : [...fixes.map((fix, index) => button(fix, index === 0)), retrying ? retryButton(false) : null]

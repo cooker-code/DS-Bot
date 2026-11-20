@@ -1,12 +1,21 @@
+import { groupDiscussions, setDiscussionArchive } from './group-archive.js'
+import { taskErrors, taskError, taskManagementEnabled } from '../shared/task-settings.js'
+import { memberSettings } from './team-storage/member-settings.js'
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
+import { isIntakeReceipt, taskCaption, taskMessage } from '../shared/task-message.js'
+import { branchReport, selectTaskWorkspace, taskWorkspaceChoices, setProjectWorkspacePolicy, workspaceDecisions, workspaceSummary } from './project-branches.js'
+import { decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText } from './project-tasks.js'
+import { readTaskReference } from './task-reference.js'
+import { deleteBoardTasks } from './tasks.js'
+import { fileDownload } from './file-download.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
-import { threadCurrentOfPart } from './threads.js'
+import { threadCurrentOfPart, threadOf } from './threads.js'
 import { validateViewAnswer } from 'deep-view/core'
-import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
+import { COLORS, EXTRA_COLORS, HISTORY_TIMEOUT_MS, ROUTE } from './constants.js'
 
 const STAGED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const STAGED_MS = 30 * 60_000
@@ -35,7 +44,14 @@ const MEMORY_LIMIT_SCOPES = new Set(['group', 'bot', 'team'])
 const MEMORY_LIMIT_MIN = 1_000
 const MEMORY_LIMIT_MAX = 200_000
 
+function roomTaskSummaries(room) {
+  return Object.entries(room.projectCards ?? {}).map(([taskId, card]) => ({
+    ...projectCardSummary(card, taskId), workspace: workspaceSummary(card, room), intakes: card.intakes,
+  }))
+}
+
 export function errorCode(error) {
+  if (Object.hasOwn(taskErrors, error?.code)) return error.code
   if (typeof error?.code === 'string' && error.code.startsWith('bot/')) return error.code
   return isInternal(error) ? 'bot/internal' : 'bot/refused'
 }
@@ -69,7 +85,7 @@ export function install(rt) {
     // `sessionId` is the Bot's current own-chat part; `parts` its earlier ones.
     // `waiting`: the Bot holds its greeting until the user picks its model or fixes
     // what failed it. `blocked`: the facts of a failure only the user can fix (turns.js).
-    bots: Object.values(state.bots).map(({ segments, kickoff, openParts, ...bot }) => {
+    bots: Object.values(state.bots).map(({ segments, kickoff, openParts, removedSessions: _removedSessions, ...bot }) => {
       const tail = rt.chatTail(rt.chatOf(bot.id))
       // `openParts` are the parts opened while the Bot was busy: live, with their own
       // earlier parts, and each one's run state read from the live turns.
@@ -79,7 +95,10 @@ export function install(rt) {
         parts: (part.segments ?? []).map(segment => segment.sessionId),
       }))
       return {
-        ...bot, sessionId: rt.chatOf(bot.id), parts: (segments ?? []).map(segment => segment.sessionId),
+        ...bot, sessionId: rt.chatOf(bot.id),
+        partTimes: Object.fromEntries([...(segments ?? []), ...(openParts ?? []).flatMap(part => part.segments ?? [])]
+          .map(segment => [segment.sessionId, segment.endedAt])),
+        parts: (segments ?? []).map(segment => segment.sessionId),
         ...(open.length > 0 ? { openParts: open } : {}), ...(kickoff ? { waiting: true } : {}),
         // `engine` is the Bot's local-agent route, present only on abots.
         ...(rt.localAgentBadge?.(bot.model ?? bot.appliedModel) !== undefined ? { engine: rt.localAgentBadge(bot.model ?? bot.appliedModel) } : {}),
@@ -89,10 +108,17 @@ export function install(rt) {
     // `sessionId` is the group's own Session's current part, `ownParts` its earlier
     // ones; `parts` the members' hidden group Sessions and their earlier segments,
     // for usage.
-    rooms: Object.values(state.rooms).map(({ log, seen, paused, sessions, segments, parts: ownParts, ...room }) => {
+    rooms: Object.values(state.rooms).map(original => {
+      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId), ...(ownParts ?? []).map(segment => segment.sessionId)]
-      const last = (log ?? []).filter(line => line.kind === undefined).at(-1)
-      return { ...room, sessionId: rt.sessionOfRoom(room), ownParts: (ownParts ?? []).map(segment => segment.sessionId), parts, ...(last ? { lastAt: last.time, preview: last.who === 'User' ? last.text : `${last.who}：${last.text}` } : {}) }
+      const last = (log ?? []).findLast(line => line.kind === undefined && !isIntakeReceipt(line))
+      const preview = last && taskCaption(taskMessage(last.text, original))
+      const cards = projectCards && roomTaskSummaries(original)
+      const memberSessions = Object.fromEntries(room.members.map(id => [id, [
+        ...(segments?.[id] ?? []).map(({ sessionId, startedAt, endedAt }, i) => ({ id: sessionId, number: i + 1, startedAt, at: endedAt })),
+        ...(sessions?.[id] ? [{ id: sessions[id], number: (segments?.[id]?.length ?? 0) + 1, current: true }] : []),
+      ]]).filter(([, entries]) => entries.length))
+      return { ...room, memberSessions, ...(projectInbox ? { pendingIntakes: pendingIntakes(original) } : {}), memberSettings: memberSettings(original), ...(cards ? { projectCards: cards } : {}), sessionId: rt.sessionOfRoom(room), ownParts: (ownParts ?? []).map(segment => segment.sessionId), parts, ...(last ? { lastAt: last.time, preview: last.who === 'User' ? preview : `${last.who}：${preview}` } : {}) }
     }),
     // Deleted private Bots whose folder, memory and chats stay closed to the others.
     privateArchives: rt.archivesView(),
@@ -147,10 +173,10 @@ export function install(rt) {
     secretStore: rt.secretStoreStatus(),
     secrets: rt.secretsView(),
     activity: rt.activityView(),
-    // Which of a Bot's own chat parts has a turn right now, current or background:
+    // Which private and group member sessions have a turn right now:
     // the session list's Running mark reads this, not a guess from the transcript.
     partsRunning: Object.fromEntries(Object.values(state.bots)
-      .flatMap(bot => [rt.chatOf(bot.id), ...(bot.openParts ?? []).map(part => part.sessionId)])
+      .flatMap(bot => [rt.chatOf(bot.id), ...(bot.openParts ?? []).map(part => part.sessionId), ...rt.groupSessionsOf(bot.id)])
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
       .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined)
       .map(sessionId => [sessionId, true])),
@@ -161,7 +187,6 @@ export function install(rt) {
     learningSettled: rt.learningSettledView(),
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
-    phone: rt.phoneView(),
     imStatus: rt.imStatusView?.() ?? {},
     imVia: rt.imViaView?.() ?? {},
     // Why this host cannot write the team, or null. It changes without a save — the
@@ -192,7 +217,7 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'session-times', 'run-stats', 'room-context', 'group-discussions', 'room-progress', 'task-reference', 'project-task-list', 'project-task-detail', 'project-branches', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
 
   async function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -275,9 +300,7 @@ export function install(rt) {
             if (body.live === answer.key) return ok({ revision: state.revision, unchanged: true, liveKey: answer.key })
             return ok({ revision: state.revision, unchanged: true, liveKey: answer.key, ...answer.value })
           }
-          // A phone asks for photos by reference and fetches each once (`avatar`).
-          const out = { ...view(), liveKey: answer.key, ...answer.value }
-          return ok(body.avatars === 'ref' ? rt.slimAvatars(out) : out)
+          return ok({ ...view(), liveKey: answer.key, ...answer.value })
         }
         case 'models':
           await rt.catalog({ fresh: true })
@@ -339,8 +362,40 @@ export function install(rt) {
         case 'chat':
           await rt.load()
           return ok(await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined, body.steps === true))
-        // DSH's own whole-log figures for the current part of a Bot's chat, the ones its
-        // status bar shows; a window without that bar shows them in the Bot's details.
+        case 'session-times': {
+          await rt.load()
+          const bot = rt.botOf(body.botId)
+          if (!bot || !Array.isArray(body.ids)) return fail('Choose a Bot and its sessions.', 'bot/invalid')
+          const ids = [...new Set(body.ids)].filter(id => rt.selfOf(id) === bot.id)
+          const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
+          const list = await ctx.sessionController.list({}, signal).catch(() => undefined)
+          const times = new Map(list?.items.map(row => [row.sessionId, row.updatedAt]))
+          const persistence = ctx.get?.('sessionPersistence')
+          return ok(Object.fromEntries(await Promise.all(ids.map(async id => {
+            const header = ctx.sessions.get?.(id)?.header ?? (await persistence?.stat(id, { signal }).catch(() => undefined))?.header
+            let updatedAt = times.get(id)
+            if (updatedAt === undefined) {
+              // A session omitted from the shell list can still have archived messages.
+              const page = await ctx.sessionController.page({ address: { kind: 'session', sessionId: id }, maxMessages: 1 }, signal).catch(() => undefined)
+              updatedAt = page?.records.findLast(({ event }) => ['user/message', 'assistant/message', 'tool/result', 'turn/end'].includes(event.type))?.event.time
+            }
+            return [id, { createdAt: header?.createdAt, updatedAt }]
+          }))))
+        }
+        case 'room-context': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) return fail('Unknown group chat', 'bot/not-found')
+          return ok(Object.fromEntries(await Promise.all(room.members.map(async id =>
+            [id, await rt.memberContext(room, id).catch(() => ({}))]))))
+        }
+        case 'member-summary': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) return fail('Unknown group chat', 'bot/not-found')
+          await rt.requestMemberSummary(room, body.botId, body.sessionId)
+          return ok(true)
+        }
         case 'run-stats': {
           await rt.load()
           const bot = rt.botOf(String(body.botId ?? ''))
@@ -353,6 +408,120 @@ export function install(rt) {
         case 'usage':
           await rt.load()
           return ok(await rt.usageView({ timeZone: typeof body.timeZone === 'string' ? body.timeZone.slice(0, 64) : undefined }))
+        case 'project-acceptance':
+          await rt.load()
+          return ok(await decideAcceptance(rt, rt.roomOf(body.roomId), body))
+        case 'set-project-workspace-policy':
+          await rt.load()
+          return ok(await setProjectWorkspacePolicy(rt, body.roomId, body.policy))
+        case 'project-branches': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) return fail('Unknown group chat', 'bot/not-found')
+          return ok(branchReport(room, body.repository))
+        }
+        case 'task-reference': {
+          await rt.load()
+          const task = readTaskReference(rt, body)
+          return task ? ok(task) : fail('No such task', 'bot/not-found')
+        }
+        case 'project-task-list': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room) })
+        }
+        case 'set-task-node-constraint': {
+          await rt.load()
+          const { field, value, version, node } = body
+          if (!['fixedOwner', 'independentReview'].includes(field) || typeof value !== 'boolean' ||
+              !Number.isSafeInteger(version) || !Number.isSafeInteger(node)) return fail('Invalid task edit.', 'bot/invalid')
+          await rt.save({ required: true, mutate() {
+            const room = rt.roomOf(body.roomId)
+            if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+            if (!taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+            const card = rt.own(room.projectCards, body.taskId)
+            const plan = card?.plans?.at(-1)
+            const selected = plan?.nodes[node - 1]
+            if (!selected || selected.no !== node || plan.version !== version) throw new Error('The plan changed. Reopen the task.')
+            if (Boolean(selected[field]) === value) return
+            if (card.rounds.length || card.humanReview) throw new Error('Revise the plan to change constraints after dispatch.')
+            const nodes = plan.nodes.map(n => ({ ...n }))
+            if (value) nodes[node - 1][field] = 1
+            else delete nodes[node - 1][field]
+            const revised = { ...plan, version: version + 1, by: 'user', at: Date.now(), reason: 'User updated a task constraint.', nodes }
+            const previous = card.plans
+            card.plans = [...previous, revised]
+            return () => { card.plans = previous }
+          } })
+          return ok(true)
+        }
+        case 'set-task-human-acceptance': {
+          await rt.load()
+          const required = body.required
+          if (typeof required !== 'boolean') return fail('Invalid task edit.', 'bot/invalid')
+          await rt.save({ required: true, mutate() {
+            const room = rt.roomOf(body.roomId)
+            if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+            if (!taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+            const card = rt.own(room.projectCards, body.taskId)
+            if (!card) throw Object.assign(new Error('No such task'), { code: 'bot/not-found' })
+            if (!card.plans || card.humanReview || projectCardSummary(card).status === 'done') throw new Error('This task cannot change its acceptance setting.')
+            const previous = card.humanAcceptanceRequired
+            card.humanAcceptanceRequired = required
+            return () => { if (previous === undefined) delete card.humanAcceptanceRequired; else card.humanAcceptanceRequired = previous }
+          } })
+          return ok(required)
+        }
+        case 'continue-project-task': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+          if (!taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+          if (!Object.hasOwn(room.projectCards ?? {}, body.taskId)) return fail('No such task', 'bot/not-found')
+          const text = typeof body.text === 'string' && body.text.trim()
+          if (!text || typeof body.requestId !== 'string' || !body.requestId || body.requestId.length > 200) return fail('Invalid task reply.', 'bot/invalid')
+          const key = rt.requestIdentity({ caller: 'user', context: 'continue-task:' + room.id, name: body.requestId, payload: { taskId: body.taskId, text } })
+          const outcome = await rt.admitRequest(key, async () => {
+            const agent = await rt.resolveAgent(rt.sessionOfRoom(room))
+            if (!taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+            agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user', taskId: body.taskId, continueTask: true, rpcId: body.requestId } }))
+            await ctx.sessions.flush(agent.session)
+            return true
+          })
+          if (!['sent', 'replay'].includes(outcome.status)) return fail('Check the group before resending this reply.', 'bot/refused')
+          return ok(true)
+        }
+        case 'project-task-detail': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+          const cards = room.projectCards ?? {}
+          if (typeof body.taskId !== 'string' || !Object.hasOwn(cards, body.taskId)) return fail('No such task', 'bot/not-found')
+          if (typeof body.imageId === 'string') return ok(await readProjectImage(rt, room, cards[body.taskId], body.taskId, body.imageId, signal))
+          if (body.workspaceChoices === true) return ok(await taskWorkspaceChoices(rt, room.id, body.taskId))
+          if (body.workspaceOnly === true) return ok(workspaceDecisions(cards[body.taskId]))
+          return ok(projectCardDetail(rt, room, cards[body.taskId], body.taskId, body.textOnly === true))
+        }
+        case 'select-task-workspace':
+          await rt.load()
+          return ok(await selectTaskWorkspace(rt, body))
+        case 'update-project-task-text': {
+          await rt.load()
+          const ids = body.addImages ?? []
+          if (!Array.isArray(ids)) return fail('Invalid task edit.', 'bot/invalid')
+          const entries = ids.map(id => staged.get(id))
+          if (entries.some(entry => !entry)) return fail('A photo did not arrive. Send it again.', 'bot/stale')
+          const result = await updateProjectTaskText(rt, body, async () => {
+            const refs = []
+            for (const entry of entries) refs.push(await ctx.get('attachments').saveImage({
+              mediaType: entry.mediaType, data: Buffer.from(entry.data, 'base64'), name: entry.name,
+            }))
+            return refs
+          })
+          for (const id of ids) staged.delete(id)
+          return ok(result)
+        }
         case 'room-progress': {
           // Any part id of the group's own Session means the group itself.
           const room = rt.roomOf(body.roomId) ?? rt.roomOf(rt.pastOwners.get(body.roomId)?.roomId)
@@ -360,21 +529,26 @@ export function install(rt) {
         }
         // Search a group's messages, newest first, each hit with its neighbours.
         // `before` (a seq) or `offset` continues into older hits.
+        case 'group-discussions':
+        case 'archive-discussions': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room) return fail('Unknown group chat', 'bot/not-found')
+          return ok(endpoint === 'group-discussions'
+            ? await groupDiscussions(ctx, rt, room, signal, body.detail)
+            : await setDiscussionArchive(ctx, rt, room, body, signal))
+        }
         case 'group-search': {
           await rt.load()
           const room = rt.roomOf(body.roomId) ?? rt.roomOf(rt.pastOwners.get(body.roomId)?.roomId)
           if (room === undefined) return fail('Unknown group chat', 'bot/not-found')
           return ok(rt.groupSearch(room.id, body.query, { before: body.before, offset: body.offset }))
         }
-        // The rows a settled round of a group chat shows, from its book.
         // Whether a turn's change review can still be opened: the Host serves a turn's
         // summary until its Session is disposed.
-        case 'changes-summary':
-          return ok(rt.changesSummary(String(body.sessionId ?? ''), Number(body.seq)))
-        case 'changes-diff':
-          return ok(await rt.changesDiff(String(body.sessionId ?? ''), Number(body.seq), body.index, signal))
         case 'changes-check':
           return ok(rt.changesAvailable?.(String(body.sessionId ?? ''), Number(body.seq)) === true)
+        // The rows a settled round of a group chat shows, from its book.
         case 'group-rows': {
           await rt.load()
           const room = rt.roomOf(body.roomId) ?? rt.roomOf(rt.pastOwners.get(body.roomId)?.roomId)
@@ -406,7 +580,11 @@ export function install(rt) {
           await rt.load()
           const bot = rt.botOf(String(body.botId ?? ''))
           if (bot === undefined) return fail('Unknown Bot', 'bot/not-found')
-          await rt.resumeBot(bot)
+          if (body.target !== undefined && (!body.target || typeof body.target.taskId !== 'string' ||
+            typeof body.target.roomId !== 'string' || !Number.isSafeInteger(body.target.round) || !Number.isFinite(body.target.failedAt))) {
+            return fail('Invalid project retry', 'bot/invalid')
+          }
+          await rt.resumeBot(bot, body.target)
           return ok(true)
         }
         // The avatar library: photos the user imported once, kept beside the team.
@@ -442,9 +620,16 @@ export function install(rt) {
         }
         case 'update-room': {
           await rt.load()
+          if (body.memberSetting !== undefined) {
+            await rt.updateRoomMember(body.id, body.memberSetting)
+            return ok({ room: view().rooms.find(r => r.id === body.id), changes: [] })
+          }
           const { room, changes } = await rt.updateRoom(body.id, {
             name: body.name,
             notice: body.notice,
+            contextPolicy: body.contextPolicy,
+            projectAssistantId: body.projectAssistantId,
+            taskManagementEnabled: body.taskManagementEnabled,
             mode: body.mode,
             admin: body.admin,
             members: Array.isArray(body.members) ? body.members : undefined,
@@ -547,7 +732,12 @@ export function install(rt) {
           const result = await rt.goalControl(String(body.roomId ?? ''), body)
           return result.error !== undefined ? fail(result.error, result.code ?? 'bot/refused') : ok(view())
         }
-        // The task board's two panel actions. A note the user adds is kept on the task
+        case 'task-delete': {
+          await rt.load()
+          await rt.save({ required: true, mutate: () => deleteBoardTasks(rt.roomOf(body.roomId), body.items) })
+          return ok(true)
+        }
+        // A note the user adds is kept on the task
         // and posted into the group as the user's own message that calls its owner, so
         // the Bot acts on it where the work runs, as if the user had typed it there.
         case 'task-note': {
@@ -573,7 +763,7 @@ export function install(rt) {
           return ok(view())
         }
         case 'stop-chat':
-          return ok(await rt.stopChat(String(body.botId ?? '')))
+          return ok(await rt.stopChat(String(body.botId ?? ''), body.sessionId))
         case 'dismiss-question':
           await rt.load()
           if (rt.own(state.questions, body.sessionId) !== undefined) {
@@ -620,11 +810,7 @@ export function install(rt) {
         case 'mail-sign-in-code':
           await rt.load()
           return ok(await rt.connectorEndpoint(endpoint, body))
-        case 'phone-set':
-        case 'phone-pair':
-        case 'phone-pair-cancel':
-        case 'phone-remove':
-          return ok(await rt.phoneEndpoint(endpoint, body))
+        case 'capability-import':
         case 'capability-save':
         case 'capability-delete':
         case 'capability-approve':
@@ -650,19 +836,9 @@ export function install(rt) {
         case 'learning-answer':
           await rt.load()
           return ok(await rt.learningEndpoint(endpoint, body))
-        // The mobile API (mobile.js).
-        case 'hello':
-        case 'notices':
-        case 'avatar':
-        case 'room-chat':
-        case 'image':
         case 'file-download':
-        case 'markdown-image':
-        case 'usage-summary':
-        case 'memory-edit':
-        case 'memory-add':
           await rt.load()
-          return ok(await rt.mobileEndpoint(endpoint, body))
+          return ok(await fileDownload(rt, body))
         case 'answer-question': {
           if (typeof body.sessionId !== 'string') return fail('Nothing to send', 'bot/invalid')
           await rt.load()
@@ -692,8 +868,7 @@ export function install(rt) {
           await rt.save()
           return ok(true)
         }
-        // A photo for the next `send`, one per call: a phone's link carries a few MB per
-        // message, so photos travel one by one and the message names them.
+        // Upload each photo separately. The message references its staged images in order.
         case 'stage-image': {
           const mediaType = String(body.mediaType ?? '')
           const data = typeof body.data === 'string' ? body.data : ''
@@ -701,7 +876,7 @@ export function install(rt) {
           const now = Date.now()
           for (const [id, entry] of staged) if (entry.at < now - STAGED_MS) staged.delete(id)
           const id = randomUUID()
-          staged.set(id, { mediaType, data, at: now })
+          staged.set(id, { mediaType, data, at: now, ...(typeof body.name === 'string' && { name: body.name }) })
           return ok({ id })
         }
         case 'send': {
@@ -761,12 +936,6 @@ export function install(rt) {
           return ok(rt.dshUpdateStart?.())
         case 'repo-stars':
           return ok(await rt.repoStars())
-        case 'browser-frame': {
-          if (rt.browserFrame === undefined && rt.browserChannel === undefined) return fail('Bot browsers are off on this host', 'bot/browser-off')
-          const frame = typeof rt.browserFrame === 'function' ? await rt.browserFrame(String(body.botId ?? '')) : undefined
-          if (frame === undefined) return fail('This Bot has no open browser', 'bot/not-found')
-          return ok(frame)
-        }
         // The Desktop window's long poll for read_browser, and its answers.
         case 'browser-wait': {
           if (rt.browserChannel === undefined) return fail('Bot browsers are off on this host', 'bot/browser-off')
@@ -860,13 +1029,37 @@ export function install(rt) {
           await rt.load()
           const bot = rt.botOf(String(body.botId ?? ''))
           if (bot === undefined) return fail('Unknown Bot', 'bot/not-found')
-          return ok(await rt.newPart(rt.chatOf(bot.id)))
+          if (body.roomId === undefined) return ok(await rt.editSessionList(bot.id, () => rt.newPart(rt.chatOf(bot.id))))
+          const room = rt.roomOf(String(body.roomId))
+          const member = room?.members.includes(bot.id) ? room.sessions?.[bot.id] : undefined
+          if (member === undefined) return fail('Not a member of that group', 'bot/invalid')
+          return ok(await rt.newPart(member))
+        }
+        case 'bot-private-workspace': {
+          await rt.load()
+          const bot = rt.botOf(body.botId)
+          const id = body.sessionId
+          if (!threadOf(bot, id)) return fail('Choose a private Bot session.', 'bot/invalid')
+          const session = ctx.sessions.get?.(id) ?? (await rt.resolveAgent(id)).session
+          const path = session.header.cwd
+          if (!path || !(await rt.isFolder(path))) return fail('The working folder is no longer available.', 'bot/not-found')
+          // DSH validates membership against the immutable Session header. Attaching the
+          // existing id also preserves its model, history and any other open private chats.
+          const workspace = await ctx.workspaceRegistry.create(path)
+          await workspace.attachSession(id)
+          return ok(true)
         }
         case 'bot-open-part': {
           await rt.load()
           const bot = rt.botOf(String(body.botId ?? ''))
           if (bot === undefined) return fail('Unknown Bot', 'bot/not-found')
-          return ok(await rt.switchPart(bot.id, String(body.sessionId ?? '')))
+          return ok(await rt.editSessionList(bot.id, () => rt.switchPart(bot.id, String(body.sessionId ?? ''))))
+        }
+        case 'bot-delete-parts': {
+          await rt.load()
+          const bot = rt.botOf(String(body.botId ?? ''))
+          if (!bot) return fail('Unknown Bot', 'bot/not-found')
+          return ok(await rt.editSessionList(bot.id, () => rt.deleteParts(bot, body.sessionIds)))
         }
         case 'diagnostics':
           await rt.load()
@@ -892,7 +1085,6 @@ export function install(rt) {
   }
 
   rt.channelCall = handle
-  rt.phoneServe(handle)
 
   // How a user message reaches a Session: a Bot id, a group chat's id, or an earlier
   // part of either resolves to its current part. `content` is the prompt blocks DSH
@@ -931,7 +1123,7 @@ export function install(rt) {
     try {
       await rt.ensureCapabilities(sessionId)
       const agent = await rt.resolveAgent(sessionId)
-      agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: { ...reply.source, ...(requestId === undefined ? {} : { rpcId: requestId }) } }))
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: { ...reply.source, ...(question.projectSource ? { projectQuestion: question.question, projectSource: question.projectSource } : {}), ...(requestId === undefined ? {} : { rpcId: requestId }) } }))
       await ctx.sessions.flush(agent.session)
     } catch (error) {
       state.questions[sessionId] ??= question

@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam, seedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
 import { setTimeout as realDelay } from 'node:timers/promises'
 import { createRuntime } from '../index.js'
@@ -17,7 +18,7 @@ const seed = () => ({
     a: { id: 'a', name: 'Chief', role: 'Boss', sessionId: 'a', createdAt: 1 },
     b: { id: 'b', name: 'Writer', role: 'Write', sessionId: 'b', createdAt: 2 },
   },
-  rooms: { r1: { id: 'r1', name: 'Ops', members: ['a', 'b'], mode: 'admin', admin: 'b', named: true, sessions: { b: 'gb' }, log: [], seq: 0, seen: {} } },
+  rooms: { r1: { id: 'r1', taskManagementEnabled: false, name: 'Ops', members: ['a', 'b'], mode: 'admin', admin: 'b', named: true, sessions: { b: 'gb' }, log: [], seq: 0, seen: {} } },
   agents: {},
   exchanges: [],
   exchangeTurns: {},
@@ -81,7 +82,7 @@ async function start(home, logs, inspect) {
 
 const freshHome = (t, state = seed()) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-follow-'))
-  writeFileSync(join(home, 'state.json'), JSON.stringify(state))
+  seedTeam(home, state)
   t.after(async () => {
     await Promise.all((started.get(home) ?? []).map(host => host.stop()))
     started.delete(home)
@@ -89,9 +90,7 @@ const freshHome = (t, state = seed()) => {
   })
   return home
 }
-const stateOf = home => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-// The team file is written in the background, and Windows may hold it busy for a
-// moment: the retry waits on the clock, which the tests mock.
+const stateOf = home => savedTeam(home)
 const settleState = async (t, home, check) => {
   const deadline = performance.now() + 3000
   while (!check() && performance.now() < deadline) {
@@ -166,7 +165,7 @@ test('a group turn cut off by a restart is picked up once, and the group is told
   second.emit('r1', 'user/message', { content: post.content, source: post.source })
   const relay = await afterRound(rt, 'r1', await second.tool('group_relay', {}, 'r1', { callId: 'c2', signal: new AbortController().signal }))
   assert.deepEqual(relay.replies.map(reply => [reply.kind, reply.name]), [['resumed', 'Writer']])
-  const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = savedTeam(home)
   assert.equal(state.rooms.r1.log.at(-1).kind, 'resumed')
 
   // Cut off again while picking it up: the group hears it, and the turn stays stopped.
@@ -198,7 +197,7 @@ test('a request cut off by a restart goes on under the same exchange; own-chat w
   const own = second.agentOf('a').calls[0]
   assert.deepEqual([own.source.role, own.source.resumed], ['resume', true])
   assert.match(text(own), /^\[DeepSeek Harness restarted while you were working\]/)
-  const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = savedTeam(home)
   assert.equal(state.exchanges.length, 0)
 })
 
@@ -416,7 +415,7 @@ test('a turn that ended on the token limit gives what it said, marked as not com
   await settleState(t, home, () => stateOf(home).works?.[exchangeId] === undefined)
   assert.equal(second.agentOf('b').calls.length, 0)
   // The diagnostics name the route, so a wrong contextWindow can be found from them.
-  const entries = await readDiagnostics(home)
+  const entries = await readDiagnostics(home, rows => rows.some(entry => entry.code === 'MAX_TOKENS'))
   const cutOff = entries.filter(entry => entry.code === 'MAX_TOKENS')
   assert.equal(cutOff.length, 1)
   assert.match(cutOff[0].text, /answer is not complete \(gateway\/step-5\)/)
@@ -444,7 +443,7 @@ test('a turn cut off on the token limit without any text is not reported as fini
   assert.doesNotMatch(text(reply), /finished without a reply/)
   await settleState(t, home, () => stateOf(home).works?.[exchangeId] === undefined)
   assert.equal(second.agentOf('b').calls.length, 0)
-  const entries = await readDiagnostics(home)
+  const entries = await readDiagnostics(home, rows => rows.some(entry => entry.code === 'MAX_TOKENS'))
   const cutOff = entries.filter(entry => entry.code === 'MAX_TOKENS')
   assert.equal(cutOff.length, 1)
   assert.match(cutOff[0].text, /cut off at the output limit before it wrote anything/)

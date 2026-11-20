@@ -5,7 +5,7 @@ import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
 import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon, ChevronRightIcon, DotsIcon, FolderIcon } from './icons.js'
-import { lookOf, MAIN_LOOK } from './characters.js'
+import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
 import { reducedMotion } from './activity-row.js'
@@ -14,7 +14,6 @@ import { SPRING_GLIDE, SPRING_POP, SPRING_SHAPE, SPRING_TAP, stepMenuFocus, useL
 import { hostText, t } from './i18n.js'
 import { clientErrors } from './diagnostics.js'
 import { showsDshRow } from './dsh-offer.js'
-import { quietly } from './diagnostics.js'
 import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
 import { chatRoom, dshCollapsed } from './frame-watch.js'
 
@@ -456,17 +455,12 @@ function LeftColumn({ mode, width, onGrip, leaving, children }) {
     h('div', { className: 'bt-leftcol-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize sidebar'), title: t('Resize sidebar'), onPointerDown: onGrip })), document.body)
 }
 
-// The top-left switch hides the whole column and brings it back. Under a
-// Windows title bar it takes the shell's own place in the title band; elsewhere
-// it shows only while the column is hidden, since the column's own top row
-// carries it otherwise.
 function TitleToggle({ hidden, onToggle }) {
   if (typeof document === 'undefined') return null
-  const titlebar = document.documentElement.hasAttribute('data-windows-titlebar')
-  if (!titlebar && !hidden) return null
-  const label = t(hidden ? 'Expand sidebar' : 'Collapse sidebar')
+  if (!hidden) return null
+  const label = t('Expand sidebar')
   return createPortal(h('button', {
-    type: 'button', className: titlebar ? 'bt-title-toggle' : 'bt-round bt-title-toggle', 'aria-label': label, title: label, onClick: onToggle,
+    type: 'button', className: 'bt-round bt-title-toggle', 'aria-label': label, title: label, onClick: onToggle,
   }, h(SidebarIcon)), document.body)
 }
 
@@ -544,7 +538,6 @@ export function TeamSidebar(props) {
   )
   useListGlide(listRef, wideContent, glideKey)
   useLandOnMainBot(roster, useSessions, actions)
-  useReportReady(roster.ready, roster)
   const [dragId, setDragId] = useState(null)
   const [dropTarget, setDropTarget] = useState(null)
   const onDragStart = (event, id) => {
@@ -1078,106 +1071,6 @@ export function AccountLauncher({ seat = true, settingsOpen, actions }) {
           }, h(Icon), h('span', { className: 'bt-menu-label' }, label), hint ? h('span', { className: 'bt-menu-hint' }, hint) : null))))), document.body) : null)
 }
 
-// The desktop app keeps its main window hidden until the team interface has drawn
-// the first state, and shows its failure page when that never comes. The report
-// says where the Main Bot's avatar is when it wears the start window's whale: the
-// start window hands that whale over at the top of its jump, and it glides onto
-// the avatar here.
-let readyReported = false
-function useReportReady(drawn, roster) {
-  useEffect(() => {
-    if (!drawn || readyReported) return
-    readyReported = true
-    void Promise.resolve().then(() => {
-      const app = globalThis.dsBotApp
-      if (typeof app?.ready !== 'function') return undefined
-      // The place is a nicety: whatever goes wrong measuring it, the report still goes.
-      let place
-      try { place = mainAvatarPlace(roster) } catch { place = undefined }
-      if (place === undefined) return app.ready()
-      const mainId = roster.mainBotId
-      app.onHandoff?.((from) => { try { glideOnto(mainMarkOf(mainId), from) } catch (error) { quietly('handoff')(error) } })
-      return app.ready(place)
-    }).catch(quietly('app ready'))
-  }, [drawn])
-}
-
-function mainMarkOf(id) {
-  if (typeof document === 'undefined') return null
-  const key = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id
-  return document.querySelector(`.bt-side [data-bot-id="${key}"] .bt-mark`)
-}
-
-// The Main Bot's avatar in the team column, in CSS px of the page, with the page's size.
-// Only the default look: a photo or another character would not match the start window's whale.
-function mainAvatarPlace(roster) {
-  const main = roster?.byId?.[roster.mainBotId]
-  if (main === undefined || main.avatar?.image || typeof document === 'undefined') return undefined
-  const look = lookOf(main)
-  if (look.shape !== MAIN_LOOK.shape || look.color !== MAIN_LOOK.color) return undefined
-  const mark = mainMarkOf(main.id)
-  // Not the opacity: the column fades in as it first draws, which is when this is measured.
-  if (!mark || mark.checkVisibility?.({ visibilityProperty: true }) === false) return undefined
-  const box = restingBox(mark)
-  const view = document.documentElement
-  return { x: box.left, y: box.top, width: box.width, height: box.height, viewportWidth: globalThis.innerWidth ?? view.clientWidth, viewportHeight: globalThis.innerHeight ?? view.clientHeight }
-}
-
-// The avatar's box where the team column comes to rest. The column also slides in as it first
-// draws (bt-leftcol-in, from off the left edge), and measured mid-slide the avatar would be
-// outside the page and the whale would have nowhere to land; offsetLeft and offsetTop leave the
-// slide's transform out.
-function restingBox(mark) {
-  const box = mark.getBoundingClientRect()
-  const column = mark.closest?.('.bt-leftcol')
-  if (!column) return box
-  const now = column.getBoundingClientRect()
-  const dx = column.offsetLeft - now.left
-  const dy = column.offsetTop - now.top
-  return { left: box.left + dx, top: box.top + dy, width: box.width, height: box.height }
-}
-
-// The whale the start window hands over (app/src/start-window.mjs): `from` is where it is on
-// this page at the top of its jump. A copy of the avatar waits there for `hold` ms, while the two
-// windows cross-fade, then glides onto the avatar in one compositor animation, so the jump does
-// not stutter the way a window that resizes under it would. x and y ease differently, so the path
-// bows upward; the avatar itself is hidden until the copy is on it, then gives a small bounce.
-// Hidden by opacity, not visibility: the copy draws through the avatar's own masks (same ids),
-// which a hidden avatar would stop drawing.
-const GLIDE_MS = 460
-function glideOnto(mark, from) {
-  if (!mark || reducedMotion()) return
-  const box = restingBox(mark)
-  if (!box.width) return
-  const outer = document.createElement('div')
-  const inner = document.createElement('div')
-  const copy = mark.cloneNode(true)
-  copy.removeAttribute('data-live')
-  Object.assign(outer.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, zIndex: '2147483647', pointerEvents: 'none' })
-  Object.assign(inner.style, { width: '100%', height: '100%', transformOrigin: '0 0' })
-  Object.assign(copy.style, { width: '100%', height: '100%' })
-  copy.style.setProperty('--bt-ink-deepseek', getComputedStyle(mark).getPropertyValue('--bt-ink-deepseek'))
-  inner.append(copy)
-  outer.append(inner)
-  outer.setAttribute('aria-hidden', 'true')
-  document.body.append(outer)
-  mark.style.opacity = '0'
-  const timing = { delay: Math.max(0, Number(from.hold) || 0), duration: GLIDE_MS, fill: 'both' }
-  outer.animate([{ transform: `translateX(${from.x - box.left}px)` }, { transform: 'none' }], { ...timing, easing: 'cubic-bezier(.45,0,.25,1)' })
-  const glide = inner.animate([{ transform: `translateY(${from.y - box.top}px) scale(${from.size / box.width})` }, { transform: 'none' }], { ...timing, easing: 'cubic-bezier(.2,.65,.3,1)' })
-  let landed = false
-  const land = () => {
-    if (landed) return
-    landed = true
-    outer.remove()
-    mark.style.opacity = ''
-    mark.animate([{ transform: 'scale(1.08, .92)' }, { transform: 'none' }], { duration: SPRING_POP.duration, easing: SPRING_POP.easing })
-  }
-  glide.finished.then(land, land)
-  // A hidden page stops ticking animations: the avatar comes back regardless.
-  setTimeout(land, timing.delay + GLIDE_MS + 500)
-}
-
 // Opens the Main Bot whenever the main view holds no Bot conversation, the way
 // The view always lands on a Bot rather than an empty New Session page.
 // When a Bot's chat moves on to a fresh part, the shell clears the view of the part
@@ -1233,11 +1126,8 @@ export function FooterAccount(props) {
 
 // The only entry registered in every mode: in Agent mode the whole Bot surface is
 // withdrawn, and this button in the shell's own footer is the way back.
-export function BotReturn({ wide, useSurface, useRoster, actions }) {
+export function BotReturn({ wide, useSurface, actions }) {
   const mode = useSurface(value => value.mode)
-  const ready = useRoster(value => value.ready)
-  // Agent mode draws no team sidebar; there this button is the team interface.
-  useReportReady(mode === 'agent' && ready)
   if (mode !== 'agent') return null
   const label = t('Back to DS Bot')
   return h('button', { type: 'button', className: 'bt-return', 'aria-label': label, title: label, onClick: () => actions.setSurface('bot') },

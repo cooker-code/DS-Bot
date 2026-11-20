@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -113,7 +114,7 @@ test('stdio MCP args resolve secret references like env does, and the child proc
   assert.deepEqual(mount.output.argv, mount.config.args.slice(1))
   assert.equal(mount.output.env.MCP_ENV, 'fake-region-125')
   // state.json and the views keep the references, never the resolved values.
-  const saved = readFileSync(join(env.home, 'state.json'), 'utf8')
+  const saved = JSON.stringify(savedTeam(env.home))
   assert.equal(saved.includes('fake-dummy-secret-125'), false)
   assert.equal(saved.includes('fake-region-125'), false)
   assert.equal(JSON.stringify(env.rt.capabilityLibraryView()).includes('fake-dummy-secret-125'), false)

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { SIDE_MARKER } from '../src/host/side.js'
 import { fakeContext } from './fake-ctx.js'
@@ -31,7 +32,7 @@ const team = (extra = {}) => ({
   },
   rooms: {
     r1: {
-      id: 'r1', named: true, name: 'Launch', members: ['b1'], admin: 'b1', mode: 'everyone', notice: '',
+      id: 'r1', taskManagementEnabled: true, named: true, name: 'Launch', members: ['b1'], admin: 'b1', mode: 'everyone', notice: '',
       sessions: { b1: 'g-now' }, segments: { b1: [{ sessionId: 'g-old', endedAt: 1 }] },
     },
   },
@@ -216,7 +217,7 @@ test('a new side chat persists an empty list of entries', async (t) => {
   const file = chatsFile(env.home)
   assert.equal(file.length, 1)
   assert.equal(file[0].id, chat.id)
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal('sideChats' in saved, false)
   const view = await env.call('state', {})
   assert.equal(view.ok, true)
@@ -494,7 +495,7 @@ test('a restart marks an entry that was still answering as failed', async (t) =>
   const file = chatsFile(env.home)
   assert.equal(file[0].entries[0].status, 'failed')
   assert.equal(file[0].entries[1].status, 'done')
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal('sideChats' in saved, false)
   assert.equal(saved.revision, 3)
 })
@@ -576,7 +577,7 @@ test('deleting a Bot aborts its flights and removes the chat file', async (t) =>
   assert.equal(env.rt.botOf('b2'), undefined)
   assert.equal(env.rt.sideView().b2, undefined)
   assert.equal(existsSync(join(env.home, 'side', 'b2.json')), false)
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal(saved.bots.b2, undefined)
   assert.equal(saved.bots.b1.id, 'b1')
 })

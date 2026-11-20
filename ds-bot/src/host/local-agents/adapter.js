@@ -149,6 +149,10 @@ export class LocalAgentAdapter extends LlmAdapter {
     let live = this.live.get(sessionId)
     const record = this.deps.record(sessionId)
     const route = options.provider
+    const spec = engineOf(route, this.deps.customAgents())
+    if (spec === undefined) throw new LlmError(`Unknown local agent ${route}`, 'LOCAL_AGENT_MISSING')
+    const skills = spec.kind === 'codex' ? this.deps.rt?.codexSkillsFor?.(sessionId) : undefined
+    const skillKey = skills?.length ? createHash('sha256').update(JSON.stringify(skills)).digest('hex') : undefined
     if (live !== undefined && !live.dead && live.route === route) {
       // An agent CLI can exit between the spawn and its first message (a failed
       // sign-in, for one): the cached bridge is dead, so the next call starts a
@@ -163,18 +167,19 @@ export class LocalAgentAdapter extends LlmAdapter {
       }
       // A CLI takes its model and permission mode when its session opens. Another
       // model or preset reopens the same CLI session as soon as no turn runs in it.
-      if ((live.model === options.model && live.preset === preset) || live.state !== 'idle') return live
+      if ((live.model === options.model && live.preset === preset && live.skillKey === skillKey) || live.state !== 'idle') return live
       await this.closeLive(live, { idle: true })
     } else if (live !== undefined) await this.closeLive(live)
-    const spec = engineOf(route, this.deps.customAgents())
-    if (spec === undefined) throw new LlmError(`Unknown local agent ${route}`, 'LOCAL_AGENT_MISSING')
-    const engine = this.engine(route)
+    // Resuming a Codex thread replays its old skill catalog into the model context.
+    // Keep the DS Bot conversation and replay its messages into a fresh native thread.
+    const history = spec.kind === 'codex' && record?.skillKey !== skillKey ? undefined : record
+    const engine = skillKey ? this.deps.spawnEngine(spec.kind, route, { ...spec, managedSkills: skills }) : this.engine(route)
     live = {
-      sessionId, route, spec, engine, dead: false,
+      sessionId, route, spec, engine, skillKey, dead: false,
       record,
-      cliSessionId: record?.cliSessionId,
-      handed: record?.handedId,
-      promptHash: record?.promptHash,
+      cliSessionId: history?.cliSessionId,
+      handed: history?.handedId,
+      promptHash: history?.promptHash,
       defaultEffort: record?.model === options.model ? record?.defaultEffort : undefined,
       effort: record?.effort,
       engineSession: undefined,
@@ -195,8 +200,8 @@ export class LocalAgentAdapter extends LlmAdapter {
       preset,
       // What the CLI reported of its own context ({used, size, stale}) and how often
       // it condensed in this Session; the parts module decides with them.
-      context: record?.context,
-      compactions: record?.compactions ?? 0,
+      context: history?.context,
+      compactions: history?.compactions ?? 0,
       // Output of a request DS Bot made for itself may trail its end (Devin's
       // "Context compacted"); until the next prompt, text, thoughts and activity drop.
       mute: false,
@@ -221,6 +226,7 @@ export class LocalAgentAdapter extends LlmAdapter {
   recordOf(live, extra = {}) {
     return {
       route: live.route,
+      ...(live.skillKey ? { skillKey: live.skillKey } : {}),
       cliSessionId: live.cliSessionId,
       cwd: live.cwd,
       handedId: live.handed,
@@ -388,7 +394,11 @@ export class LocalAgentAdapter extends LlmAdapter {
 
     // What the request carries past the last handed message. When the marker is
     // gone the CLI session is stale or new: it gets a replay instead of a delta.
-    const messages = options.messages ?? []
+    // Codex supplies its native catalog. The DSH catalog can include project
+    // copies that this Bot disabled, including old snapshots in the replay.
+    const messages = live.skillKey
+      ? (options.messages ?? []).filter(message => message.source?.kind !== 'skill-catalog')
+      : options.messages ?? []
     const at = live.handed === undefined ? -1 : messages.findIndex(message => message.id === live.handed)
     const fresh = live.handed === undefined || at === -1
     const delta = fresh ? [] : messages.slice(at + 1)
@@ -459,8 +469,12 @@ export class LocalAgentAdapter extends LlmAdapter {
         instructions: live.spec.kind === 'codex' && freshCli ? instructions : undefined,
         system: live.spec.kind === 'claude' ? instructions : undefined,
       }
-      live.engineSession = await live.engine.open(sessionId, openArgs)
-        .catch(error => { throw toLlmError(error, live) })
+      try {
+        live.engineSession = await live.engine.open(sessionId, openArgs)
+      } catch (error) {
+        await this.closeLive(live)
+        throw toLlmError(error, live)
+      }
       // A resumed CLI reports its id only with `system/init`: keep the saved one
       // in the meantime, or a resume that fails would erase it.
       const reportedId = live.engineSession.acpSessionId ?? live.engineSession.threadId ?? live.engineSession.cliSessionId
@@ -849,13 +863,20 @@ export class LocalAgentAdapter extends LlmAdapter {
   // Session has no process for is opened for it and let go of after, so the next turn
   // opens it again with its own tools and instructions.
   async maintain(sessionId, signal, work) {
-    let live = this.live.get(sessionId)
-    const record = live === undefined ? this.deps.record(sessionId) : undefined
-    if (live === undefined && record?.cliSessionId === undefined) throw new LlmError('this conversation has no session of its local agent yet', 'LOCAL_AGENT_ERROR')
+    const record = this.live.get(sessionId) ?? this.deps.record(sessionId)
+    if (!record) throw new LlmError('this conversation has no session of its local agent yet', 'LOCAL_AGENT_ERROR')
+    const live = await this.liveFor({ sessionId, provider: record.route, model: record.model }, this.deps.presetFor(sessionId))
     let opened = false
-    if (live === undefined || live.engineSession === undefined || live.engineSession.dead === true) {
-      live ??= await this.liveFor({ sessionId, provider: record.route, model: record.model }, this.deps.presetFor(sessionId))
-      await this.openFor(live, sessionId)
+    if (!live.engineSession || live.engineSession.dead === true) {
+      // Maintenance needs the old conversation. After a skill change the next
+      // ordinary message supplies the replay that a bare maintenance call lacks.
+      if (!live.cliSessionId) throw new LlmError('this conversation has no session of its local agent yet', 'LOCAL_AGENT_ERROR')
+      try {
+        await this.openFor(live, sessionId)
+      } catch (error) {
+        await this.closeLive(live)
+        throw error
+      }
       opened = true
     }
     if (live.state !== 'idle' || live.pending.size > 0) throw new LlmError('the local agent is in the middle of a turn', 'LOCAL_AGENT_BUSY')
@@ -982,22 +1003,23 @@ export class LocalAgentAdapter extends LlmAdapter {
   }
 
   // What a request DS Bot made for itself spent, on the Session it served.
-  meter(live, result) {
-    if (result.usage !== undefined) this.deps.recordUsage?.({ sessionId: live.sessionId, kind: 'compaction', provider: live.route, model: live.model, usage: result.usage })
+  meter(live, result, kind = 'compaction') {
+    if (result.usage !== undefined) this.deps.recordUsage?.({ sessionId: live.sessionId, kind, provider: live.route, model: live.model, usage: result.usage })
     return result
   }
 
   // A one-off request on the CLI a Session runs on, in a session of its own with no
   // team tools and read-only access, which is let go of after: the context steward's
-  // call for a Bot whose team has no model of its own.
-  async ask(sessionId, { system, prompt, signal }) {
+  // call, and the memory review's. `route` and `model` name the CLI when the
+  // request serves a Bot rather than one of its conversations.
+  async ask(sessionId, { system, prompt, signal, route: named, model: namedModel, kind }) {
     if (this.disposed) throw new LlmError('the local agents adapter is disposed', 'NO_ADAPTER')
-    const record = this.live.get(sessionId) ?? this.deps.record(sessionId)
+    const record = named !== undefined ? { route: named, model: namedModel } : this.live.get(sessionId) ?? this.deps.record(sessionId)
     const route = record?.route
     const spec = route === undefined ? undefined : engineOf(route, this.deps.customAgents())
     if (spec === undefined) throw new LlmError('this conversation has no local agent', 'LOCAL_AGENT_MISSING')
     const isolated = spec.kind === 'codex'
-    const engine = isolated ? this.deps.spawnEngine(spec.kind, route, spec) : this.engine(route)
+    const engine = isolated ? this.deps.spawnEngine(spec.kind, route, { ...spec, managedSkills: this.deps.rt?.codexSkillsFor?.(sessionId) }) : this.engine(route)
     const request = { controller: new AbortController(), done: Promise.withResolvers(), engine, isolated }
     this.sideRequests.add(request)
     signal = AbortSignal.any([request.controller.signal, ...(signal === undefined ? [] : [signal])])
@@ -1020,7 +1042,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       const refused = Promise.resolve(engine.prompt(session, [{ type: 'text', text: spec.kind === 'acp' ? `${system}\n\n${prompt}` : prompt }], { signal, effort }))
         .then(() => new Promise(() => {}), error => ({ type: 'error', error }))
       const result = await this.collect(side, () => ({ event: Promise.race([session.next(), refused]), drop: () => {} }), signal)
-      return this.meter({ sessionId, route, model: record.model }, result).text
+      return this.meter({ sessionId, route, model: record.model }, result, kind).text
     } finally {
       try {
         if (session !== undefined) {
@@ -1157,7 +1179,7 @@ async function renderReplay(messages, system, resolveImage) {
 // Bot's repair card can act on them.
 function toLlmError(error, live) {
   if (error instanceof LlmError) return error
-  const text = String(error?.message ?? error)
+  const text = errorText(error)
   // A CLI whose context is past its window: the part moves on the way an overflow does.
   const overflow = /prompt is too long|context.?(window|length).?(exceeded|is full)|context_length_exceeded|exceeds the (model's )?(maximum )?context|too many tokens/i
   const code = error?.code === 'NO_ADAPTER' ? 'LOCAL_AGENT_MISSING'
@@ -1165,7 +1187,24 @@ function toLlmError(error, live) {
       : /not signed in|not logged in|login required|unauthorized|authentication/i.test(text) ? 'LOCAL_AGENT_SIGNIN'
         : /quota|rate.?limit|usage limit|exceeded/i.test(text) ? 'LOCAL_AGENT_QUOTA'
           : /exited|spawn|ENOENT/i.test(text) ? 'LOCAL_AGENT_EXIT'
-            : error?.code ?? 'LOCAL_AGENT_ERROR'
+            : typeof error?.code === 'string' && error.code !== '' ? error.code : 'LOCAL_AGENT_ERROR'
   const hint = code === 'LOCAL_AGENT_SIGNIN' ? ` Sign in with: ${live?.spec?.signIn ?? `${live?.spec?.command ?? 'the CLI'} login`}.` : ''
-  return new LlmError(`${text}${hint}`, code, error?.status === undefined ? {} : { status: error.status })
+  const rpcCode = code === 'LOCAL_AGENT_ERROR' && typeof error?.code === 'number' ? ` (JSON-RPC ${error.code})` : ''
+  return new LlmError(`${text}${rpcCode}${hint}`, code, error?.status === undefined ? {} : { status: error.status })
+}
+
+// JSON-RPC errors carry numeric codes and may arrive as plain objects; LlmError
+// needs a non-empty string message and code, or it throws and hides the cause.
+function errorText(error) {
+  const message = error?.message
+  if (typeof message === 'string' && message !== '') return message
+  if (typeof error === 'string' && error !== '') return error
+  if (message !== undefined && message !== null && typeof message !== 'string') return safeJson(message)
+  if (error !== null && typeof error === 'object' && !(error instanceof Error)) return safeJson(error)
+  if (error !== undefined && error !== null && typeof error !== 'object' && error !== '') return String(error)
+  return 'The local agent failed without an error message.'
+}
+
+function safeJson(value) {
+  try { return JSON.stringify(value) || String(value) } catch { return String(value) }
 }

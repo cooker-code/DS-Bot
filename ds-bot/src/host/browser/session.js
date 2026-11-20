@@ -84,8 +84,7 @@ function inspectWriteTarget(el, { url, mode, active = false }) {
   return kind ? action(kind, label) : null
 }
 
-// playwright-core ships with DS Bot and drives the desktop app's own browser; a
-// full playwright the user installed also brings its own Chromium build.
+// A full Playwright installation can supply its Chromium build.
 async function loadChromium(playwrightUrl) {
   const loaded = playwrightUrl ? await import(playwrightUrl) : await import('playwright').catch(() => import('playwright-core'))
   const chromium = loaded.chromium ?? loaded.default?.chromium
@@ -94,38 +93,30 @@ async function loadChromium(playwrightUrl) {
 }
 
 /**
- * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadGraceMs?: number, downloadDir?: string | (() => Promise<string | undefined>), uploadRoots?: () => Promise<string[]>, connect?: (botId: string) => Promise<string>, getHold?: () => any, onHold?: (hold: any) => void }} options
+ * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadGraceMs?: number, downloadDir?: string | (() => Promise<string | undefined>), uploadRoots?: () => Promise<string[]>, getHold?: () => any, onHold?: (hold: any) => void }} options
  */
-export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, connect, getHold, onHold, uploadRoots }) {
+export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
   const getDownloadDir = typeof downloadDir === 'function' ? downloadDir : async () => downloadDir
   const userDataDir = join(profileRoot, botId)
   const chromium = await loadChromium(playwrightUrl)
-  const browser = connect
-    ? await chromium.connectOverCDP(await connect(botId))
-    : undefined
-  if (!connect) await mkdir(userDataDir, { recursive: true })
-  const context = browser
-    ? browser.contexts()[0]
-    : await chromium.launchPersistentContext(userDataDir, {
-      headless,
-      viewport: { width: 1280, height: 900 },
-      acceptDownloads: true,
-      ...(executablePath ? { executablePath } : {}),
-      args: ['--disable-dev-shm-usage'],
-    })
-  if (!context) throw new Error('The app browser relay has no browser context.')
+  await mkdir(userDataDir, { recursive: true })
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    headless,
+    viewport: { width: 1280, height: 900 },
+    acceptDownloads: true,
+    ...(executablePath ? { executablePath } : {}),
+    args: ['--disable-dev-shm-usage'],
+  })
   const page = context.pages()[0] ?? await context.newPage()
   const cookieFile = join(userDataDir, 'cookies.json')
-  if (!browser) {
-    try {
-      const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
-      if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
-    } catch { /* no cookies yet */ }
-  }
-  return createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, downloadGraceMs, getHold, onHold, uploadRoots })
+  try {
+    const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
+    if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
+  } catch { /* no cookies yet */ }
+  return createSession({ context, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, downloadGraceMs, getHold, onHold, uploadRoots })
 }
 
-export function createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
+export function createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
   const pages = new Set()
   const unknownByOrigin = new Map()
   const unknownPageOrigins = new WeakMap()
@@ -148,10 +139,13 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
     if (hold) throw new Error(`The browser is waiting for the user (${hold.reason}). Ask them to ${hold.note || 'take over'}, then call browser_resume.`)
   }
 
+  // Every later action waits for this. A tab that cannot load (it crashed, say) is not made
+  // current, and its failure must not stay a rejection: each action would fail on it again,
+  // and DSH ends the whole process on a rejection nobody handles.
   function activateAfterLoad(target) {
     pendingPageReady = waitForPageReady(target).then(() => {
       if (!target.isClosed()) current = target
-    })
+    }, () => {})
   }
 
   function trackPage(target, activate = false) {
@@ -480,16 +474,29 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
     }
   }
 
+  // A service worker's request has no frame, and asking for it throws.
+  function frameOf(request) {
+    try {
+      return request.frame()
+    } catch {
+      return undefined
+    }
+  }
+
+  // Until every request in `requests` has finished, including the ones that arrive while it
+  // waits: a button's script can post after the click itself returned.
   async function waitForWriteRequests(requests) {
     if (requests.length === 0) return
     let timer
+    const expired = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('the browser request did not finish')), actionTimeout)
+    })
     try {
-      await Promise.race([
-        Promise.all(requests),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error('the browser request did not finish')), actionTimeout)
-        }),
-      ])
+      for (let seen = 0; seen < requests.length;) {
+        const sent = requests.slice(seen)
+        seen = requests.length
+        await Promise.race([Promise.all(sent), expired])
+      }
     } finally {
       clearTimeout(timer)
     }
@@ -500,7 +507,20 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
     return captureAction(async () => {
       const requests = []
       const pendingRequests = new Map()
+      // Once a frame starts loading another document, the requests that follow from it, or
+      // from a frame inside it, belong to that document (a result page polling its server),
+      // not to this action: only further navigations count. A script that changes the URL in
+      // place (pushState) sends no navigation request, so its posts still count.
+      const leaving = new Set()
+      const insideLeaving = frame => {
+        for (let at = frame; at; at = at.parentFrame?.()) if (leaving.has(at)) return true
+        return false
+      }
       const onRequest = request => {
+        const frame = frameOf(request)
+        const navigation = request.isNavigationRequest()
+        if (!navigation && frame && insideLeaving(frame)) return
+        if (navigation && frame) leaving.add(frame)
         let requestOrigin
         try {
           requestOrigin = new URL(request.url()).origin
@@ -510,10 +530,15 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
         if (requestOrigin !== action.origin || ['GET', 'HEAD'].includes(request.method().toUpperCase())) return
         let resolve
         let reject
-        requests.push(new Promise((res, rej) => {
+        const settled = new Promise((res, rej) => {
           resolve = res
           reject = rej
-        }))
+        })
+        // The request can fail before waitForWriteRequests reaches it: while the click still
+        // runs, or after the click itself failed. Until it is read there it must not count as
+        // unhandled, because DSH ends the whole process on an unhandled rejection.
+        settled.catch(() => {})
+        requests.push(settled)
         pendingRequests.set(request, { resolve, reject })
       }
       const onRequestFinished = request => {
@@ -537,6 +562,8 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
         await waitForWriteRequests(requests)
         await settle()
         if (target.isClosed() || crashedPages.has(target)) throw new Error('the browser page closed or crashed during the action')
+        // The posts the page sent while it settled.
+        await waitForWriteRequests(requests)
         if (target.url().startsWith('chrome-error://')) throw new Error('the browser page navigated to an error page')
         return () => snapshotText().catch(error => unknownResult(action, error, target))
       } catch (error) {
@@ -756,12 +783,6 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
       return finishAction(() => target.goBack({ waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => {}), target, false)
     },
     shot,
-    async frame() {
-      const target = activePage()
-      if (!target) return undefined
-      const image = await target.screenshot({ type: 'jpeg', quality: 40 })
-      return { mime: 'image/jpeg', data: image.toString('base64'), url: target.url(), title: await target.title().catch(() => '') }
-    },
     // `origin` names the call and Session that asked, so a card can answer them.
     handoff(reason, note, origin) {
       ready()
@@ -839,7 +860,6 @@ export function createSession({ context, browser, page, botId, userDataDir, cook
       closed = true
       activeDownloads?.notify?.()
       for (const { download } of activeDownloads?.items ?? []) await download.cancel().catch(() => {})
-      if (browser) { await browser.close().catch(() => {}); return }
       const cookies = await context.cookies().catch(() => [])
       const kept = cookies.map(cookie => cookie.expires > 0 ? cookie : { ...cookie, expires: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 })
       await writeFile(cookieFile, JSON.stringify(kept)).catch(() => {})

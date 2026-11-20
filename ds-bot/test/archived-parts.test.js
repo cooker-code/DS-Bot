@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -10,6 +10,7 @@ import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -80,16 +81,15 @@ const settled = async (check) => {
   for (let i = 0; i < 50 && !check(); i += 1) await new Promise(resolve => setTimeout(resolve, 10))
 }
 
-test('opening an earlier part takes it out of the archive and archives the part it replaces', async (t) => {
+test('opening an earlier part takes it out of the archive and leaves the previous session open', async (t) => {
   const { home, registry, call } = await team(t, ['w1'])
   await call('state')
   const result = await call('bot-open-part', { botId: 'w1', sessionId: 'w1' })
   assert.equal(result.ok, true, JSON.stringify(result))
-  await settled(() => registry.archivedSessionIds.includes('w2'))
-  assert.deepEqual([...registry.archivedSessionIds].sort(), ['w2'])
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).bots.w1
+  assert.deepEqual([...registry.archivedSessionIds], [])
+  const saved = savedTeam(home).bots.w1
   assert.equal(saved.sessionId, 'w1')
-  assert.deepEqual(saved.segments.map(segment => segment.sessionId), ['w2'])
+  assert.deepEqual(saved.openParts.map(part => part.sessionId), ['w2'])
 })
 
 test('current team Sessions held archived in DSH are taken back out; earlier parts stay', async (t) => {
@@ -109,14 +109,16 @@ test('a current Session archived in DSH while the team runs is taken back out', 
   assert.deepEqual([...registry.archivedSessionIds], ['outside'])
 })
 
-test('a failed task move keeps the replaced part marked for the restart pass', async (t) => {
+test('opening another session keeps scheduled tasks attached to their session', async (t) => {
   const { home, registry, call, rt } = await team(t, ['w1'])
   await call('state')
-  rt.moveSchedules = async () => { throw new Error('schedule store unavailable') }
+  let moved = false
+  rt.moveSchedules = async () => { moved = true }
   const result = await call('bot-open-part', { botId: 'w1', sessionId: 'w1' })
   assert.equal(result.ok, true, JSON.stringify(result))
   assert.deepEqual([...registry.archivedSessionIds], [])
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = savedTeam(home)
   assert.equal(saved.bots.w1.sessionId, 'w1')
-  assert.deepEqual(saved.switching, { w2: { botId: 'w1' } })
+  assert.equal(moved, false)
+  assert.deepEqual(saved.switching, {})
 })

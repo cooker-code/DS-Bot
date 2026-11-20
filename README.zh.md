@@ -1,12 +1,14 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg"><img src="docs/images/logo.svg" alt="DS Bot" width="260"></picture></p>
 
+本地二开版仅支持 macOS。
+
 # DS Bot
 
 [English](README.md) | 中文
 
 ![版本](https://img.shields.io/badge/版本-v0.3_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
-DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（简称 dsh）的开源项目，提供独立桌面应用和 dsh 插件两种形态。它将 dsh 改造为 bot 形式，你可以与自己创建的 bot 交流、工作。
+DS Bot 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的开源插件。你可以在 DSH 里创建 Bot 团队，与成员对话、分工协作。
 
 ## 赞助
 
@@ -23,14 +25,6 @@ DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepsee
 
 ## 安装
 
-**桌面应用（Windows、macOS、Linux）**
-
-桌面应用自带 dsh，不用先装 dsh。直接在 [Releases](https://github.com/Fei2411/DS-Bot/releases/latest) 下载对应系统的安装包，打开后在设置里配好模型就能用（也可以直接复制你原来在 dsh 里的 bot 团队）。
-
-如果安装或打开时提示未签名拦截：Windows 点 **更多信息** → **仍要运行**；macOS 在 **系统设置** → **隐私与安全性** 里点 **仍要打开**。
-
-**作为 dsh 插件**
-
 先装好 dsh，并在 dsh 里配好至少一个模型。ds bot 直接使用 dsh 里的模型。
 
 - **dsh Desktop**：侧栏点 **插件** → **添加插件**，包名填 `ds-bot`（在中国大陆，安装源选 **中国大陆镜像源**），点 **安装** 并 **立即启用**。
@@ -40,10 +34,6 @@ DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepsee
 npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add ds-bot
 npx @deepseek-ai/dsh@0.2.2-rc.1 web
 ```
-
-**Docker（NAS、Linux 服务器）**
-
-见 [`docker/README.md`](docker/README.md)。
 
 ## 配置
 
@@ -89,19 +79,19 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 你电脑上已经在用的编程 Agent CLI（Claude Code、Codex CLI、Cursor CLI、GitHub Copilot、Devin CLI、OpenCode、Gemini CLI、Antigravity、Kimi CLI、Kilo CLI 等）可以直接接入当 bot 用。新建 bot 时选本地 Agent（或在 bot 设置里切换），它就会直接用 CLI 自己的登录、套餐和模型，同时照常参与私聊、群聊、派活和记忆。
 
-不过有几点限制：本地 Agent 走的是 CLI 自己的工具和上下文，ds bot 里的共享能力和连接器不会传给它，切换运行方式也会新开一段对话；只有完全拒绝接入 MCP 服务的 CLI 或自定义 CLI 才拿不到建 bot、派活等团队工具。另外，Cursor CLI 会把最后一次切换的模型存成它自己的全局默认（`~/.cursor`），如果你在 ds bot 里给某个 Cursor bot 选了具体模型，其他用默认模型的 Cursor bot 和你终端里的 Cursor 都会跟着变，不想改全局默认的话保持“CLI 默认”即可（需要先登录 Cursor 才能看到模型列表）。
+不过有几点限制：本地 Agent 走的是 CLI 自己的工具和上下文，Codex 还会加载为这个 bot 勾选的共享技能。共享 MCP 服务和连接器仍由 DS Bot 使用，切换运行方式也会新开一段对话；只有完全拒绝接入 MCP 服务的 CLI 或自定义 CLI 才拿不到建 bot、派活等团队工具。另外，Cursor CLI 会把最后一次切换的模型存成它自己的全局默认（`~/.cursor`），如果你在 ds bot 里给某个 Cursor bot 选了具体模型，其他用默认模型的 Cursor bot 和你终端里的 Cursor 都会跟着变，不想改全局默认的话保持“CLI 默认”即可（需要先登录 Cursor 才能看到模型列表）。
 
 ### 浏览器
 
-每个 bot 有自己独立的浏览器，登录状态互不干扰，也支持从文件或本机浏览器导入 Cookie。在 设置 → 浏览器 里开启操作插件后，bot 可以自己打开和操作网页；发帖、上传、下载、删除需要你批准，遇到登录、验证码或付款会发卡片交给你处理，你随时可以接管再交还。
+在 DSH Desktop 里，每个 Bot 有自己的浏览器面板和独立的登录状态。你打开页面，Bot 可以读取当前标签页。退出宿主后，面板的登录状态会清除。
 
-浏览器功能仅桌面应用和 dsh Desktop 可用（dsh Web 没有），且只有桌面应用在退出后会保留网页登录状态、支持导入 Cookie。Windows 上 Chrome 和 Edge 开启了 v20 加密的新 Cookie 无法直接读取，需要先用浏览器扩展导出成文件再导入。
+在设置中启用浏览器操作插件后，Bot 通过独立的 Chromium 配置打开和操作网页。发帖、上传、下载和删除按授权规则执行。
 
 ### 电脑操控
 
 在 设置 → 电脑操控 里打开开关后，bot 可以在你允许的范围内操作电脑上的应用。你可以给每个 bot 单独设档位（只看、后台操作、可以动前台）和允许使用的应用，操作时屏幕顶部有指示条，随时能暂停或接管；系统设置、密码管理这类应用永远不会交给 bot。
 
-所有 bot 和你共用同一个桌面，同一个应用或前台鼠标同一时间只能有一个 bot 用。Windows 上 Chrome、Electron 这类应用在后台常收不到点击和输入，需要设为“可以动前台”，且无法操作管理员权限的应用；macOS 需要 14 及以上并开启辅助功能与屏幕录制权限；Linux 支持 X11，Wayland 受限。
+所有 bot 和你共用同一个桌面，同一个应用或前台鼠标同一时间只能有一个 bot 用。macOS 需要 14 及以上并开启辅助功能与屏幕录制权限。
 
 ### IM
 
@@ -113,11 +103,11 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 在 设置 → 连接器 里，可以登录 GitHub、Gmail、QQ 邮箱、163 等邮箱和远程 MCP 服务，也能从 Claude Desktop、Cursor、VS Code 导入已有配置。凭据保存在 ds bot 的密钥里，bot 看不到明文，写的邮件默认也要你确认后才发。
 
-在 设置 → 能力 里，可以管理团队共享的 MCP 服务、技能和能力包，并在每个 bot 的设置里按需开启；bot 自己添加的本地命令需要先经你批准才能运行。
+在 **设置 → 能力 → 导入技能文件夹** 选中包含 `SKILL.md` 的目录，脚本、参考资料和模板会随技能一起保存。再去各个 bot 的设置里勾选。多个本地 Codex bot 可以共用工作目录，各自的勾选和取消从下一轮生效，项目或用户技能目录里的同名副本也受这个开关控制。这里也可以管理共享 MCP 服务和能力包。bot 自己添加的本地命令需要你批准后才能运行。
 
 ### Office 文件
 
-bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx`）和 Excel（`.xlsx`）文档，还能把页面渲染成图片来检查排版。桌面应用已经自带完整的运行环境，开箱即用；dsh Web 没有打包这套环境，只能检查和修改已有文档，从零建文件和渲染页面需要用桌面应用或 dsh Desktop。
+bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx`）和 Excel（`.xlsx`）文档，还能把页面渲染成图片来检查排版。DSH Desktop 提供创建和渲染所需的运行环境。DSH Web 默认提供已有文件的检查和编辑。
 
 ### 用量
 
@@ -127,7 +117,7 @@ bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx
 
 ## 数据
 
-所有数据都在你自己的电脑上：桌面应用存在首次启动选定的位置（默认 `~/.ds-bot`），插件版存在 dsh 主目录（默认 `~/.dsh`）的 `bot/` 和 `sessions/` 里。卸载应用或插件不会删除这些数据。
+团队数据和会话保存在 DSH 主目录（默认 `~/.dsh`）的 `bot/` 和 `sessions/` 下。卸载插件会保留这些数据。
 
 ## 开发
 

@@ -4,7 +4,8 @@
 // it works on it hangs below it, and the recipient's answer goes up only once all of
 // that came back, together with what came back. Results find their way up by
 // themselves, so no Bot needs to message one that waits for it, and that is the one
-// hand-off refused. The open works are kept in state.json so a restart waits on.
+// hand-off refused. The open works are kept in team state so a restart waits on.
+import { scopeFields, scopeOf } from './task-routing.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,14 +29,13 @@ const forHowLong = since => {
 export function install(rt) {
   const { ctx, state } = rt
   const works = () => (state.works ??= {})
-  // What came back, whole; state.json keeps the start of each.
+  // What came back, whole; the team snapshot keeps the start of each.
   const whole = new Map()
   const save = () => void rt.save().catch(() => {})
   const nameOf = id => rt.botOf(id)?.name
 
-  // The whole result of a work, in a file of its own: state.json is written whole on
-  // every save, so it keeps only the start of a long result, and a restart would cut
-  // that result short before it reached the Bot that asked for it.
+  // The snapshot keeps the start of each result. Keep its full text separately
+  // until the Bot that asked for it has received it, even across restarts.
   const resultsDir = join(rt.home, 'handoff-results')
   const resultPath = name => join(resultsDir, name)
   // A work id is a UUID, but a saved team could carry any name: it stays inside the
@@ -75,7 +75,7 @@ export function install(rt) {
     try {
       // save() can resolve without writing during shutdown. Check the durable
       // references too, so an old state can still recover its result after restart.
-      const saved = JSON.parse(readFileSync(join(rt.home, 'state.json'), 'utf8'))
+      const saved = rt.teamStorage.read()
       if (Object.values(saved.works ?? {}).some(work => (work.results ?? []).some(result => result.file === name))) return
       rmSync(resultPath(name), { force: true })
     } catch {}
@@ -109,9 +109,9 @@ export function install(rt) {
   // child, is the sub-work, so a child that is continued hands up a result per run.
   // `fromPart`: the part of the sender's own chat it wrote from, which its answer goes
   // back to when that is a background part.
-  function openWork(id, { from, to, parent, fromRoom, room, name, child, fromPart }) {
+  function openWork(id, { from, to, parent, fromRoom, room, name, child, fromPart, taskId, intakeId }) {
     const above = parent === undefined ? undefined : works()[parent]
-    works()[id] = { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(fromPart ? { fromPart } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), open: [], results: [], at: Date.now() }
+    works()[id] = { ...scopeFields(taskId ?? intakeId), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(fromPart ? { fromPart } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), open: [], results: [], at: Date.now() }
     if (above !== undefined) above.open.push(id)
     save()
   }
@@ -246,7 +246,7 @@ export function install(rt) {
   // Who asked for the work, as the turn that answers a request sees its trigger.
   const askedBy = workId => {
     const work = works()[workId]
-    return work === undefined ? undefined : { kind: 'bot', role: 'request', exchangeId: workId, senderSessionId: work.from, ...(work.fromPart ? { senderPart: work.fromPart } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
+    return work === undefined ? undefined : { ...scopeFields(scopeOf(work)), kind: 'bot', role: 'request', exchangeId: workId, senderSessionId: work.from, ...(work.fromPart ? { senderPart: work.fromPart } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
   }
   // The answer that goes up: what the Bot said last for this work, then what came back.
   function answerText(workId, reply, botName) {

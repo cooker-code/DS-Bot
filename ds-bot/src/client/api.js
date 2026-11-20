@@ -1,3 +1,4 @@
+import { taskErrors } from '../shared/task-settings.js'
 import { hostText, t } from './i18n.js'
 import { markNoted, noteClientError } from './diagnostics.js'
 
@@ -17,6 +18,9 @@ export const call = async (endpoint, payload, signal) => {
       signal,
     })
   } catch (error) {
+    if (endpoint === 'resume' && signal?.aborted && signal.reason?.name === 'TimeoutError') {
+      throw new Error(t('Retry confirmation timed out. Check the task status before trying again.'))
+    }
     if (error?.name === 'AbortError') throw error
     noteClientError(endpoint, Object.assign(new Error(`network error: ${error?.message ?? error}`), { code: 'NETWORK' }))
     // The browser's own text ("Failed to fetch", "Load failed") does not say what failed.
@@ -30,9 +34,9 @@ export const call = async (endpoint, payload, signal) => {
   const result = await response.json()
   if (!result.ok) {
     const code = result.error?.code ?? 'bot/error'
-    const message = hostText(result.error?.message ?? 'Request failed')
+    const message = hostText(Object.hasOwn(taskErrors, code) ? taskErrors[code] : result.error?.message ?? 'Request failed')
     const error = Object.assign(new Error(code === 'bot/internal' ? `${message} ${t('Settings → Feedback has the details.')}` : message), { code })
-    if (!REFUSALS.has(code)) {
+    if (!REFUSALS.has(code) && !Object.hasOwn(taskErrors, code)) {
       noteClientError(endpoint, Object.assign(new Error(result.error?.message ?? 'Request failed'), { code }))
       markNoted(error)
     }

@@ -1,7 +1,7 @@
 // Approvals. A member's group Session is hidden, so DSH's approval card never shows
 // there and the turn would wait forever: DS Bot answers those requests itself, from
 // the group chat. A Bot's own chat keeps DSH's card, but DS Bot can answer those too
-// (IM chats, the phone app): the request is raced — whichever side answers first wins,
+// (including IM chats): the request is raced — whichever side answers first wins,
 // and the other card withdraws.
 import { randomUUID } from 'node:crypto'
 
@@ -41,7 +41,6 @@ export function install(rt) {
     }
     pending.set(id, entry)
     rt.noteApproval?.(sessionId, { tool: entry.tool, reason: entry.reason.slice(0, 200) })
-    rt.approvalWaiting?.(entry)
     emit('open', { ...entry, answerable: true })
     const settle = (outcome) => {
       if (!pending.has(id)) return false

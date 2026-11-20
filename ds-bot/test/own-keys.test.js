@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -20,7 +21,7 @@ const TEAM = {
     b2: { id: 'b2', sessionId: 'b2', name: 'Writer', role: 'Write', model: 'deepseek/v4', instructions: '', createdAt: 2, capabilities: [] },
   },
   rooms: {
-    r1: { id: 'r1', name: 'Launch', named: true, members: ['m1', 'b2'], admin: 'm1', mode: 'everyone', notice: '', sessions: { b2: 'g2' }, seq: 0, log: [] },
+    r1: { id: 'r1', taskManagementEnabled: true, name: 'Launch', named: true, members: ['m1', 'b2'], admin: 'm1', mode: 'everyone', notice: '', sessions: { b2: 'g2' }, seq: 0, log: [] },
   },
   agents: {},
   capabilities: { items: {} },
@@ -71,7 +72,7 @@ function start() {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()
   const tool = (name, args, sessionId) => rt.teamTools.find(d => d.name === name).execute(args, { agent: { id: sessionId } })
-  const state = () => readFileSync(join(home, 'state.json'), 'utf8')
+  const state = () => JSON.stringify(savedTeam(home))
   const stop = async () => {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })

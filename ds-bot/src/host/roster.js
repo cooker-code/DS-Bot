@@ -1,10 +1,12 @@
+import { taskError } from '../shared/task-settings.js'
+import { memberSettings, setMemberSettings } from './team-storage/member-settings.js'
 // Roster: creating, changing, and deleting Bots and group chats, the Main Bot role, and
 // the first Main Bot of a new team.
 import { openSessions } from './threads.js'
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { MAX_AVATAR_IMAGE, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOTICE_MAX, ROOM_TODO_MAX, ROOM_TODO_TEXT_MAX, SECTION_COLORS, SECTION_NAME_MAX } from './constants.js'
-import { currentColor, isColor, normalize, unquote } from './text.js'
+import { currentColor, isColor, normalize, unquote, splitRef } from './text.js'
 import { nameProblem } from '../shared/mentions.js'
 
 const BROWSER_GRANT_KINDS = new Set(['post', 'upload', 'download', 'delete', '*'])
@@ -81,18 +83,20 @@ export function install(rt) {
     return standard ? { agentPreset: 'standard' } : {}
   }
 
-  // `dir` is a working folder outside the team workspace. Such a Session is made by cwd
-  // alone, so it joins no DSH workspace and the user's own project lists stay as they are —
-  // unless the folder is already registered as a workspace, which it then joins (#710).
-  async function createSession(title, { dir } = {}) {
+  async function createSession(title, { dir, groupMember = false } = {}) {
     // A Bot's tools run here too; while another dsh holds the team, a new Session would
     // belong to no saved Bot.
     const readOnly = rt.readOnly()
     if (readOnly !== undefined) throw new Error(readOnly)
     const usable = dir !== undefined && await rt.isFolder(dir)
     if (dir !== undefined && !usable) rt.warn('ds-bot: the working folder %s is gone; %s starts in the team workspace', dir, title)
-    const known = usable ? await ctx.workspaceRegistry.resolveByPath(dir) : undefined
-    const place = known !== undefined ? { workspaceId: known.id } : usable ? { cwd: dir } : { workspaceId: await ensureWorkspace() }
+    let place
+    if (!usable) place = { workspaceId: await ensureWorkspace() }
+    else if (groupMember) place = { workspaceId: (await ctx.workspaceRegistry.create(dir)).id }
+    else {
+      const known = await ctx.workspaceRegistry.resolveByPath(dir)
+      place = known ? { workspaceId: known.id } : { cwd: dir }
+    }
     const { sessionId } = await ctx.sessionController.create({ ...place, ...await botPreset() })
     const agent = await rt.resolveAgent(sessionId)
     await ctx.sessionTitle.rename(agent.session, title)
@@ -666,11 +670,12 @@ export function install(rt) {
         admin: lead,
         mode: mode ?? 'admin',
         notice: cleanNotice(notice),
+        taskManagementEnabled: true,
         createdAt: Date.now(),
         createdBy: createdBy ?? null,
       }
       state.rooms[id] = room
-      await rt.save()
+      await rt.save({ required: true })
       // A new Session starts on DSH's default, which may be a model no longer served.
       await rt.selectRoomSession(id)
       // The Session was resolved before the group owned it, so its relay tool lands now.
@@ -713,6 +718,15 @@ export function install(rt) {
     }
     if (patch.mode !== undefined && !ROOM_MODES.includes(patch.mode)) throw new Error(`Reply mode must be one of ${ROOM_MODES.join(', ')}`)
     const notice = patch.notice === undefined ? undefined : cleanNotice(patch.notice)
+    let assistant = room.projectAssistantId
+    if (patch.contextPolicy !== undefined && !['system', 'summary'].includes(patch.contextPolicy)) throw new Error('Unknown context policy')
+    if (patch.taskManagementEnabled !== undefined && typeof patch.taskManagementEnabled !== 'boolean')
+      throw new Error('Task management must be on or off.')
+    if (patch.projectAssistantId !== undefined) {
+      if (actorId !== undefined) throw new Error('Only the user can appoint a task assistant.')
+      assistant = patch.projectAssistantId
+      if (assistant !== null && (!admin || assistant === admin || !members.includes(assistant))) throw taskError('TASK_ASSISTANT_INVALID')
+    }
     if (patch.workDir !== undefined && byAdmin) throw new Error(`Only the user or a Main Bot can set the folder of "${room.name}"`)
     if ((patch.section !== undefined || patch.sectionId !== undefined) && byAdmin) {
       throw new Error(`Only the user or a Main Bot can move "${room.name}" between sidebar sections`)
@@ -726,14 +740,89 @@ export function install(rt) {
     // The second run is the last check before the change is written, so no other change
     // can take the name in between.
     const name = patch.name === undefined ? undefined : cleanRoomName(patch.name, room.id)
-    return { members, admin, name, notice, permission }
+    return { members, admin, name, notice, permission, assistant }
   }
 
   // `actorId` is the Bot asking, or undefined for the user. Returns what changed, in words.
+  async function updateRoomMember(roomId, change) {
+    const bot = rt.botOf(change.botId)
+    const room = rt.roomOf(roomId)
+    if (!bot || !room?.members.includes(bot.id)) throw new Error('Choose a current group member')
+    const model = change.model == null || change.model === '' ? undefined : await rt.resolveModel(change.model)
+    const moving = change.workDir !== undefined
+    if (moving && change.workDir !== null && typeof change.workDir !== 'string') throw new Error('Invalid member working folder')
+    const path = moving && change.workDir !== null ? await rt.cleanWorkDir(change.workDir) : undefined
+    if (path) {
+      const clash = await rt.privateClash(path)
+      if (clash) throw new Error('A private Bot uses this working folder')
+      await rt.checkPrivacyChange(bot, { moving: true, workDir: path })
+    }
+    if (rt.roomOf(roomId) !== room || rt.botOf(bot.id) !== bot || !room.members.includes(bot.id)) throw new Error('Group membership changed')
+    const previousSettings = memberSettings(room)
+    const previousDirs = room.memberDirs
+    const hadDirs = Object.hasOwn(room, 'memberDirs')
+    const settings = { ...previousSettings }
+    const value = { ...rt.own(settings, bot.id) }
+    if (change.model !== undefined) {
+      if (model) value.model = model
+      else delete value.model
+    }
+    if (moving) {
+      if (change.workDir === null) {
+        if (room.memberDirs) { room.memberDirs = { ...room.memberDirs }; delete room.memberDirs[bot.id] }
+        delete value.override
+      } else {
+        room.memberDirs = { ...room.memberDirs, [bot.id]: path ?? null }
+        value.override = true
+      }
+    }
+    if (Object.keys(value).length) Object.defineProperty(settings, bot.id, { value, configurable: true, enumerable: true })
+    else delete settings[bot.id]
+    setMemberSettings(room, settings)
+    const written = memberSettings(room)
+    try { await rt.save({ required: true }) }
+    catch (error) {
+      if (rt.roomOf(roomId) === room && memberSettings(room) === written) {
+        setMemberSettings(room, previousSettings)
+        if (hadDirs) room.memberDirs = previousDirs
+        else delete room.memberDirs
+      }
+      throw error
+    }
+    const sid = room.sessions?.[bot.id]
+    if (sid && change.model !== undefined) {
+      const ref = await rt.desiredModel(bot, room) ?? await rt.defaultBotModel()
+      if (ref) await rt.selectSessionModel(sid, { ...splitRef(ref), reasoningEffort: await rt.desiredEffort(bot, ref) })
+      await rt.followEngine(bot.id, room.id)
+    }
+    if (sid && moving) await rt.followFolder({ botId: bot.id, roomId: room.id })
+  }
+
   async function updateRoom(id, patch, actorId) {
     const asked = rt.roomOf(id)
     if (asked === undefined) throw new Error('Unknown group chat')
     planRoomChange(asked, patch, actorId)
+    const keys = Object.keys(patch).filter(key => patch[key] !== undefined)
+    if (keys.length && keys.every(key => ['projectAssistantId', 'taskManagementEnabled', 'contextPolicy'].includes(key))) {
+      const changes = []
+      await rt.save({ required: true, mutate() {
+        if (rt.roomOf(id) !== asked) throw taskError('GROUP_CONTEXT_REQUIRED')
+        planRoomChange(asked, patch, actorId)
+        const previous = {}
+        for (const key of [...keys, 'unresolvedTaskAssistant']) if (Object.hasOwn(asked, key)) previous[key] = asked[key]
+        for (const key of keys) asked[key] = patch[key]
+        if (patch.projectAssistantId !== undefined) {
+          delete asked.unresolvedTaskAssistant
+          changes.push(patch.projectAssistantId ? 'appointed the task assistant' : 'removed the task assistant')
+        }
+        if (patch.taskManagementEnabled !== undefined) changes.push(patch.taskManagementEnabled ? 'enabled task management' : 'disabled task management')
+        return () => {
+          for (const key of [...keys, 'unresolvedTaskAssistant']) delete asked[key]
+          Object.assign(asked, previous)
+        }
+      } })
+      return { room: asked, changes }
+    }
     const moving = patch.workDir !== undefined
     const workDir = moving ? await rt.cleanWorkDir(patch.workDir ?? '') : undefined
     const clash = workDir === undefined ? undefined : await rt.privateClash(workDir)
@@ -741,7 +830,7 @@ export function install(rt) {
     // No await from here until every change is written.
     const room = rt.roomOf(id)
     if (room === undefined) throw new Error('Unknown group chat')
-    const { members, admin, name, notice, permission } = planRoomChange(room, patch, actorId)
+    const { members, admin, name, notice, permission, assistant } = planRoomChange(room, patch, actorId)
 
     const changes = []
     const names = ids => ids.map(member => liveBot(member)?.name).filter(Boolean).join(', ')
@@ -758,6 +847,16 @@ export function install(rt) {
     room.members = members
     if (admin !== (room.admin ?? null)) changes.push(admin ? `made ${rt.botOf(admin).name} the admin` : 'removed the admin')
     room.admin = admin
+    if (patch.projectAssistantId !== undefined) {
+      delete room.unresolvedTaskAssistant
+      room.projectAssistantId = assistant
+      changes.push(assistant ? 'appointed the task assistant' : 'removed the task assistant')
+    }
+    if (patch.taskManagementEnabled !== undefined) {
+      room.taskManagementEnabled = patch.taskManagementEnabled
+      changes.push(patch.taskManagementEnabled ? 'enabled task management' : 'disabled task management')
+    }
+    if (patch.contextPolicy !== undefined) room.contextPolicy = patch.contextPolicy
     if (patch.mode !== undefined && patch.mode !== room.mode) {
       room.mode = patch.mode
       changes.push(patch.mode === 'admin' ? 'plain messages now go to the admin first' : 'every member now replies in turn')
@@ -774,7 +873,10 @@ export function install(rt) {
       else room.workDir = workDir
       // A member's own pick for this group gives way to the group's folder, and a
       // cleared one does not bring it back.
-      delete room.memberDirs
+      if (room.memberDirs) {
+        for (const id of Object.keys(room.memberDirs)) if (!memberSettings(room)[id]?.override) delete room.memberDirs[id]
+        if (!Object.keys(room.memberDirs).length) delete room.memberDirs
+      }
       changes.push(workDir ? `every member now works in ${workDir} here` : 'every member works in its own folder again')
       void rt.followFolder({ roomId: room.id })
     }
@@ -809,7 +911,7 @@ export function install(rt) {
         }
       }
     }
-    await rt.save()
+    await rt.save({ required: true })
     return { room, changes }
   }
 
@@ -941,7 +1043,7 @@ export function install(rt) {
       const archived = rt.archiveBotMemory(id)
       const current = rt.chatOf(id)
       // Questions and exchange turns are kept per Session, so every part of the chat is cleared.
-      const parts = new Set([id, current, ...(bot.segments ?? []).map(segment => segment.sessionId), ...openSessions(bot)])
+      const parts = new Set([id, current, ...(bot.segments ?? []).map(segment => segment.sessionId), ...openSessions(bot), ...Object.keys(bot.removedSessions ?? {})])
       // `archiving` stands until the archive's path is known: the memory may already be
       // there, and no region of its own closes it yet.
       const closedArchive = bot.private === true ? {
@@ -1020,7 +1122,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    ensureWorkspace, keepTeamFolder, createSession, createBot, duplicateBot, updateBot, setFlags,
+    updateRoomMember, ensureWorkspace, keepTeamFolder, createSession, createBot, duplicateBot, updateBot, setFlags,
     saveSection, reorderSections, deleteSection,
     roomBusy, autoRoomName, retitleRoom, createRoom, updateRoom, deleteRoom,
     addRoomTodo, setRoomTodoDone, removeRoomTodo, clearDoneRoomTodos,

@@ -10,7 +10,7 @@ Tested with dsh `0.2.2-rc.1` (Web and Desktop).
 - **Working folders**: a Bot can work in a folder you choose instead of the team workspace, and a group chat can set one folder for all its members there. Pick it in the Bot's settings or details panel or in the group's settings, or ask a Bot (`update_bot`, `update_group`). After a change, the chat goes on in a fresh part that starts in the new folder. When a Bot sets a folder outside the team workspace, or adds a Bot to a group that works in one, it asks for your approval if those Bots can only write in their folder. Folders that hold dsh data (`$DSH_HOME`, the team's data) are refused. The team workspace itself moves in Settings > General > Locations; Bots and groups that work there go on in a fresh part in the new folder, and the old folder keeps its files.
 - **Permission presets**: each Bot runs with its own dsh permission preset (Read only, Workspace or Full access), set in its details panel. A group chat can run all its members with one preset there, in place of their own: turn on **Same for every member** under Permissions in the group's settings. Only you set permissions; Bots cannot change them.
 - **Bots work together**: `message_bot` sends a message to another Bot, `create_bot` and `update_bot` add and set up Bots (including a profile photo from a local image file or a data URL), and `ask_user` asks you a question without blocking the other Bots. `show_view` draws a card in a Bot's own chat — text, metrics, tables, charts, inputs with local formulas, progress, choices, confirmations, short forms and sandboxed HTML; an interactive card waits for your answer. `/side` (or **Side chat** in the panel's `···` menu) opens a side chat in the right panel that answers from a snapshot of the Bot's chat without running tools or interrupting its work. A Bot can also be marked **Private** in its settings: other Bots cannot read its working folder, memory or chat, and its outbound sharing needs your approval.
-- **Group chats**: in admin-first mode the admin answers first and calls in other members with `@Name`; in all-members mode members speak in order. Members `@`-mentioned in the same message start work in parallel. Type `@` to pick a member from a list, or use **+ → Reference a chat** to attach another Bot's chat as context. A member with nothing new to add stays quiet (`[PASS]`). For multi-stage work, the admin can align on and run a group **Goal** (`group_goal`), assigning tasks per stage and checking evidence before advancing. Each member has its own hidden Session per group, so a group never reads a Bot's private chat.
+- **Group chats**: in admin-first mode the admin answers first and calls in other members with `@Name`; in all-members mode members speak in order. Members `@`-mentioned in the same message start work in parallel. Type `@` to pick a member from a list, or use **+ → Reference a chat** to attach another Bot's chat as context. A member can use `skip_group_turn` to skip its turn. Task management is on by default. Open **Group settings → Task management** to change it or appoint a task assistant. Choose **+ → Link task** to add a message to an existing task. For multi-stage work, the admin can align on and run a group **Goal** (`group_goal`), assigning tasks per stage and checking evidence before advancing. Each member has its own hidden Session per group, so a group never reads a Bot's private chat.
 - **Roles and permissions**:
 
   | Who | Can do |
@@ -23,7 +23,7 @@ Tested with dsh `0.2.2-rc.1` (Web and Desktop).
 - **Long chats stay inside the model's window**: dsh's own compaction never runs on a Bot's Session. When a turn ends past the check line (a share of the model's context window), a small separate model call, the context steward, reads the latest messages of the chat and decides once. If the work is still under way, the chat is condensed in place into a checkpoint: a handoff summary plus your recent messages word for word. If the work has reached a stopping point, the Bot writes a handoff note and continues in a new part. Either way you still see one chat, with no marker. Earlier parts and condensed messages stay searchable in a full-text index (`node:sqlite` FTS5) through `read_own_chat`.
 - **Memory**: each Bot keeps notes across all its conversations, each group chat keeps its own for its members, and the team shares one more. See [Memory](#memory).
 - **Web search**: see [Web search](#web-search).
-- **Bot browser (dsh Desktop and the desktop app)**: see [Bot browser](#bot-browser).
+- **Bot browser (DSH Desktop)**: see [Bot browser](#bot-browser).
 - **Images**: for a model that cannot read images, a vision model first turns the image into text.
 - **Secrets**: a Bot asks for an API key or token with a card in its own chat and never sees the value. See [Secrets](#secrets).
 - **Usage**: Settings → Usage shows token usage by time (24 hours to 12 months, or days picked on a calendar), by Bot and by model, with a page for each Bot and each model. Calls that a Session logs are read from the logs, so older chats count too. Calls that leave no log (checkpoints, handoff notes, the steward, image readings, dsh titles and compaction) are counted while they stream, from the time the plugin runs. Tokens only, no cost.
@@ -76,7 +76,7 @@ Options go in the profile's `cordis.patch.yml`, under the `bot` entry. All of th
     home: /path/to/bot-data         # where the team is saved; default $DSH_HOME/bot
     checkRatio: 0.8                 # share of the model's usable window where the steward decides
     checkTokens: 380000             # the highest context where it decides, even on a larger window
-    browser: true                   # force the Bot browser on or off; default on in Desktop and the desktop app only
+    browser: true                   # force the Bot browser on or off; default on in DSH Desktop only
     memory: true                    # false turns memory off: no memory tools, section or panel
     memoryReview: true              # false leaves memory to the Bots' own remember calls
     diagnosticsFile: false          # keep the error log in memory only; default <home>/logs/diagnostics.jsonl
@@ -153,19 +153,18 @@ Another plugin can also set the search provider while dsh runs, after the profil
 
 ## Bot browser
 
-In dsh Desktop and the desktop app, each Bot has its own browser panel in the right column (open a page from the Bot's details panel or the panel bar's `···` menu).
+In DSH Desktop, each Bot has its own browser panel in the right column (open a page from the Bot's details panel or the panel bar's `···` menu).
 
-- **One partition per Bot** (`bot:<id>`): logins and cookies belong to that Bot only. The desktop app keeps them on disk, so a Bot stays signed in after a restart; dsh Desktop keeps them in memory only.
+- **One partition per Bot** (`bot:<id>`): logins and cookies belong to that Bot only. DSH Desktop keeps the panel partition in memory.
 - **The Bot can read the page**: the `read_browser` tool reads the page's DOM, not a screenshot. The text becomes Markdown with headings, nested lists, tables, code blocks and quotes. Links and form controls are marked `[#n]` in place and listed below with their targets and values. The tool also reads the text you selected. Long pages are read in parts (`from`). Page content is treated as data, never as instructions.
   - It reads open Shadow DOM (with `<slot>`) and same-origin iframes up to 3 levels deep.
   - It reads only what is visible: `display:none`, `visibility:hidden`, zero-height and closed `<details>` content is skipped.
   - It never reads the values of password, credit card (`autocomplete="cc-*"`) or one-time code fields.
   - Limits: 400,000 characters, 150,000 nodes, 5,000 rows per table, 3,000 links and controls, 1.5 seconds. A cut result says so.
   - It cannot read cross-origin iframes (one line with the address), closed shadow roots, canvas content (online editors, maps), or text in CSS `::before` / `::after`. On pages that render on demand, only the rendered part is read.
-  - Without a browser plugin, `read_browser` is read-only. When a browser plugin (`refs`, `script` or `task`; see [`browser-plugins/`](../browser-plugins/)) is enabled in **Settings → Browser**, Bots can open, inspect and interact with pages in their own profile (`bot/browser-profiles/<botId>/`); in the desktop app they share the panel's tabs with you, hand off sign-in or payment steps via a chat card (`browser_handoff`), and yield whenever you take over.
+  - Without a browser plugin, `read_browser` is read-only. When a browser plugin (`refs`, `script` or `task`; see [`browser-plugins/`](../browser-plugins/)) is enabled in **Settings → Browser**, Bots can open, inspect and interact with pages in their own profile (`bot/browser-profiles/<botId>/`).
 - **Addresses**: http and https only. localhost and LAN addresses are allowed; cloud metadata addresses (such as `169.254.x.x`) and dsh's own ports are not.
 - The browser panel and the details drawer share the right column; opening one closes the other. Switching chats switches the panel to that Bot. Deleting a Bot clears its browser and saved address.
-- **Cookie import (desktop app only)**: the import button in the browser bar previews the cookies of a file (Cookie-Editor JSON, Netscape `cookies.txt`, Playwright `storageState`) or of an installed Chromium/Firefox profile, then writes them into the Bot's partition. A source browser closes for a moment so its cookie store can be copied, and it reopens with its tabs. Sign-in that lives outside cookies (localStorage, passkeys) does not come along.
 
 dsh Web has no browser panel and no `read_browser` tool.
 
@@ -175,15 +174,14 @@ When a Bot needs an API key, token or password, it calls `request_secret`, and a
 
 - **Fill in**: the field hides what you type, is not part of a form and is not autofilled. Choose "All Bots" or "Only this Bot" and select Save. A value must have at least 4 characters (a 4-digit PIN works). A value of 8 characters or more is hidden wherever it appears; a shorter one only where no letter or digit touches it, so ordinary words stay intact.
 - **Allow**: if the secret is already saved but this Bot is not allowed to use it, the card only asks whether to allow it. You can also replace the value there.
-- **Use**: the value goes into the Bot's shell environment as `DSH_SECRET_<NAME>` (`$DSH_SECRET_NAME` in bash, `$env:DSH_SECRET_NAME` in PowerShell). `list_secrets` lists the names a Bot can use. An MCP capability can also take `$DSH_SECRET_<NAME>` in its env, its headers and its URL (path or query); in the URL the value is URL-encoded. Use headers when the server accepts them.
+- **Use**: the value goes into the Bot's shell environment as `DSH_SECRET_<NAME>` (`$DSH_SECRET_NAME` in bash). `list_secrets` lists the names a Bot can use. An MCP capability can also take `$DSH_SECRET_<NAME>` in its env, its headers and its URL (path or query); in the URL the value is URL-encoded. Use headers when the server accepts them.
 - **Masking**: before a tool result is saved and before each request goes to the model, every copy of a secret value is replaced with `[secret:<NAME>]`.
 - **Manage**: Settings → Secrets lists every secret by name, purpose, the Bot that asked and the last use. You can change who may use it, replace the value, delete it or add one. Deleting a Bot removes it from every secret.
-- **Storage**: `<DSH_HOME>/bot/secrets.json`, file mode 600, written atomically. Values are never in `state.json` or logs.
+- **Storage**: `<DSH_HOME>/bot/secrets.json`, file mode 600, written atomically. Values are never in the team database or logs.
 - **Encryption at rest (optional)**: Settings → Secrets → Encryption at rest turns the same file into a passphrase-locked envelope (scrypt key, AES-256-GCM payload). An unattended start unlocks it with `DS_BOT_SECRETS_PASSPHRASE` or with `DS_BOT_SECRETS_PASSPHRASE_FILE` (a file with the passphrase); without either the store starts locked, the Secrets page says how to unlock it, and secret writes are refused. Plaintext stays the default and existing files need no migration.
 
 Limits:
 
-- On Windows, the file mode has no effect; the file is protected by your user folder only.
 - Only exact copies of a value are masked. A Bot that encodes, splits or reverses a value can still print it. Do not give important secrets to a Bot you do not trust.
 - On a page that is not HTTPS (for example dsh Web opened over http on a LAN), the value crosses the network in clear text. The card warns you.
 - Group chats show no cards; a Bot asks in its own chat.
@@ -194,8 +192,7 @@ The plugin saves its data in `config.home`. Without it, the folder is `$DSH_HOME
 
 | System | Default folder |
 |---|---|
-| Linux, macOS | `~/.dsh/bot/` |
-| Windows | `C:\Users\<user>\.dsh\bot\` |
+| macOS | `~/.dsh/bot/` |
 
 - To move all dsh data (Sessions, profiles and plugin data), set `DSH_HOME`.
 - To move only the plugin data, set `home` in the configuration (see [Configuration](#configuration)).
@@ -204,9 +201,11 @@ Files in `bot/`:
 
 | File | Content |
 |---|---|
-| `state.json` | The team: Bots, groups, Bot-to-Bot messages, preferences and open questions. A long message keeps only its first 2,000 characters here; all of it is in the Session it went to. |
-| `ledger/` | Everything said in each group, whole, one append-only file per group (`group-<id>.jsonl`); removed with the group. `state.json` keeps only a group's latest 60 lines, cut to their start |
-| `handoff-results/` | The whole result of a piece of work a Bot handed on, when it is longer than the 2,000 characters `state.json` keeps, one file per result; each is removed once the answer it went into has gone up |
+| `state/catalog.sqlite` | Team settings, preferences, open questions and the directory of group databases. |
+| `state/bots.sqlite` | Bot identities, private Sessions, default models and working folders. |
+| `state/rooms/<storage_key>/room.sqlite` | One group per file, including its notice, members, member model and folder settings, shared to-dos, tasks and assignment rounds. |
+| `ledger/` | Everything said in each group, whole, one append-only file per group (`group-<id>.jsonl`); removed with the group. The team database keeps only a group's latest 60 lines, cut to their start |
+| `handoff-results/` | The whole result of a piece of work a Bot handed on, when it is longer than the 2,000 characters the team database keeps, one file per result; each is removed once the answer it went into has gone up |
 | `state.lock` | The dsh that is using this data (pid and host), its mtime bumped as a heartbeat. It is removed when that dsh exits; a leftover whose heartbeat has stopped is taken over by the next dsh to load. |
 | `chat-index.sqlite` | Full-text index of older chat parts (`read_own_chat`); rebuilt if deleted |
 | `usage.sqlite` | Token counts for the Usage page; rebuilt from the Session logs if deleted, losing only the calls outside the logs and the names of deleted Bots |
@@ -217,40 +216,40 @@ Files in `bot/`:
 | `secrets.json` | Saved secrets. Treat backups of it like passwords. |
 | `logs/diagnostics.jsonl` | Recent errors and warnings, with keys, tokens, saved secrets and the home folder removed. It moves to `diagnostics.jsonl.1` past 1 MB. Safe to delete. |
 
-The chats themselves are dsh Sessions and are not in `bot/`: they are in `~/.dsh/sessions/`. dsh keeps its workspace list in `~/.dsh/storages/workspace.json` and profiles (with model settings) in `~/.dsh/profiles/`. dsh Desktop keeps each Bot's browser partition in memory only, so its logins are not saved. The desktop app saves them with its own window data, not in the data location, and clears a Bot's when the Bot is deleted.
+The chats themselves are dsh Sessions and are not in `bot/`: they are in `~/.dsh/sessions/`. dsh keeps its workspace list in `~/.dsh/storages/workspace.json` and profiles (with model settings) in `~/.dsh/profiles/`. dsh Desktop keeps each Bot's browser partition in memory only, so its logins are not saved.
+
+The first writable host imports the team from the existing `bot/state.json` or the latest single-file `bot/team.sqlite`. It reconstructs and compares the complete source before publishing the databases under `bot/state/`. Subsequent starts use those databases. The original source stays available as an upgrade snapshot. Upgrade all hosts sharing this team before resuming writes.
 
 **Back up and restore**
 
-1. Quit dsh completely (both the Web server and Desktop), so `state.json` is current.
+1. Quit dsh completely (both the Web server and Desktop), so the team database and Sessions are current.
 2. Copy all of `~/.dsh/` (at least `bot/`, `sessions/` and `storages/`). A copy of `bot/` alone loses the chats.
 3. To restore, quit dsh, put the folder back in the same place, then start dsh.
 
-**Move to another computer**: `state.json` has no absolute paths except the working folders you set for Bots and groups, but dsh's `storages/workspace.json` and the Session folder names contain the workspace's absolute path. If the path is the same on the new computer, copy the folder. If it is different (another user name or system), it is not yet tested whether dsh finds the old Sessions.
+**Move to another computer**: The saved team includes the working folders you set for Bots and groups. DSH's `storages/workspace.json` and the Session folder names contain the workspace's absolute path. If the path is the same on the new computer, copy the folder. If it is different (another user name or system), it is not yet tested whether dsh finds the old Sessions.
 
 **dsh Web and Desktop at the same time**: by default both use the same `~/.dsh`. The dsh that loads the team first takes `bot/state.lock` and can change the team. The other one is read-only: it shows the team and follows changes to the file, but refuses changes (`bot/read-only`, "open in another dsh"), and its Bots cannot start new Sessions. When the first one exits, the other one takes over on its next request. To change the team from both at once, give one of them a different `DSH_HOME` (two separate teams).
 
 ## Development
 
-You need Node 24, pnpm and a deepseek-harness checkout with its dependencies installed, next to this repository (`../deepseek-harness`, or set `DSH_HARNESS`). The Desktop test bench also needs `xvfb-run` and `ffmpeg`. Web screenshots need Chrome or Chromium (`CHROME_BIN`; by default `google-chrome` or `chromium`).
+You need Node 24, pnpm and a deepseek-harness checkout with its dependencies installed, next to this repository (`../deepseek-harness`, or set `DSH_HARNESS`). Web screenshots need Chrome or Chromium (`CHROME_BIN`; by default `google-chrome` or `chromium`).
 
 ```sh
 npm ci                                   # esbuild, for the client build
 npm run build                            # src/client → client.js
-npm test                                 # unit tests
+npm test -- test/group-search.test.js    # choose the affected test files
 npm run lint                             # oxlint from the dsh repository (.oxlintrc.json)
 dev/bench.sh dev 3100 8800 start         # Web test bench: mock model + dsh Web, data in ../.dsh-test-dev
-dev/desktop-linux/desktop.sh dev start   # Desktop test bench: mock model + dsh Desktop in Xvfb
 CONTEXT_WINDOW=100000 CHECK_RATIO=0.45 dev/bench.sh smoke 3101 8801 reset && node dev/smoke.mjs smoke 3101
-dev/check.sh                             # all checks (see below)
+dev/check.sh --only build                # check the generated client
 ```
 
-- `client.js` is built from `src/client/` and committed, so `link:` and Git installs need no build. Do not edit `client.js` by hand; `npm test` checks that it matches the source. After a change in `src/client/`, run `npm run build` and reload the page. After a change in `index.js` or `src/host/`, restart dsh.
+- `client.js` is built from `src/client/` and committed, so `link:` and Git installs need no build. Do not edit `client.js` by hand; `node scripts/build-client.mjs --check` checks that it matches the source. After a change in `src/client/`, run `npm run build` and reload the page. After a change in `index.js` or `src/host/`, restart dsh.
 - **Web test bench** `dev/bench.sh <name> <web port> <mock port> [start|stop|reset|status]`: a scripted mock model (`dev/mock-llm.mjs`, no real tokens; its commands are listed at the top of the file) and a dsh Web server. Data goes in `../.dsh-test-<name>/`; `reset` clears the team and Sessions first. The login address with its token is in `../.dsh-test-<name>/web.log`.
-- **Desktop test bench** `dev/desktop-linux/desktop.sh <name> [start|stop|reset|status]`: dsh does not run Desktop on Linux; `launch.mts` runs the unpackaged Desktop in Xvfb. The first start downloads Electron and a Linux runtime (a few minutes). `start` returns when the team shows in a 1400×860 window.
-- **All checks** `dev/check.sh [--skip steps] [--only steps] [--out dir]`: `unit`, `build`, `lint`, `smoke`, `web` (screenshots of the sidebar, a chat, a group, Bot settings, the Bots page and group settings) and `desktop` (the same screenshots, then the Bot browser checks). It stops everything it started. On failure it names the step and its log and exits non-zero. A full run takes about 3 minutes after the first download.
-- **Ports**: every script takes `SLOT=n` (0-9, default 0) so that several people or sessions on one machine do not collide: Web bench `31n0` and mock `88n0`, smoke `31n1` and `88n1`, Desktop mock `88n2`, and so on. A Desktop uses about 1 GB of memory; stop it when you are done.
+- **Selected checks**: `dev/check.sh --only build,lint` runs the named steps. Choose from `build`, `lint`, `smoke`, `web` and `unit` (the full unit suite). The script saves logs and screenshots in a timestamped directory under `shots`. Pass `--out <dir>` to choose the output directory.
+- **Ports**: `dev/check.sh` uses `SLOT=n` (0–9, default 0). Web uses `31n0/88n0` and smoke uses `31n1/88n1`.
 - **Real models** (these cost tokens): `dev/steward-eval.mjs` sends hand-written conversation endings through the context steward's own prompt to an OpenAI-compatible route (or, with `--api messages`, an Anthropic Messages route such as DeepSeek's official one) and checks each decision. `dev/llm-tap.mjs <port> <upstream base URL> <log.jsonl> [body dir]` is a logging pass-through for either format: point a provider's `baseURL` at it, and it writes one JSON line per call (steward, checkpoint, handoff note or main turn, the Bot's name, token usage, the answer, and where the request first differs from the same Bot's previous one, which is what a provider's cache can reuse; never headers). With a body dir it also saves every request body. Each file explains its use at the top.
-- **Screenshots**: `dev/ui-shots.mjs` works for both apps (`desktop <dsh repo> <dir> <renderer port>` or `web <dsh repo> <dir> <bench name> <web port>`).
+- **Web screenshots**: `dev/ui-shots.mjs web <dsh-repo> <out-dir> <bench-name> <web-port>` checks the plugin in a running Web test bench.
 - `npm test` loads the `@deepseek-ai/*` packages from `dev/harness/` (`npm run harness`) or `DSH_HARNESS`.
 
 ## Layout
@@ -264,7 +263,7 @@ dev/check.sh                             # all checks (see below)
 | `web-search.js` | The `auto` search provider; independent of the team code |
 | `test/` | Unit tests and fixtures |
 | `dev/characters.mjs` | Builds the characters (small 3D models traced to outlines) into the `CHARACTERS` table in `src/client/characters.js` |
-| `dev/` | Mock model, test benches, smoke test, Desktop scripts, real-model tools (steward evaluation, logging pass-through) |
+| `dev/` | Mock model, test benches, smoke test, real-model tools (steward evaluation, logging pass-through) |
 
 ## License
 

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { apply } from '../index.js'
 import { signIn } from '../src/host/connectors/index.js'
 import { fakeContext } from './fake-ctx.js'
@@ -100,7 +101,7 @@ test('connecting saves the token, kept out of every Bot shell, and mounts GitHub
   const state = await call(ctx, 'state', {})
   assert.deepEqual(state.value.secrets.map(secret => [secret.name, secret.scope]), [['GITHUB_TOKEN', []]])
   assert.ok(!JSON.stringify(state).includes(token))
-  assert.ok(!readFileSync(join(home, 'state.json'), 'utf8').includes(token))
+  assert.ok(!JSON.stringify(savedTeam(home)).includes(token))
 
   const off = await call(ctx, 'connector-disconnect', { id: 'github' })
   assert.equal(off.value.connectors.find(r => r.id === 'github').state, 'off')

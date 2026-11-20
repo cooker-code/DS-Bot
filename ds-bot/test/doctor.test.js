@@ -128,10 +128,9 @@ test('an invalid explicit DSH version cannot remove pins during repair', () => {
   } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
-test('the command runs when npm links the bin with a symlink', { skip: process.platform === 'win32' }, () => {
+test('the command runs when npm links the bin with a symlink', () => {
   // Unix npm puts a symlink in node_modules/.bin; the kernel then runs the script with
   // argv[1] naming the link while the module resolves to the file it points at. On
-  // Windows npm writes a .cmd shim instead, which passes the script path directly.
   const home = homeWith({ web: manifest({ 'ds-bot': '0.3.2', '@deepseek-ai/dsh-web-app': RUNNING }) })
   const dir = mkdtempSync(join(tmpdir(), 'ds-bot-doctor-bin-'))
   const link = join(dir, 'ds-bot-doctor')

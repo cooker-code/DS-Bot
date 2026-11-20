@@ -3,7 +3,10 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, mkdirSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
+import { forwardProjectIntake } from '../src/host/project-intake.js'
+import { projectNotice } from '../src/host/project-assistant.js'
 import { fakeContext } from './fake-ctx.js'
 
 let rt
@@ -166,7 +169,7 @@ async function start({ fail = {}, services = {}, home: reuse, state: seed = TEAM
       if (listener.length >= 2) listener(session, { type, seq: ++seq, data })
     }
   }
-  const state = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = () => savedTeam(home)
   const stop = async ({ keep = false } = {}) => {
     await ctx.dispose()
     if (!keep) rmSync(root, { recursive: true, force: true, maxRetries: 5 })
@@ -610,4 +613,63 @@ test('a configured small output limit is an ordinary cutoff, including reasoning
   }
   assert.equal(host.state().bots.b.sessionId, 'b')
   assert.deepEqual(host.created, [])
+})
+
+test('two projects share an admin identity, while an original card receives its late result in its group successor', async t => {
+  const taskId = '11111111-1111-4111-8111-111111111111'
+  const intakeId = 'intake-22222222-2222-4222-8222-222222222222'
+  const room = id => ({ id, name: id, admin: 'a', mode: 'admin', members: ['a', 'b'], notice: '[taskId]', seen: {}, log: [], seq: 0 })
+  let host = await start({ state: { ...TEAM, rooms: { eng: room('eng'), data: room('data') } } })
+  t.after(() => host.stop())
+  const work = host.rt.roomOf('eng')
+  const data = host.rt.roomOf('data')
+  const receive = async (r, id, message) => {
+    const line = host.rt.logRoom(r, { who: 'User', intakeId: id, text: message, session: true })
+    await forwardProjectIntake(host.rt, r, id, line.seq)
+  }
+  await Promise.all([receive(work, intakeId, 'Inspect the display'), receive(data, 'intake-33333333-3333-4333-8333-333333333333', 'Inspect the data')])
+  const first = work.sessions.a, other = data.sessions.a
+  assert.equal(new Set([first, other, host.rt.chatOf('a')]).size, 3)
+  const message = host.agentOf(first).calls.find(([, m]) => m.source?.intakeId === intakeId)[1]
+  host.emit(first, 'turn/start', { turn: 1 })
+  host.emit(first, 'user/message', message)
+  const plan = { action: 'plan', title: 'Inspect display', acceptance: 'Label verified', version: 1, nodes: [
+    { title: 'Inspect label', ownerId: 'b', instructions: 'Check the rendered label', deliverable: 'Review result', acceptance: 'Label verified' },
+  ] }
+  const saved = JSON.parse(await host.tool('project_task', plan, first))
+  await host.tool('project_task', { action: 'dispatch', taskId: saved.taskId, version: 1, node: 1 }, first)
+  assert.ok(saved.taskId)
+  await assert.rejects(host.tool('project_task', { action: 'read', roomId: 'eng', taskId: saved.taskId }, other), /group/)
+  await assert.rejects(host.tool('next_group_session', {}, 'a'), /active member session/)
+  await host.tool('next_group_session', {}, first)
+  await host.tool('next_group_session', {}, first)
+  assert.equal(work.sessions.a, first)
+  host.emit(first, 'turn/end', { turn: 1, reason: { kind: 'completed' } })
+  host.ctx.emit('agent/status', { agent: host.agentOf(first), status: 'idle' })
+  await until(() => work.sessions.a !== first && host.archived.some(([id]) => id === first) && !host.rt.state.switching[first])
+  const current = work.sessions.a
+  assert.deepEqual(work.segments.a.map(part => part.sessionId), [first])
+  assert.equal(data.sessions.a, other)
+  assert.equal(host.rt.chatOf('a'), 'a')
+  const home = host.home
+  await host.stop({ keep: true })
+  host = await start({ home })
+  const restored = host.rt.roomOf('eng')
+  const deliver = () => projectNotice(host.rt, restored, 'a', { taskId: saved.taskId }, 'reviewed', 'Review completed for the original card.')
+  await deliver()
+  await deliver()
+  const receipts = id => host.agentOf(id).calls.filter(([, m]) => m.source?.taskId === saved.taskId)
+  assert.equal(receipts(current).length, 1)
+  for (const id of [first, other, 'a']) assert.equal(receipts(id).length, 0)
+  const receipt = receipts(current)[0][1]
+  host.emit(current, 'turn/start', { turn: 1 })
+  host.emit(current, 'user/message', receipt)
+  const card = JSON.parse(await host.tool('project_task', { action: 'read' }, current))
+  assert.equal(card.taskId, saved.taskId)
+  assert.equal(card.rounds[0].ownerId, 'b')
+  await assert.rejects(host.tool('post_to_group', { group: 'data', taskId: card.taskId, message: 'The review is complete.' }, current), /group that owns it/)
+  await assert.rejects(host.tool('project_task', { action: 'read', taskId }, current), /different card/)
+  const view = (await host.call('state', {})).value
+  assert.deepEqual(view.rooms.find(r => r.id === 'eng').memberSessions.a.map(row => row.id), [first, current])
+  assert.deepEqual(view.rooms.find(r => r.id === 'data').memberSessions.a.map(row => row.id), [other])
 })

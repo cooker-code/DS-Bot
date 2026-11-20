@@ -13,7 +13,7 @@
 
 | 方案 | 优点 | 代价 |
 |---|---|---|
-| 系统密钥环（macOS Keychain、Windows DPAPI、Linux Secret Service） | 解锁跟随桌面登录，用户不用记口令 | Linux 无桌面会话没有 Secret Service；插件进程不是 Electron 主进程，拿不到 `safeStorage`；三平台各一套代码和失败路径 |
+| 系统密钥环（macOS Keychain、Linux Secret Service） | 解锁跟随桌面登录，用户不用记口令 | Linux 无桌面会话没有 Secret Service；插件进程不是 Electron 主进程，拿不到 `safeStorage`；不同平台各一套代码和失败路径 |
 | 外部 secret provider 接口（Vault 等） | 运维已有密钥管理 | 需要联网托管服务，用户明确不要；接口和部署成本大 |
 | 口令加密文件（本 PR 选的起步方案） | 无依赖、无网络、Linux 无桌面可用；改动集中在一个文件 | 用户要记口令；无人值守重启要把口令放进服务管理器 |
 
@@ -46,7 +46,6 @@
 - 口令来源（环境变量/文件）的保护由部署决定；env 会被同用户进程看到。
 - GCM 无法区分解密失败是口令错还是文件损坏，提示统一写「口令不对或文件损坏」。
 - 启用后旧明文的残留副本（备份、日志、别的机器）不在本功能处理范围。
-- 设置页不支持在移动端（手机 App 还没有密钥页）。
 
 ## 变更
 

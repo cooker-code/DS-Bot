@@ -142,7 +142,7 @@ function ApprovalCard({ approval, bot, actions }) {
     approval.detail?.text ? h('div', { className: 'bt-mw-text' }, approval.detail.text) : null,
     approval.reason ? h('div', { className: 'bt-mw-reason' }, approval.reason) : null,
     approval.detail?.code ? h('code', { className: 'bt-mw-code', title: approval.detail.code }, approval.detail.code) : null,
-    // Own-chat approvals are answerable for IM and the phone app; here the Bot's
+    // Own-chat approvals are answerable in IM chats; here the Bot's
     // own DSH card stays the place to answer, so the row still opens that chat.
     approval.answerable && approval.roomId !== undefined
       ? h('div', { className: 'bt-mw-actions' },

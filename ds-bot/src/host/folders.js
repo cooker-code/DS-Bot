@@ -1,3 +1,4 @@
+import { memberSettings } from './team-storage/member-settings.js'
 // Working folders: where a Bot's Sessions run. A group's folder holds for every member
 // there, else a Bot works in its own folder, else in the team workspace. A Session's
 // folder is fixed when it is made, so a change moves the conversation on to a fresh
@@ -22,16 +23,52 @@ export function install(rt) {
   const { ctx, state } = rt
 
   const teamFolder = () => ctx.workspaceRegistry.get?.(state.workspaceId)?.path
-  // The desktop app names the folder the user chose for the Bots' files.
   const defaultTeamFolder = () => rt.config.workspace ?? (process.env.DS_BOT_WORKSPACE?.trim() || join(rt.home, 'workspace'))
   // A member's own pick inside one group, made with working_directory there: a path,
   // or null for the team workspace, which a missing entry would read as the Bot's
   // folder. A group's folder outranks it; without one the Bot's folder is the default.
   const workDirOf = ({ botId, roomId } = {}) => {
     const room = rt.roomOf(roomId)
+    if (botId !== undefined && Object.hasOwn(memberSettings(room), botId) && memberSettings(room)[botId].override) return room.memberDirs?.[botId] ?? undefined
     if (room?.workDir !== undefined) return room.workDir
     if (room !== undefined && botId !== undefined && Object.hasOwn(room.memberDirs ?? {}, botId)) return room.memberDirs[botId] ?? undefined
     return rt.botOf(botId)?.workDir
+  }
+  // Only the immutable creation directory can establish historical membership.
+  // Reading headers also works for archived parts without reopening their agents.
+  rt.repairGroupWorkspaces = async () => {
+    const pending = new Map(rt.groupOwners)
+    for (const [id, owner] of rt.pastOwners) {
+      if (owner.roomId && owner.botId) pending.set(id, owner)
+    }
+    if (!pending.size) return
+    // DSH only projects memberships validated against the persisted header.
+    // This includes archived sessions still correctly grouped in a former folder.
+    for (const workspace of ctx.workspaceRegistry.list()) {
+      for (const id of workspace.sessionIds ?? []) {
+        const owner = pending.get(id)
+        if (owner && (!rt.groupOwners.has(id) || workspace.path === (workDirOf(owner) ?? teamFolder()))) pending.delete(id)
+      }
+    }
+    const persistence = ctx.get?.('sessionPersistence')
+    for (const [id, owner] of pending) {
+      try {
+        const target = workDirOf(owner) ?? teamFolder()
+        if (!target) throw new Error('The target working folder is unknown')
+        let header = ctx.sessions.get?.(id)?.header
+        if (!header) {
+          if (!persistence?.stat) throw new Error('DSH cannot read stored session headers')
+          header = (await persistence.stat(id))?.header
+        }
+        if (!header?.cwd || !isAbsolute(header.cwd)) throw new Error('The original working folder is unavailable')
+        const original = await realpath(header.cwd)
+        if (original !== await realpath(target)) throw new Error('The original working folder differs from the current target')
+        const destination = await ctx.workspaceRegistry.create(original)
+        await destination.attachSession(id)
+      } catch (error) {
+        rt.warn('ds-bot: group %s, Bot %s, Session %s: workspace association left as recorded: %s', owner.roomId, owner.botId, id, error?.message ?? error)
+      }
+    }
   }
   const isFolder = path => stat(path).then(info => info.isDirectory(), () => false)
   const real = path => realpath(path).catch(() => resolve(path))
@@ -62,7 +99,7 @@ export function install(rt) {
     if (room !== undefined) return workDirOf({ roomId: room.id }) ?? teamFolder()
     return workDirOf({ botId: rt.selfOf?.(id), roomId: rt.groupOwners?.get(id)?.roomId }) ?? teamFolder()
   }
-  // The desktop app runs its own DSH and names the user's, which Bots must not write either.
+  // A separately configured user DSH home is protected as well.
   const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
 
   // A Bot that could write where DSH or the team keeps its data could change its own

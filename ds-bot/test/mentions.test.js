@@ -23,3 +23,8 @@ test('addresses, longer words and code are left alone', () => {
   assert.equal(linkMentions('@Chiefs 来了', bots, 'a'), '@Chiefs 来了')
   assert.equal(linkMentions('run `@Chief` now', bots, 'a'), 'run `@Chief` now')
 })
+
+test('only the fresh reply can call a Bot named in a quotation', () => {
+  assert.equal(linkMentions('> @Chief and @新 Bot\n\nAsk @测试', bots, 'b'),
+    `> @Chief and @新 Bot\n\nAsk [测试](${MENTION_ORIGIN}t)`)
+})

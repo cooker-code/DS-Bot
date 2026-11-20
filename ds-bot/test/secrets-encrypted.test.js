@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { decryptSecrets, encryptSecrets, isEncryptedSecretsFile, PASSPHRASE_ENV, PASSPHRASE_FILE_ENV } from '../src/host/secrets-crypto.js'
 import { fakeContext } from './fake-ctx.js'
@@ -123,7 +124,7 @@ test('plaintext is still the default, and encrypting rewrites the same file as a
   assert.equal(envelope.encrypted, true)
   assert.equal(rawText(home).includes(secret), false)
   assert.equal(rawText(home).includes('DEMO_TOKEN'), false)
-  assert.equal(readFileSync(join(home, 'state.json'), 'utf8').includes(PASS), false)
+  assert.equal(JSON.stringify(savedTeam(home)).includes(PASS), false)
   assert.equal(first.rt.secretValue('DEMO_TOKEN'), secret)
   assert.deepEqual((await first.view()).secrets.map(entry => entry.name), ['DEMO_TOKEN'])
   await first.stop({ keep: true })

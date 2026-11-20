@@ -8,14 +8,9 @@
 
 DS Bot 是一支持久化的 Bot 团队，基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）构建，开源，使用 Apache 2.0 许可。用户可以和一个 Bot 聊天，也可以和一支有分工的团队工作：一个或几个 Main Bot 负责组织，每个 Bot 各做各的事，互相沟通，用户随时能看到谁在做什么。Bot 应该有持久化的工作能力，有长期记忆。
 
-## 两种形态
+## 插件和宿主
 
-| 形态 | 是什么 |
-|---|---|
-| `ds-bot` 插件 | 标准的 DSH 插件，装进 DSH Desktop 或 DSH Web 使用。Bot 的全部功能都在这里 |
-| DS Bot 桌面应用 | 一打开就是 DS Bot 本体。自带锁定版本的 DSH、自己的 profile 和数据目录，能导入用户在 DSH 里已有的团队，也能安装与 DSH 兼容的插件，逐步形成 DS Bot 自己的插件生态。插件仍然可以单独用 |
-
-两种形态用的是同一份 `ds-bot` 插件。桌面应用的意义在于：DS Bot 自己掌握 profile 和界面，不再受 DSH 通用界面和全局配置的限制（见 [DSH 让步总账](plans/2026-10-13-dsh-concessions.md)）。
+DS Bot 仅以 `ds-bot` 插件交付。DSH Desktop 或 DSH Web 加载插件，提供会话、工具和模型。
 
 ## 十条核心要求
 
@@ -27,12 +22,12 @@ DS Bot 是一支持久化的 Bot 团队，基于 [DeepSeek Harness](https://gith
 6. **工作区。** 每个 Bot 可以单独设置工作区，群聊可以设置统一工作区。Bot 应该可以自己设置自己的工作区，即用户一句话即可。
 7. **浏览器。** 每个 Bot 有独立的浏览器，互不影响。要支持导入 cookie（后续做）。
 8. **界面与动效。** DS Bot 应该有精致的前端界面，要有丝滑的动效。
-9. **独立应用。** DS Bot 应该是独立 App，不为 DSH 做过多让步。
+9. **插件接口。** 团队功能使用 DSH 公开的插件接口。
 10. **接入本地 Agent。** DS Bot 可以把本地的 Agent CLI 接入为 Bot，可以互相调用（待做）。
 
 ## 取舍原则
 
-- **Bot 的正确行为优先。** DSH 某些模式或限制和 Bot 不兼容时，不为了兼容无限增加复杂度。不得不让步的地方，记进 [DSH 让步总账](plans/2026-10-13-dsh-concessions.md)，等桌面应用掌握 profile 后清理。
+- **Bot 的正确行为优先。** DSH 某些模式或限制和 Bot 不兼容时，不为了兼容无限增加复杂度。不得不让步的地方，记进 [DSH 让步总账](plans/2026-10-13-dsh-concessions.md)。
 - **数据留在用户自己的电脑上。** 团队、聊天、记忆都存在本机的 DS Bot 的数据目录里。
 - **能验证才算完成。** 行为要有测试覆盖，界面改动要实际看过。
 

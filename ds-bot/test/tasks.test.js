@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
-import { install } from '../src/host/tasks.js'
-import { fakeContext } from './fake-ctx.js'
+import { deleteBoardTasks, install } from '../src/host/tasks.js'
+import { forwardProjectIntake } from '../src/host/project-intake.js'
+import { developmentHandoff } from '../src/host/project-tasks.js'
+import { fakeAttachments, fakeContext } from './fake-ctx.js'
 
 // The task board is room data: these tests start with the queue every new room has,
 // and the last one drives the panel's two endpoints through a whole runtime.
@@ -52,17 +56,17 @@ const seed = () => ({
   revision: 0,
 })
 
-async function start(t) {
+async function start(t, team = seed(), services = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-tasks-'))
-  writeFileSync(join(home, 'state.json'), JSON.stringify(seed()))
-  const ctx = fakeContext()
+  writeFileSync(join(home, 'state.json'), JSON.stringify(team))
+  const ctx = fakeContext({ services })
   const prompts = []
   Object.assign(ctx, {
     llm: { listProviders: () => [], listModels: async () => [], resolveModelInfo: async () => ({}) },
     workspaceRegistry: { get: () => undefined, resolveByPath: async () => undefined, create: async path => ({ id: 'w1', path }), archiveSession: async () => {} },
     sessionController: {
       create: async () => ({ sessionId: 's1' }),
-      resolveAgent: async sessionId => ({ agent: { session: { id: sessionId } } }),
+      resolveAgent: async sessionId => ({ agent: { session: { id: sessionId }, cancel() {}, followup() {}, steer() {} } }),
       selectModel: async () => {},
       prompt: async (request) => { prompts.push(request) },
     },
@@ -79,8 +83,14 @@ async function start(t) {
   })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   const tool = (args, sessionId) => rt.teamTools.find(entry => entry.name === 'group_task').execute(args, { agent: { id: sessionId } })
-  const saved = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-  return { home, ctx, rt, call, tool, prompts, saved }
+  const saved = () => savedTeam(home)
+  let seq = 0
+  const emit = (id, type, data) => {
+    for (const listener of ctx.listeners.get('session/event') ?? []) {
+      if (listener.length >= 2) listener({ id }, { type, seq: ++seq, data })
+    }
+  }
+  return { home, ctx, rt, call, tool, prompts, saved, emit }
 }
 
 test('group_task opens a task and moves it through active, review, blocked and done', async () => {
@@ -90,7 +100,8 @@ test('group_task opens a task and moves it through active, review, blocked and d
   assert.deepEqual([task.botId, task.status, task.goal, task.progress], ['b', 'active', 'Write the draft', ''])
   assert.equal(host.calls.save, 1)
 
-  assert.match(await host.tool({ action: 'update', status: 'review', progress: 'Draft is ready  for review' }), /^Updated t_/)
+  assert.match(await host.tool({ action: 'update', status: 'review' }), /Specify deliveryKind/)
+  assert.match(await host.tool({ action: 'update', status: 'review', deliveryKind: 'other', progress: 'Draft is ready  for review' }), /^Updated t_/)
   assert.deepEqual([host.tasks()[0].status, host.tasks()[0].progress], ['review', 'Draft is ready for review'])
   assert.match(await host.tool({ action: 'update', status: 'blocked', progress: 'Waiting for the outline' }), /\(blocked\)/)
   assert.match(await host.tool({ action: 'update', status: 'active' }), /\(active\)/)
@@ -99,6 +110,37 @@ test('group_task opens a task and moves it through active, review, blocked and d
   assert.match(await host.tool({ action: 'complete', result: 'Draft delivered' }), /Finished: "Draft delivered"/)
   assert.deepEqual([host.tasks()[0].status, host.tasks()[0].result], ['done', 'Draft delivered'])
   assert.match(await host.tool({ action: 'show' }), /1 finished or cancelled in the history/)
+})
+
+test('a member code task needs its delivery commit on local master, not a remote-tracking ref', async t => {
+  const repo = mkdtempSync(join(tmpdir(), 'member-code-review-'))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'core.hooksPath=/dev/null',
+    '-c', 'user.name=Fixture', '-c', 'user.email=test@example.invalid', ...args], { encoding: 'utf8' }).trim()
+  git('init', '-q', '-b', 'master')
+  git('commit', '--allow-empty', '-qm', 'Baseline')
+  git('switch', '-qc', 'feature')
+  const host = fakeHost()
+  host.rt.workFolder = async () => repo
+  host.rt.privateClash = async () => false
+  host.state.rooms.r1.workDir = repo
+  await host.tool({ action: 'open', goal: 'Add a file', deliveryKind: 'code', repository: repo })
+  writeFileSync(join(repo, 'feature.txt'), 'delivery')
+  git('add', 'feature.txt')
+  git('commit', '-qm', 'Delivery')
+  const commit = git('rev-parse', 'HEAD')
+  git('update-ref', 'refs/remotes/origin/master', commit)
+  const review = { action: 'update', status: 'review', commit }
+  await assert.rejects(host.tool(review), /not on local main or master/)
+  assert.equal(host.tasks()[0].status, 'active')
+  git('switch', '-q', 'master')
+  git('merge', '--ff-only', 'feature')
+  git('commit', '--allow-empty', '-qm', 'Later commit')
+  await host.tool(review)
+  assert.equal(host.tasks()[0].status, 'review')
+  assert.equal(host.tasks()[0].mainReview.commit, commit)
+  assert.equal(host.tasks()[0].mainReview.branch, 'master')
+  assert.equal(host.tasks()[0].mainReview.tip, git('rev-parse', 'master'))
 })
 
 test('a task belongs to the Bot that opened it; only the admin or a Main Bot may cancel another one', async () => {
@@ -141,7 +183,10 @@ test('the panel adds a note and cancels through the same task, refusing a finish
   const host = fakeHost()
   await host.tool({ action: 'open', goal: 'Write the draft' }, 'gb')
   const [task] = host.tasks()
+  await host.tool({ action: 'update', id: task.id, status: 'review', deliveryKind: 'other' }, 'gb')
+  await host.tool({ action: 'update', id: task.id, status: 'clarify', progress: 'Which test environment?' }, 'gb')
   const noted = host.rt.taskNote('r1', task.id, '  also add   tests ')
+  assert.equal(noted.task.status, 'review')
   assert.deepEqual(noted.task.notes.map(note => [note.by, note.text]), [['user', 'also add tests']])
   assert.equal(host.rt.taskNote('r1', task.id, '  ').error, 'Write a note first.')
   assert.equal(host.rt.taskNote('r1', 'nope', 'x').error, 'No such task.')
@@ -200,6 +245,52 @@ test('a panel note reaches the task owner as a user message, and both panel acti
 })
 
 
+test('bulk deletion is scoped to the room and row type and survives a reload and duplicate request', async (t) => {
+  const team = seed()
+  const room = team.rooms.r1
+  const receipt = (id, status) => ({ id, status, title: id, seq: 1, receivedAt: 1 })
+  Object.assign(room, {
+    notice: '[taskId]',
+    tasks: { both: { id: 'both', botId: 'a', goal: 'Keep', status: 'active' }, old: { id: 'old', goal: 'Finished', status: 'done' } },
+    projectCards: { both: { id: 'both', title: 'Remove', intakes: ['original', 'legacy'], rounds: [{ ownerId: 'b', assignedAt: 1 }] } },
+    projectInbox: [receipt('keep', 'pending'), receipt('original', 'accepted'), receipt('pending', 'clarify')],
+    log: [{ seq: 1, who: 'User', text: 'Original request', intakeId: 'original' }], seq: 1,
+  })
+  team.rooms.r2 = { ...structuredClone(room), id: 'r2', sessions: {} }
+  const host = await start(t, team)
+  const items = [{ kind: 'project', id: 'both' }, { kind: 'intake', id: 'pending' }, { kind: 'member', id: 'old' }]
+  const del = items => host.call('task-delete', { roomId: 'r1', items })
+  assert.equal((await del([...items, { kind: 'intake', id: 'original' }])).ok, false)
+  assert.ok(host.saved().rooms.r1.projectCards.both)
+  const other = host.saved().rooms.r2
+  const [first, retry] = await Promise.all([del(items), del(items)])
+  assert.equal(first.ok, true, first.error?.message)
+  assert.equal(retry.ok, true, retry.error?.message)
+  const saved = host.saved().rooms.r1
+  assert.deepEqual(Object.keys(saved.tasks), ['both'])
+  assert.deepEqual(saved.projectCards, {})
+  assert.deepEqual(saved.projectInbox.map(item => item.id), ['keep'])
+  assert.deepEqual(new Set(saved.deletedTaskIntakes), new Set(['original', 'legacy', 'pending']))
+  assert.deepEqual(saved.log, room.log)
+  assert.deepEqual(host.saved().rooms.r2, other)
+  assert.equal((await host.call('project-task-detail', { roomId: 'r1', taskId: 'both' })).ok, false)
+  await forwardProjectIntake(host.rt, saved, 'pending', 1)
+  assert.equal(host.prompts.length, 0)
+  host.rt.live.set('a', { info: { intakeId: 'legacy', roomId: 'r1' } })
+  const project = host.rt.teamTools.find(tool => tool.name === 'project_task')
+  await assert.rejects(project.execute({ action: 'assign', ownerId: 'b' }, { agent: { id: 'a' } }), /deleted from the task list/)
+  assert.deepEqual(host.saved().rooms.r1.projectCards, {})
+})
+
+test('undoing a failed bulk delete restores the exact board, including previously absent fields', () => {
+  const room = { projectCards: { p: { intakes: ['i'] } }, projectInbox: [{ id: 'i', status: 'accepted' }] }
+  const before = structuredClone(room)
+  const undo = deleteBoardTasks(room, [{ kind: 'project', id: 'p' }])
+  assert.deepEqual(room.projectCards, {})
+  undo()
+  assert.deepEqual(room, before)
+})
+
 test('a finished task is immutable through every Bot action', async () => {
   for (const terminal of ['complete', 'cancel']) {
     const host = fakeHost()
@@ -222,4 +313,164 @@ test('finished tasks stay in the board history beyond two hundred deliveries', a
   }
   assert.equal(host.tasks().length, 205)
   assert.ok(host.tasks().some(task => task.goal === 'Deliver 0'))
+})
+
+const settle = async (check) => {
+  const until = Date.now() + 3000
+  while (!check() && Date.now() < until) await new Promise(resolve => setImmediate(resolve))
+  assert.ok(check(), 'condition not reached')
+}
+
+test('a member\'s failed turn marks its open tasks failed in the group with the reason; a completed turn lifts it', async (t) => {
+  const host = await start(t)
+  await host.tool({ action: 'open', goal: 'Write the draft' }, 'gb')
+  await host.tool({ action: 'open', goal: 'Review the plan' }, 'ga')
+  const task = goal => Object.values(host.saved().rooms.r1.tasks).find(item => item.goal === goal)
+
+  host.emit('gb', 'turn/start', { turn: 1 })
+  host.emit('gb', 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'QUOTA', status: 402, message: 'Insufficient balance' } } })
+  await settle(() => task('Write the draft').status === 'failed')
+  const { at, ...blocked } = task('Write the draft').blocked
+  assert.ok(at > 0)
+  assert.deepEqual(blocked, { by: 'system', cause: 'failed', code: 'QUOTA', status: 402, from: 'active' })
+  assert.equal(task('Review the plan').status, 'active')
+
+  host.emit('gb', 'turn/start', { turn: 2 })
+  host.emit('gb', 'turn/end', { turn: 2, reason: { kind: 'error', error: { code: 'TRANSPORT', message: 'socket hang up' } } })
+  await settle(() => task('Write the draft').blocked.code === 'TRANSPORT')
+  assert.equal(task('Write the draft').blocked.status, undefined)
+  assert.equal(task('Write the draft').blocked.from, 'active')
+  host.emit('gb', 'turn/start', { turn: 3 })
+  host.emit('gb', 'turn/end', { turn: 3, reason: { kind: 'error', error: { code: 'QUOTA', status: 402, message: 'Insufficient balance' } } })
+  await settle(() => task('Write the draft').blocked.code === 'QUOTA')
+  assert.match(await host.tool({ action: 'show' }, 'ga'), /· Writer · failed · Write the draft\n {2}blocked by DS Bot: its model call failed \(QUOTA 402\)/)
+
+  host.emit('gb', 'turn/start', { turn: 4 })
+  host.emit('gb', 'turn/end', { turn: 4, reason: { kind: 'completed' } })
+  await settle(() => task('Write the draft').status === 'active')
+  assert.equal(task('Write the draft').blocked, undefined)
+})
+
+test('the user stopping a member blocks its open tasks; a block the Bot set itself stays', async (t) => {
+  const host = await start(t)
+  await host.tool({ action: 'open', goal: 'Write the draft' }, 'gb')
+  await host.tool({ action: 'open', goal: 'Wait for the data' }, 'gb')
+  await host.tool({ action: 'update', status: 'blocked', progress: 'No data yet' }, 'gb')
+  const task = goal => Object.values(host.saved().rooms.r1.tasks).find(item => item.goal === goal)
+
+  host.emit('gb', 'turn/start', { turn: 1 })
+  assert.equal((await host.call('stop-member-work', { roomId: 'r1', botId: 'b' })).value, true)
+  await settle(() => task('Write the draft').status === 'blocked')
+  assert.equal(task('Write the draft').blocked.cause, 'stopped')
+  assert.equal(task('Wait for the data').blocked, undefined)
+
+  // The Bot picks the work up again itself.
+  await host.tool({ action: 'update', id: task('Write the draft').id, status: 'active' }, 'gb')
+  assert.equal(task('Write the draft').status, 'active')
+  assert.equal(task('Write the draft').blocked, undefined)
+
+  // A completed turn lifts only what DS Bot blocked.
+  host.emit('gb', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(task('Wait for the data').status, 'blocked')
+})
+
+test('a turn picked up after a restart that leaves a task untouched blocks it; one that updates it keeps it running', async (t) => {
+  const host = await start(t)
+  await host.tool({ action: 'open', goal: 'Write the draft' }, 'gb')
+  await host.tool({ action: 'open', goal: 'Check the facts' }, 'gb')
+  const task = goal => Object.values(host.saved().rooms.r1.tasks).find(item => item.goal === goal)
+  await new Promise(resolve => setTimeout(resolve, 5))
+
+  host.emit('gb', 'user/message', { source: { kind: 'bot', role: 'resume', resumed: true }, content: [{ type: 'text', text: '[DeepSeek Harness restarted while you were working]\nGo on.' }] })
+  host.emit('gb', 'turn/start', { turn: 1 })
+  await host.tool({ action: 'update', id: task('Check the facts').id, progress: 'Two sources left' }, 'gb')
+  host.emit('gb', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
+  await settle(() => task('Write the draft').status === 'blocked')
+  const { at, ...blocked } = task('Write the draft').blocked
+  assert.deepEqual(blocked, { by: 'system', cause: 'restarted', from: 'active' })
+  assert.equal(task('Check the facts').status, 'active')
+  assert.match(await host.tool({ action: 'show' }, 'ga'), /blocked by DS Bot: not updated after DeepSeek Harness restarted/)
+
+  // Finishing a task DS Bot blocked leaves no block behind.
+  await host.tool({ action: 'complete', id: task('Write the draft').id, result: 'Draft delivered' }, 'gb')
+  assert.equal(task('Write the draft').status, 'done')
+  assert.equal(task('Write the draft').blocked, undefined)
+})
+
+test('project detail edits persist Markdown per field and keep the original intake and later supplements', async t => {
+  const team = seed()
+  const first = 'intake-11111111-1111-4111-8111-111111111111'
+  const later = 'intake-22222222-2222-4222-8222-222222222222'
+  const card = { id: 'card', title: 'Title', acceptance: 'Old criteria', intakes: [first], rounds: [{ ownerId: 'b', plan: 'Work', assignedAt: 1 }] }
+  team.rooms.r1.taskManagementEnabled = true
+  team.rooms.r1.projectCards = { card }
+  const host = await start(t, team)
+  await host.rt.load()
+  const room = host.rt.roomOf('r1')
+  const log = (intakeId, text) => host.rt.logRoom(room, { who: 'User', intakeId, text, session: true })
+  log(later, 'Earlier unlinked message')
+  log(first, 'Original **request**')
+  const target = { roomId: 'r1', taskId: 'card' }
+  const read = async () => (await host.call('project-task-detail', { ...target, textOnly: true })).value
+  const edit = (field, previous, value) => host.call('update-project-task-text', { ...target, field, previous, value })
+  const handoff = () => developmentHandoff(host.rt, 'ga', room, room.projectCards.card, 'b', 1).text
+  assert.deepEqual(await read(), { requirement: 'Original **request**', acceptance: 'Old criteria' })
+  assert.ok(handoff().includes(`[${first}] Original **request**`))
+
+  const requirement = '## Revised request\n\n- Keep **formatting**'
+  const acceptance = '    indented code\n\n1. Check the result  \n   on a new line'
+  const writes = await Promise.all([edit('requirement', 'Original **request**', requirement), edit('acceptance', 'Old criteria', acceptance)])
+  assert.deepEqual(writes.map(r => r.ok), [true, true])
+  assert.deepEqual(await read(), { requirement, acceptance })
+  assert.ok(handoff().includes(requirement) && handoff().includes(acceptance))
+  assert.ok(!handoff().includes('Original **request**'))
+  assert.equal(host.saved().rooms.r1.projectCards.card.acceptance, acceptance)
+  assert.equal(host.saved().rooms.r1.projectCards.card.goal, requirement)
+  assert.equal((await edit('requirement', 'Original **request**', requirement)).ok, true)
+  assert.equal((await edit('requirement', 'Original **request**', 'stale change')).ok, false)
+  assert.equal((await edit('status', '', 'done')).ok, false)
+  assert.equal((await edit('acceptance', acceptance, '  ')).ok, false)
+
+  log(first, 'Follow-up')
+  room.projectCards.card.intakes.push(later)
+  assert.deepEqual(await read(), { requirement: requirement + '\n\nEarlier unlinked message\n\nFollow-up', acceptance })
+  const full = (await host.call('project-task-detail', target)).value
+  assert.deepEqual(full.requirements.map(line => line.text), [`[${later}] Earlier unlinked message`, `[${first}] Original **request**`, `[${first}] Follow-up`])
+  assert.equal((await host.call('update-project-task-text', { ...target, roomId: 'missing', field: 'acceptance', previous: acceptance, value: 'Wrong room' })).error.code, 'GROUP_CONTEXT_REQUIRED')
+})
+
+test('task fields show original annotation images and save separate pictures for acceptance and requirements', async t => {
+  const team = seed()
+  const intake = 'intake-11111111-1111-4111-8111-111111111111'
+  const card = { id: 'card', title: 'Annotation', acceptance: 'Compare', intakes: [intake], rounds: [{ ownerId: 'b', plan: 'Check', assignedAt: 1 }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: { card, other: { ...card, id: 'other', intakes: [] } } })
+  const attachments = fakeAttachments()
+  const original = await attachments.saveImage({ mediaType: 'image/png', width: 1, height: 1, data: Buffer.from([1]) })
+  const host = await start(t, team, { attachments })
+  await host.rt.load()
+  const room = host.rt.roomOf('r1')
+  const text = '【网页批注】1 处\n截图：1 张（编号对应）'
+  host.rt.logRoom(room, { who: 'User', intakeId: intake, text, images: [original], session: true })
+  const target = { roomId: room.id, taskId: card.id }
+  const read = async (extra = {}) => (await host.call('project-task-detail', { ...target, textOnly: true, ...extra })).value
+  const edit = (field, previous, value, images) => host.call('update-project-task-text', { ...target, field, previous, value, ...images })
+  const stage = async (data) => (await host.call('stage-image', { mediaType: 'image/png', data })).value.id
+  assert.deepEqual((await read()).sourceImages, [original])
+  assert.equal(await read({ imageId: original.attachmentId }), 'data:image/png;base64,AQ==')
+  assert.equal((await host.call('project-task-detail', { ...target, taskId: 'other', imageId: original.attachmentId })).error.code, 'bot/not-found')
+  assert.equal((await edit('requirement', text, 'Revised', {})).ok, true)
+  assert.equal((await edit('acceptance', 'Compare', 'Compare', { addImages: [await stage('Ag==')] })).ok, true)
+  const acceptanceImage = (await read()).fieldImages.acceptance[0]
+  assert.equal(await read({ imageId: acceptanceImage.attachmentId }), 'data:image/png;base64,Ag==')
+  assert.equal((await edit('requirement', 'Revised', 'Revised', { addImages: [await stage('Aw==')] })).ok, true)
+  const detail = await read()
+  const requirementImage = detail.fieldImages.requirement[0]
+  assert.deepEqual(detail.sourceImages, [original])
+  assert.deepEqual(host.saved().rooms.r1.projectCards.card.fieldImages, detail.fieldImages)
+  assert.deepEqual(developmentHandoff(host.rt, 'ga', room, room.projectCards.card, 'b', 1).images.map(ref => ref.attachmentId),
+    [original, requirementImage, acceptanceImage].map(ref => ref.attachmentId))
+  assert.equal((await edit('acceptance', 'Compare', 'Compare', { removeImages: [acceptanceImage.attachmentId] })).ok, true)
+  assert.equal((await host.call('project-task-detail', { ...target, imageId: acceptanceImage.attachmentId })).error.code, 'bot/not-found')
+  assert.deepEqual((await read()).fieldImages.requirement, [requirementImage])
 })

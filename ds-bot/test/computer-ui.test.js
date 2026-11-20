@@ -165,9 +165,6 @@ test('a computer call row names the app and the action', () => {
   // no app yet: just the action
   const caps = render('ComputerCallRow', props({ name: 'cua', callId: 'c3', argsRaw: '{"method":"getCapabilities","params":{}}', content: [] }, { bots: {} }))
   assert.deepEqual(texts(caps), ['Capabilities'])
-  // cua-driver: the tool suffix is the action
-  const driver = render('ComputerCallRow', props({ name: 'cua_driver_native__screenshot', callId: 'c1', argsRaw: '{}', content: [] }))
-  assert.deepEqual(texts(driver), ['Notes · Screenshot'])
 })
 
 // The settings scroll container wraps the computer page like every other page.

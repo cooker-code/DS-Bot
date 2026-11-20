@@ -41,6 +41,18 @@ test('Retry after a failed turn asks the host to resume the Bot, with nothing bu
   assert.equal(pulls(), 1)
 })
 
+test('a scoped retry is acknowledged while a slow roster refresh is still pending', async () => {
+  const target = { roomId: 'group', taskId: 'card', round: 1, failedAt: 100 }
+  let seen
+  const actions = teamActions({
+    call: (name, body, signal) => { seen = [name, body, signal]; return Promise.resolve(true) },
+    after: () => new Promise(() => {}),
+  })
+  assert.equal(await actions.resume('engineer', target), true)
+  assert.deepEqual(seen.slice(0, 2), ['resume', { botId: 'engineer', target }])
+  assert.ok(seen[2] instanceof AbortSignal)
+})
+
 test('openModels opens DS Bot settings on the Models page and closes the menus', () => {
   const { actions, ui } = bench()
   actions.openModels()

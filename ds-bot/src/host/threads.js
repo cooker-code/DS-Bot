@@ -14,8 +14,6 @@ export function threadOf(bot, sessionId) {
   return at === -1 ? undefined : { thread: 'open', index: at, segments: bot.openParts[at].segments ?? [] }
 }
 
-export const threadSegments = (bot, sessionId) => threadOf(bot, sessionId)?.segments ?? []
-
 export const isOpenPart = (bot, sessionId) => threadOf(bot, sessionId)?.thread === 'open'
 
 // A thread's current session: the part that a handoff or a kept input belongs to.
@@ -53,22 +51,29 @@ export function pushThreadPart(bot, sessionId, freshId, segment) {
   if (thread.thread === 'current') {
     ;(bot.segments ??= []).push(segment)
     bot.sessionId = freshId
+    bot.sessionStartedAt = segment.endedAt
   } else {
     const part = bot.openParts[thread.index]
     ;(part.segments ??= []).push(segment)
     part.sessionId = freshId
+    part.startedAt = segment.endedAt
   }
   return true
 }
+
+export const foregroundThread = bot => ({
+  sessionId: currentSession(bot), segments: bot.segments ?? [],
+  startedAt: bot.sessionStartedAt ?? bot.segments?.at(-1)?.endedAt ?? bot.createdAt,
+})
 
 // A fresh part starts in the foreground while the part it replaces stays live in the
 // background with its own chain, so its running turn is not interrupted. It starts with
 // no earlier parts and no handoff note: the user asked for a new conversation.
 export function startOpenPart(bot, freshId, startedAt = Date.now()) {
-  bot.openParts ??= []
-  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [], startedAt })
+  bot.openParts = [...(bot.openParts ?? []), foregroundThread(bot)]
   bot.sessionId = freshId
   bot.segments = []
+  bot.sessionStartedAt = startedAt
 }
 
 // Makes a live background part current. Each chain travels with its parts.
@@ -76,7 +81,8 @@ export function focusOpenPart(bot, sessionId) {
   const at = (bot.openParts ?? []).findIndex(part => part?.sessionId === sessionId)
   if (at === -1) return false
   const [target] = bot.openParts.splice(at, 1)
-  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [] })
+  bot.openParts.push(foregroundThread(bot))
+  bot.sessionStartedAt = target.startedAt
   bot.sessionId = target.sessionId
   bot.segments = target.segments ?? []
   return true

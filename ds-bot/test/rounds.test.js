@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam, seedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
 import { createRuntime } from '../index.js'
 import { ROOM_IDLE_RELAY_LIMIT } from '../src/host/constants.js'
@@ -152,7 +153,7 @@ async function team(call, sent) {
   const chief = (await call('state', {})).value.mainBotId
   const writer = (await call('create-bot', { name: 'Writer' })).value
   const room = (await call('create-room', { name: 'R1', members: [chief, writer.id] })).value
-  await call('update-room', { id: room.id, mode: 'everyone' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'everyone' })
   sent.length = 0
   return room
 }
@@ -239,7 +240,7 @@ test('in admin mode a plain mid-round message goes to the admin', async (t) => {
   const { call, emit, userMessage, compose, relay, answer, stop, sent } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
 
   await emit(room.id, userMessage('Start'))
   const running = relay(room.id, 'relay')
@@ -530,7 +531,7 @@ test('a long group line keeps its start in state.json, and members and read_grou
   assert.equal(JSON.parse(await running).replies[0].text, long)
 
   await rt.save()
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).rooms[room.id].log.find(line => line.length !== undefined)
+  const saved = savedTeam(home).rooms[room.id].log.find(line => line.length !== undefined)
   assert.equal(saved.text.length, 2000)
   assert.equal(saved.length, long.length)
   assert.equal(rt.ledger.record(`group-${room.id}`, saved.seq).text, long)
@@ -541,13 +542,12 @@ test('a long group line keeps its start in state.json, and members and read_grou
   await stop({ keep: true })
 
   // The log is full (60 lines) when DSH starts again, the long line second oldest.
-  const file = join(home, 'state.json')
-  const onDisk = JSON.parse(readFileSync(file, 'utf8'))
+  const onDisk = savedTeam(home)
   const kept = onDisk.rooms[room.id]
   const fillers = Array.from({ length: 60 - kept.log.length }, (_, at) => ({ who: 'User', text: `line ${at}`, seq: kept.seq + at + 1 }))
   kept.log = [...kept.log, ...fillers]
   kept.seq += fillers.length
-  writeFileSync(file, JSON.stringify(onDisk))
+  seedTeam(home, onDisk)
 
   // After a restart the whole line is read back from the group's book.
   const again = start({ home })
@@ -699,7 +699,7 @@ test('members call each other for as long as they call, and a user @ mid-round s
   const { call, emit, userMessage, compose, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
   const writer = Object.values(rt.state.bots).find(bot => bot.name === 'Writer')
 
   await emit(room.id, userMessage('Start'))
@@ -739,7 +739,7 @@ test('calls parked under the old relay limit run in the group\'s next round', as
   const { call, emit, userMessage, relay, answer, stop, sent, rt, home } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
   const chief = rt.state.mainBotIds[0]
   const writer = Object.values(rt.state.bots).find(bot => bot.name === 'Writer')
   const state = () => rt.state.rooms[room.id]
@@ -762,7 +762,7 @@ test('calls parked under the old relay limit run in the group\'s next round', as
   await answer(parked.sessionId, parked.message.source.exchangeId, 'On it.', 2)
   await running
   assert.equal(state().paused, undefined)
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).rooms[room.id]
+  const saved = savedTeam(home).rooms[room.id]
   assert.equal(saved.paused, undefined)
 })
 
@@ -772,7 +772,7 @@ test('calls the idle guard parked wait for the user\'s message, also one that jo
   const { call, emit, compose, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
   const chief = rt.state.mainBotIds[0]
   const writer = Object.values(rt.state.bots).find(bot => bot.name === 'Writer')
   const state = () => rt.state.rooms[room.id]
@@ -800,7 +800,7 @@ test('a member the reply timeout cut short is told to the group, not left as sil
   const { call, emit, userMessage, relay, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
 
   await emit(room.id, userMessage('Start'))
   const running = relay(room.id, 'relay')
@@ -825,14 +825,14 @@ test('in admin mode a sole admin that passes leaves the group a notice', async (
   t.after(stop)
   const room = await team(call, sent)
   const chief = (await call('state', {})).value.mainBotId
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
 
   // The user names a member without "@": nobody is called, the admin alone answers.
   await emit(room.id, userMessage('Writer, what do you think?'))
   const running = relay(room.id, 'relay')
   const first = await turnFor(sent)
   assert.ok(first, 'the admin gets the turn alone')
-  await answer(first.sessionId, first.message.source.exchangeId, '[PASS]', 1)
+  await answer(first.sessionId, first.message.source.exchangeId, '', 1)
   const result = JSON.parse(await running)
   assert.deepEqual(result.passed, ['Chief'])
   assert.equal(result.replies.filter(reply => reply.kind === undefined).length, 0, 'the round ends without an answer')
@@ -863,7 +863,7 @@ test('in admin mode an admin that answers leaves the group no notice', async (t)
   const { call, emit, userMessage, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
 
   await emit(room.id, userMessage('Writer, what do you think?'))
   const running = relay(room.id, 'relay')
@@ -879,13 +879,13 @@ test('in admin mode a member the user called alone is not the admin, and the gro
   const { call, emit, userMessage, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
 
   await emit(room.id, userMessage('@Writer your take'))
   const running = relay(room.id, 'relay')
   const first = await turnFor(sent)
   assert.ok(first, 'the member the user called answers')
-  await answer(first.sessionId, first.message.source.exchangeId, '[PASS]', 1)
+  await answer(first.sessionId, first.message.source.exchangeId, '', 1)
   const result = JSON.parse(await running)
   assert.deepEqual(result.passed, ['Writer'])
   assert.deepEqual(result.replies, [], 'the member passed, and the admin was not alone')
@@ -900,7 +900,7 @@ test('a group where everyone answers says nothing when the admin passes', async 
   await emit(room.id, userMessage('Start'))
   const running = relay(room.id, 'relay')
   const first = await turnFor(sent)
-  await answer(first.sessionId, first.message.source.exchangeId, '[PASS]', 1)
+  await answer(first.sessionId, first.message.source.exchangeId, '', 1)
   const second = await turnFor(sent, first)
   await answer(second.sessionId, second.message.source.exchangeId, 'Writer here.', 2)
   const result = JSON.parse(await running)
@@ -916,7 +916,7 @@ test('a member still at work is shown with the group messages it has not read ye
   const writer = (await call('create-bot', { name: 'Writer' })).value
   const editor = (await call('create-bot', { name: 'Editor' })).value
   const room = (await call('create-room', { name: 'R1', members: [chief, writer.id, editor.id] })).value
-  await call('update-room', { id: room.id, mode: 'everyone' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'everyone' })
   sent.length = 0
 
   // First round: every member speaks once, so each has a group Session and a `seen`.
@@ -955,7 +955,7 @@ async function trio(call, sent) {
   const writer = (await call('create-bot', { name: 'Writer' })).value
   const tester = (await call('create-bot', { name: 'Tester' })).value
   const room = (await call('create-room', { name: 'R3', members: [chief, writer.id, tester.id] })).value
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
   sent.length = 0
   return room
 }
@@ -1009,7 +1009,7 @@ test('a plain message in a group where everyone answers still goes one member at
   const { call, emit, userMessage, relay, answer, stop, sent } = start()
   t.after(stop)
   const room = await trio(call, sent)
-  await call('update-room', { id: room.id, mode: 'everyone' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'everyone' })
   await emit(room.id, userMessage('Count off'))
   const running = relay(room.id, 'relay')
   const first = await turnFor(sent)
@@ -1182,7 +1182,7 @@ test('a paused group parks every member an @all called, in a new round', async (
   const { call, emit, userMessage, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await trio(call, sent)
-  await call('update-room', { id: room.id, mode: 'everyone' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'everyone' })
   const chief = rt.state.mainBotIds[0]
   const state = () => rt.state.rooms[room.id]
   state().idleRelays = ROOM_IDLE_RELAY_LIMIT
@@ -1222,7 +1222,7 @@ test('a paused group parks every member an @all called, in a running round', asy
   const { call, emit, userMessage, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await trio(call, sent)
-  await call('update-room', { id: room.id, mode: 'everyone' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'everyone' })
   const chief = rt.state.mainBotIds[0]
   const state = () => rt.state.rooms[room.id]
 
@@ -1295,7 +1295,7 @@ test('the idle pause survives a restart and the user lifts it', async (t) => {
   first.rt.state.rooms[room.id].idleRelays = ROOM_IDLE_RELAY_LIMIT
   first.rt.state.rooms[room.id].idlePaused = { from: chief, count: ROOM_IDLE_RELAY_LIMIT, noticed: true }
   await first.rt.save()
-  const saved = JSON.parse(readFileSync(join(first.home, 'state.json'), 'utf8')).rooms[room.id]
+  const saved = savedTeam(first.home).rooms[room.id]
   assert.deepEqual({ count: saved.idleRelays, paused: saved.idlePaused?.count }, { count: ROOM_IDLE_RELAY_LIMIT, paused: ROOM_IDLE_RELAY_LIMIT })
   await first.stop({ keep: true })
 
@@ -1333,7 +1333,7 @@ test("a long round's result stays small, and its rows read back whole after a re
   const first = await turnFor(sent)
   await answer(first.sessionId, first.message.source.exchangeId, long, 1)
   const second = await turnFor(sent, first)
-  await answer(second.sessionId, second.message.source.exchangeId, '[PASS]', 2)
+  await answer(second.sessionId, second.message.source.exchangeId, '', 2)
   const result = await raw
   assert.ok(result.length < 200, result)
   const { from } = JSON.parse(result)
@@ -1367,7 +1367,7 @@ test("a member's group row carries the change line of its turn", async (t) => {
   const first = await turnFor(sent)
   await answer(first.sessionId, first.message.source.exchangeId, 'Done.', 1)
   const second = await turnFor(sent, first)
-  await answer(second.sessionId, second.message.source.exchangeId, '[PASS]', 2)
+  await answer(second.sessionId, second.message.source.exchangeId, '', 2)
   const from = JSON.parse(await running).from
   const rows = rt.groupRows(room.id, from)
   const done = rows.find(row => row.text === 'Done.')
@@ -1389,7 +1389,7 @@ test('a late completion notice keeps the change line of its turn', async (t) => 
   const first = await turnFor(sent)
   await answer(first.sessionId, first.message.source.exchangeId, 'Done.', 1)
   const second = await turnFor(sent, first)
-  await answer(second.sessionId, second.message.source.exchangeId, '[PASS]', 2)
+  await answer(second.sessionId, second.message.source.exchangeId, '', 2)
   const { from } = JSON.parse(await running)
 
   const changes = {
@@ -1428,7 +1428,7 @@ test('a member that changed files and ended with [PASS] still gets its change li
   await answer(first.sessionId, first.message.source.exchangeId, 'On it.', 1)
   const second = await turnFor(sent, first)
   writerSession = second.sessionId
-  await answer(second.sessionId, second.message.source.exchangeId, '[PASS]', 2)
+  await answer(second.sessionId, second.message.source.exchangeId, '', 2)
   const { from } = JSON.parse(await running)
   const rows = rt.groupRows(room.id, from)
   const done = rows.find(row => row.kind === 'done')
@@ -1447,7 +1447,7 @@ test('a [PASS] turn that changed nothing adds no completion line', async (t) => 
   const first = await turnFor(sent)
   await answer(first.sessionId, first.message.source.exchangeId, 'On it.', 1)
   const second = await turnFor(sent, first)
-  await answer(second.sessionId, second.message.source.exchangeId, '[PASS]', 2)
+  await answer(second.sessionId, second.message.source.exchangeId, '', 2)
   const { from } = JSON.parse(await running)
   const rows = rt.groupRows(room.id, from)
   assert.equal(rows.some(row => row.kind === 'done'), false)
@@ -1464,7 +1464,7 @@ test('the rows of a round leave out its opening message and show once what came 
   const a = await turnFor(sent)
   await answer(a.sessionId, a.message.source.exchangeId, 'Done one.', 1)
   const b = await turnFor(sent, a)
-  await answer(b.sessionId, b.message.source.exchangeId, '[PASS]', 2)
+  await answer(b.sessionId, b.message.source.exchangeId, '', 2)
   assert.deepEqual(JSON.parse(await first).replies.map(row => row.text), ['Done one.'])
   // A member looks up its own chat while no round runs.
   await rt.teamTools.find(d => d.name === 'read_own_chat').execute({ query: 'plan' }, { agent: { id: a.sessionId } })
@@ -1473,7 +1473,7 @@ test('the rows of a round leave out its opening message and show once what came 
   const c = await turnFor(sent, a, b)
   await answer(c.sessionId, c.message.source.exchangeId, 'Done two.', 3)
   const d = await turnFor(sent, a, b, c)
-  await answer(d.sessionId, d.message.source.exchangeId, '[PASS]', 4)
+  await answer(d.sessionId, d.message.source.exchangeId, '', 4)
   const secondRows = JSON.parse(await second)
   assert.deepEqual(secondRows.replies.map(row => [row.kind ?? 'message', row.text]), [['message', 'Done two.']])
   // The first call's rows run up to the second call: its reply, then the look-up.
@@ -1492,7 +1492,7 @@ test('a group whose state was not saved after its last line goes on numbering af
   const a = await turnFor(sent)
   await answer(a.sessionId, a.message.source.exchangeId, 'Reply one.', 1)
   const b = await turnFor(sent, a)
-  await answer(b.sessionId, b.message.source.exchangeId, '[PASS]', 2)
+  await answer(b.sessionId, b.message.source.exchangeId, '', 2)
   await running
   await rt.save()
   const seq = rt.state.rooms[room.id].seq
@@ -1510,7 +1510,7 @@ test('a group whose state was not saved after its last line goes on numbering af
   assert.match(c.message.content[0].text, /said, not saved/)
   await again.answer(c.sessionId, c.message.source.exchangeId, 'Reply two.', 3)
   const d = await turnFor(again.sent, c)
-  await again.answer(d.sessionId, d.message.source.exchangeId, '[PASS]', 4)
+  await again.answer(d.sessionId, d.message.source.exchangeId, '', 4)
   await next
   await again.rt.ledger.flush()
   const seqs = readFileSync(book, 'utf8').trim().split('\n').map(row => JSON.parse(row).seq).filter(seq => seq !== undefined)
@@ -1610,7 +1610,7 @@ test('a message arriving while a closing round saves an admin-passed notice stil
   const { call, emit, userMessage, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
-  await call('update-room', { id: room.id, mode: 'admin' })
+  await call('update-room', { id: room.id, taskManagementEnabled: false, mode: 'admin' })
 
   let releaseSave
   let markSaving
@@ -1629,7 +1629,7 @@ test('a message arriving while a closing round saves an admin-passed notice stil
   await emit(room.id, userMessage('Anyone?'))
   const first = relay(room.id, 'relay-1')
   const chiefTurn = await turnFor(sent)
-  await answer(chiefTurn.sessionId, chiefTurn.message.source.exchangeId, '[PASS]', 1)
+  await answer(chiefTurn.sessionId, chiefTurn.message.source.exchangeId, '', 1)
   await saving
 
   sent.length = 0

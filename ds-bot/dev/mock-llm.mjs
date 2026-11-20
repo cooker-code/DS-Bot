@@ -195,6 +195,89 @@ function decide(body) {
     const resultText = typeof result.content === 'string' ? result.content : textOf(result.content)
     const call = [...messages].reverse().find(m => m.role === 'assistant' && Array.isArray(m.content) && m.content.some(b => b.type === 'tool_use'))
     const used = call?.content.find(b => b.type === 'tool_use' && b.id === result.tool_use_id) ?? call?.content.find(b => b.type === 'tool_use')
+    const dagScenario = messages.some(m => textOf(m.content).includes('按图将请求来源空值显示为短横线'))
+    const recovery = dagScenario && messages.some(m => textOf(m.content).includes('中断接管验收'))
+    if (recovery && used?.name === 'bash' && ['Tester', 'Backup'].includes(me)) {
+      const started = messages.flatMap(m => Array.isArray(m.content) ? m.content : [])
+        .findLast(b => b.type === 'tool_use' && b.name === 'project_task' && b.input.action === 'start')
+      if (!started || result.is_error || !resultText.includes('CHECK PASSED')) return [text('验收检查未通过。')]
+      const { taskId, round } = started.input
+      if (me === 'Tester') return [tool('project_task', {
+        action: 'checkpoint', taskId, round, artifact: 'source-display@v1',
+        completed: '空值显示短横线，检查已通过。', remaining: '验证已有来源保持原值。',
+      })]
+      // Keep the successor active long enough to take the SQLite snapshot for the late-receipt replay.
+      return Object.assign([tool('project_task', { action: 'submit', taskId, round, result: '接续检查通过：已有来源保持原值。' })], { delay: 5000 })
+    }
+    if (dagScenario && used?.name === 'message_bot') {
+      if (result.is_error) return [text('Dispatch failed: ' + resultText)]
+      if (used.input.to === 'Reviewer') return [tool('project_task', { action: 'dispatch', taskId: used.input.taskId, version: 1, node: 3 })]
+      return [text('交接已记录。')]
+    }
+    if (dagScenario && used?.name === 'project_task') {
+      if (result.is_error) return [text('Project task failed: ' + resultText)]
+      const card = JSON.parse(resultText), taskId = card.taskId, version = 1
+      const owners = ['Coder', 'Reviewer', 'Tester']
+      switch (used.input.action) {
+        case 'list': {
+          const nodes = ['开发', '复核', '测试'].map((title, i) => ({
+            title, ownerId: card.members.find(m => m.name === owners[i]).id, dependsOn: i ? [1] : [],
+            instructions: ['按原图修正空值显示。', '核对候选版本与原图。', '检查空值和已有来源两个场景。'][i],
+            deliverable: ['候选版本', '复核意见', '测试记录'][i], acceptance: '空值显示为短横线，已有来源保持原值。',
+          }))
+          return Object.assign([tool('project_task', { action: 'plan', version, title: '请求来源空值显示为短横线', acceptance: nodes[0].acceptance, nodes })], { delay: 8000 })
+        }
+        case 'plan': return Object.assign([tool('project_task', { action: 'dispatch', taskId, version, node: 1 })], { delay: 12000 })
+        case 'dispatch': return [tool('message_bot', { to: owners[used.input.node - 1], taskId, card_round: card.dispatchRound, request_id: taskId + '-' + used.input.node, message: '请按计划开工。', reply_to: 'user' })]
+        case 'inspect_recovery': return [tool('project_task', {
+          ...used.input, action: 'takeover', artifact: 'source-display@v1', expectedCommit: card.targetTree.commit,
+          inspection: card.inspection, remaining: card.remaining, reason: '原测试执行已中断，接续未完成场景。',
+          eligibility: '接手成员具有相同的测试环境和访问权限。', worktreeReview: '已核对原执行停止、两棵工作树的提交和本地改动，使用已验候选版本。',
+        })]
+        case 'takeover': return [tool('message_bot', {
+          to: 'Backup', taskId, card_round: card.dispatchRound, reply_to: 'user', request_id: taskId + '-recover', message: '继续剩余检查。',
+        })]
+        case 'checkpoint': return Object.assign([text('等待继续检查。')], { delay: 45000 })
+        case 'start':
+          if (recovery && ['Tester', 'Backup'].includes(me)) return [tool('bash', {
+            description: me === 'Tester' ? 'Check empty source' : 'Check existing source',
+            command: 'node verify.cjs ' + (me === 'Tester' ? 'empty' : 'existing'),
+          })]
+          return Object.assign([tool('project_task', { action: 'submit', taskId, round: used.input.round, result: used.input.round === 1 ? '候选产物 source-display@v1 已交付。' : '已核对 source-display@v1。' })], { delay: used.input.round === 1 ? 700 : 15000 })
+        case 'submit': return used.input.round === 1
+          ? [tool('message_bot', { to: 'Chief', taskId, message: '按图将请求来源空值显示为短横线：请核对开发交付。', reply_to: 'user', request_id: taskId + '-review' })]
+          : [text('核对已交付。')]
+        case 'read': return card.rounds[0]?.result?.includes('source-display@v1') ? [tool('project_task', { action: 'approve', taskId, version, node: 1, round: 1, artifact: 'source-display@v1' })] : [text('等待开发交付。')]
+        case 'approve': return [tool('project_task', { action: 'dispatch', taskId, version, node: 2 })]
+      }
+    }
+    if (used?.name === 'project_task' && messages.some(m => textOf(m.content).includes('native-project-image-smoke'))) {
+      if (result.is_error) return [text('Project task failed: ' + resultText)]
+      const card = JSON.parse(resultText)
+      switch (used.input.action) {
+        case 'reply': {
+          if (messages.some(m => textOf(m.content).includes('The assistant owns planning')))
+            return [tool('project_task', { action: 'delegate', plan: 'Verify the original attachment reaches Coder.', acceptance: 'Coder receives the original image.' })]
+          const roster = messages.flatMap(m => textBlocks(m.content)).join('\n').match(/^Eligible node owners \(id, name, role\): (.+)$/m)
+          const owner = JSON.parse(roster[1]).find(member => member.name === 'Coder')
+          return [tool('project_task', { action: 'plan', version: 1, title: 'Check the project attachment', acceptance: 'Coder receives the original image.', nodes: [{ ownerId: owner.id, title: 'Check image', instructions: 'Inspect the original image.', deliverable: 'Image receipt', acceptance: 'Image is visible.' }] })]
+        }
+        case 'plan': return [tool('project_task', { action: 'dispatch', taskId: card.taskId, version: 1, node: 1 })]
+        case 'dispatch': return [tool('message_bot', { to: 'Coder', taskId: card.taskId, card_round: card.round, request_id: 'smoke-' + card.taskId, message: 'Check the image.', reply_to: 'user' })]
+        case 'start': return [tool('project_task', { action: 'submit', taskId: card.taskId, round: card.round, result: 'Received the original project attachment.' })]
+        case 'submit': {
+          const mode = messages.map(m => textOf(m.content)).join('\n').match(/native-project-final-(acceptance|auto)\b/)?.[1]
+          if (mode) {
+            return [tool('message_bot', { to: 'Chief', taskId: card.taskId, request_id: card.taskId + '-final',
+              reply_to: 'user', message: 'native-project-image-smoke native-project-final-' + mode + ' review the submitted image receipt.' })]
+          }
+          return [text('Submitted project evidence.')]
+        }
+        case 'read': return [tool('project_task', { action: messages.some(m => textOf(m.content).includes('native-project-final-auto review the submitted image receipt')) ? 'approve' : 'request_acceptance', taskId: card.taskId,
+          version: 1, node: 1, round: 1, artifact: 'Image receipt' })]
+        default: return [text('Submitted project evidence.')]
+      }
+    }
     // "长任务 N [K]": N steps in one turn, each adding about K thousand characters (default 4).
     const openerAt = messages.findLastIndex(m => m.role === 'user' && !isResults(m) && /^长任务\s*\d+/.test(textOf(m.content).trimStart()))
     if (openerAt !== -1 && used?.name === 'list_bots') {
@@ -284,7 +367,9 @@ function decide(body) {
     }
   }
 
-  const userText = textOf(last?.content).trim()
+  // DSH may append a workspace-instruction refresh to the user's command.
+  // The mock matches the command; prose in that refresh must not trigger another tool.
+  const userText = textOf(last?.content).replace(/\s*<system-reminder>\s*Updated instructions from:[\s\S]*$/, '').trim()
   // "撑爆": the provider rejects the request as past its window.
   if (userText.startsWith('撑爆')) return 'overflow'
   // A file in the message (a long Bot message, a file the user sent): DSH gives its saved
@@ -311,6 +396,38 @@ function decide(body) {
   const lastAsk = lastCall?.content.find(b => b.type === 'tool_use' && b.name === 'ask_user')
   const answeredAsk = lastAsk && (lastAsk.input?.options ?? []).map(option => option?.label ?? option).find(label => userText.includes(label))
   if (isRelay && tools.has('group_relay')) return [tool('group_relay', {})]
+  if (tools.has('project_task') && userText.includes('群里的 Bot 各自负责什么？') && !userText.includes('native-project-image-smoke')) {
+    if (userText.includes('Preceding user message #')) return [tool('project_task', { action: 'reply', message: '接着回答分工问题：Chief 负责协调，Coder 负责开发。' })]
+    if (userText.includes('Handle it in your session for this group.')) return [tool('project_task', { action: 'chat', reason: 'An inquiry about team roles.', message: 'Chief 协调，Coder 开发。' })]
+  }
+  // Only a direct project delivery triggers the scripted coordination tools.
+  const directProject = tools.has('project_task') && /^\[[^\]\n]+\] \[Message from You[^\]\n]*\]\n/.test(userText)
+  if (directProject && userText.includes('The group admin delegated this requirement') && userText.includes('native-project-image-smoke')) {
+    const owner = JSON.parse(userText.match(/^Eligible node owners: (.+)$/m)[1]).find(member => member.name === 'Coder')
+    return [tool('project_task', { action: 'plan', version: 1, title: 'Assistant image check', acceptance: 'Coder receives the original image.',
+      nodes: [{ ownerId: owner.id, title: 'Inspect image', instructions: 'Check original image', deliverable: 'Image receipt', acceptance: 'Image received' }] })]
+  }
+  if (directProject && userText.includes('The owner submitted evidence for review on round'))
+    return [tool('project_task', { action: 'approve', version: 1, node: 1, round: 1, artifact: 'Image receipt' })]
+  if (directProject && userText.includes('The last node is approved. The task is complete.'))
+    return [tool('project_task', { action: 'report', message: 'The assistant verified the original image. The task is complete.' })]
+  const recoveryRequest = /请核对工作树并接管测试。中断接管验收。\s*task=(\S+) candidate=(\S+)/.exec(userText)
+  if (me === 'Chief' && recoveryRequest && tools.has('project_task')) {
+    return [tool('project_task', { action: 'inspect_recovery', taskId: recoveryRequest[1], ownerId: recoveryRequest[2], version: 1, node: 3, round: 3 })]
+  }
+  if (tools.has('project_task') && (userText.includes('native-project-image-smoke') || userText.includes('按图将请求来源空值显示为短横线'))) {
+    if (userText.includes('Handle it in your session for this group.')) {
+      if (userText.includes('native-project-image-smoke') && userText.includes('call project_task reply'))
+        return [tool('project_task', { action: 'reply', message: '我会请 Coder 打开这张原图，核对派工后能否看到附件。' })]
+      return [tool('project_task', { action: 'list' })]
+    }
+    const id = /^\[([0-9a-f-]{36})\]/m.exec(userText)?.[1]
+    if (id && userText.includes('review the submitted image receipt')) return [tool('project_task', { action: 'read', taskId: id })]
+    if (id && userText.includes('请核对开发交付')) return [tool('project_task', { action: 'read', taskId: id })]
+    if (id && userText.includes('Confirm with project_task start') && blocks.some(block => block.type === 'image')) {
+      return [tool('project_task', { action: 'start', taskId: id, round: Number(/this taskId and round (\d+)/.exec(userText)?.[1]) })]
+    }
+  }
   if (answeredAsk && !userText.trim().startsWith('[')) {
     return [text(`好，就从「${answeredAsk}」开始。`), text('我先把要点理一下，稍后给你一个方案。')]
   }
@@ -368,10 +485,10 @@ function decide(body) {
     }
     // Group memory: the admin saves, so a round of members does not save it twice.
     if ((ask = /^User: (团队|自己)?记住(?:@(\S+))?\s*[:：]?\s*(.+)$/.exec(userLine)) && tools.has('remember')) {
-      if (!leads) return [text('[PASS]')]
+      if (!leads) return [tool('skip_group_turn', {})]
       return [tool('remember', { text: ask[3].trim(), ...(ask[2] ? { topic: ask[2] } : {}), ...(ask[1] ? { scope: ask[1] === '团队' ? 'team' : 'own' } : {}) })]
     }
-    if ((ask = /^User: 忘掉\s*[:：]?\s*(.+)$/.exec(userLine)) && tools.has('forget')) return leads ? [tool('forget', { entry: ask[1].trim() })] : [text('[PASS]')]
+    if ((ask = /^User: 忘掉\s*[:：]?\s*(.+)$/.exec(userLine)) && tools.has('forget')) return leads ? [tool('forget', { entry: ask[1].trim() })] : [tool('skip_group_turn', {})]
     if ((ask = /^User: 回忆(?:\s+(.+))?$/.exec(userLine)) && tools.has('recall')) return [tool('recall', ask[1] ? { query: ask[1].trim() } : {})]
     // Group Sessions: the frozen brief is in the Session's first message, the lookup a tool.
     if ((ask = /查能力\s*(\S*)/.exec(userLine))) return [text(capabilityReport(me, tools, messages, ask[1]))]
@@ -399,9 +516,9 @@ function decide(body) {
     if (/分步干完了/.test(block) && leads) return [text('收到，辛苦了。')]
     if (/^\S+: 干完了/.test(userLine) && leads) return [text('收到，辛苦了。')]
     // Ping-pong: whoever is mentioned mentions back, to exercise the per-member cap.
-    if (/来回/.test(userLine)) return [text(mentioner ? `@${mentioner} 回你` : leads && peer ? `@${peer} 来回` : '[PASS]')]
+    if (/来回/.test(userLine)) return mentioner || (leads && peer) ? [text(mentioner ? `@${mentioner} 回你` : `@${peer} 来回`)] : [tool('skip_group_turn', {})]
     if (mentioner) return [text('进度正常，今天能交。')]
-    if (/安排/.test(userLine)) return [text(leads && peer ? `@${peer} 你先说说进度。` : '[PASS]')]
+    if (/安排/.test(userLine)) return leads && peer ? [text(`@${peer} 你先说说进度。`)] : [tool('skip_group_turn', {})]
     // 调用 <tool> <json> in a group: the same generic trigger as in a Bot's own chat,
     // so a member's turn can drive a real tool (a write, a shell command) in the group.
     if ((ask = /调用\s*(\S+)(?:\s+([\s\S]+))?/.exec(userLine))) {
@@ -766,7 +883,7 @@ const server = createServer((req, res) => {
     // Hashes of the system prompt and tools show whether two Sessions share a cacheable prefix.
     const digest = value => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex').slice(0, 12)
     const watch = WATCH ? { watchHit: JSON.stringify([body.system, body.tools, body.messages]).includes(WATCH) } : {}
-    appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), id, tokens, images, session: req.headers['x-deepseek-harness-session-id'] ?? null, ...watch, ...LOG_TOOLS ? { toolNames: (body.tools ?? []).map(entry => entry.name ?? entry.type) } : {}, ...search ? { nativeSearch: { model: body.model, tools: body.tools, auth: [req.headers['x-api-key'] ? 'x-api-key' : '', req.headers.authorization ? 'bearer' : ''].filter(Boolean) } } : {}, system: digest(body.system), tools: digest(body.tools), messages: body.messages?.length ?? 0, first: textOf(body.messages?.[0]?.content).slice(0, 60), last: textOf(body.messages?.at(-1)?.content).slice(0, LOG_CHARS), out: out.map(block => (block.type === 'text' && block.text.length > 200 ? { ...block, text: `${block.text.slice(0, 200)}…(${block.text.length})` } : block)) }) + '\n')
+    appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), id, tokens, images, model: body.model, session: req.headers['x-deepseek-harness-session-id'] ?? null, ...watch, ...LOG_TOOLS ? { toolNames: (body.tools ?? []).map(entry => entry.name ?? entry.type) } : {}, ...search ? { nativeSearch: { model: body.model, tools: body.tools, auth: [req.headers['x-api-key'] ? 'x-api-key' : '', req.headers.authorization ? 'bearer' : ''].filter(Boolean) } } : {}, system: digest(body.system), tools: digest(body.tools), messages: body.messages?.length ?? 0, first: textOf(body.messages?.[0]?.content).slice(0, 60), last: textOf(body.messages?.at(-1)?.content).slice(0, LOG_CHARS), out: out.map(block => (block.type === 'text' && block.text.length > 200 ? { ...block, text: `${block.text.slice(0, 200)}…(${block.text.length})` } : block)) }) + '\n')
     if (search) {
       setTimeout(() => {
         res.writeHead(200, { 'content-type': 'application/json' })

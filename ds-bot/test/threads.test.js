@@ -44,7 +44,8 @@ test('a part opened while the Bot works leaves the running part live with its ch
   assert.deepEqual(b.segments, [])
   assert.equal(b.openParts.at(-1).sessionId, 'w2')
   assert.deepEqual(b.openParts.at(-1).segments.map(s => s.sessionId), ['w1'])
-  assert.equal(b.openParts.at(-1).startedAt, 7)
+  assert.equal(b.openParts.at(-1).startedAt, 3)
+  assert.equal(b.sessionStartedAt, 7)
   assert.equal(isOpenPart(b, 'w2'), true)
 })
 

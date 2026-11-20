@@ -19,9 +19,10 @@ Fixes #
 
 ## How I checked it / 怎么验证的
 
-- [ ] `npm test` (in `ds-bot/`)
-- [ ] `node scripts/build-client.mjs --check`
-- [ ] `npm run lint`
+- List the checks you ran and the behavior they cover. / 列出实际执行的检查及覆盖的行为。
+- For plugin code, run the affected test files. CI runs the full suite. / 插件代码按影响范围选测试文件，全量单测由 CI 执行。
+- [ ] Client changes / 改了客户端时运行 `node scripts/build-client.mjs --check`
+- [ ] Lint, if applicable / 需要静态检查时运行 `npm run lint`
 - [ ] Smoke test, for changes to `index.js` or `src/host/` / 改了 `index.js` 或 `src/host/` 时跑冒烟测试
 - [ ] Screenshot attached, for interface changes / 界面改动已附截图
 

@@ -1,7 +1,8 @@
+import { spawn } from 'node:child_process'
 // The Claude Code engine: one process per session, stream-json both ways.
 // stdin takes user/control JSON messages; stdout streams the assistant's
 // events until a `result` ends the turn.
-import { cleanEnv, findEngineExecutable, spawnAgent } from './discover.js'
+import { cleanEnv, findEngineExecutable } from './discover.js'
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -33,8 +34,8 @@ export class ClaudeEngine {
     return session.running === true
   }
 
-  steer(session, text) {
-    return session.prompt([{ type: 'text', text }])
+  steer(session, input) {
+    return session.steer(input)
   }
 
   cancel(session) {
@@ -110,11 +111,10 @@ class ClaudeSession {
       args.push('--allowedTools', 'mcp__dsbot')
     }
     this.resumeId = resumeId
-    const child = this.child = spawnAgent(bin, args, {
+    const child = this.child = spawn(bin, args, {
       env: cleanEnv(this.engine.env ?? {}),
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
     })
     // stderr is not part of the protocol, but it is where a CLI that cannot
     // start says why; its tail goes into the error the turn shows.
@@ -256,8 +256,8 @@ class ClaudeSession {
     return Promise.resolve()
   }
 
-  async steer(thread, input) {
-    this.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }])
+  steer(input) {
+    return this.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }])
   }
 
   // `/compact` in stream-json runs the CLI's own compaction and ends with a result.

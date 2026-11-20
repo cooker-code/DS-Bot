@@ -35,6 +35,10 @@ and model changes all work the same way.
   its group sessions are separate CLI sessions, so no content crosses between
   them. Switching to an earlier part resumes its mapped CLI session; a part
   that belongs to another run mode moves on first (see Run mode).
+- Codex sessions with managed skills run with their own skill selection. They can use
+  the same project directory. A change takes effect at the next idle turn, including
+  after a restart. Resuming a native thread replays its old skill catalog, so a changed
+  selection starts a new native thread with the existing DS Bot conversation replay.
 - The CLI gets only new input since the last handed message: the user, other
   Bots, and tool results for calls it made. On a new or lost CLI session, the
   DS Bot system prompt plus a bounded recent window of the history is sent as
@@ -59,14 +63,14 @@ and model changes all work the same way.
   allow-once option; anything else denies it. It fails closed: only an explicit
   allow option counts. The Bot's permission preset maps to the closest mode the
   agent advertises.
-- Starting a new session or changing the work folder starts a fresh part as
-  for any Bot: the old CLI session writes the handoff note (see Context). A
+- Starting a new session opens an empty CLI conversation in the current work folder.
+  Changing the work folder continues the existing conversation with a handoff (see Context). A
   run-mode change starts fresh parts with the deterministic handoff — the last
   messages word for word, a list of earlier message anchors, and a line to use
   `read_own_chat` for details — in the Bot's own chat and every group it is in
   together (see Run mode), because a CLI session cannot move between modes.
-- The after-turn memory review uses the team default model when one is set, and
-  is skipped when there is none. Abots get memory in the system prompt and the
+- The after-turn memory review and the memory panel's model calls run on the
+  Bot's own CLI and model, in a one-off read-only session, as the steward does. Abots get memory in the system prompt and the
   remember, forget, and recall tools like any Bot.
 - Abots are full peers: a Main Bot, a group admin, or a member.
 - Steering while a CLI turn runs is passed to the CLI when it supports it, else
@@ -139,7 +143,7 @@ handling, so they do not mix in one model list.
 - The confirmation says what the change does to this Bot: which of its
   conversations start a new part, and that earlier messages, memory, and
   instructions stay. Moving onto a local agent it also says, when they apply,
-  that the Bot's shared MCP servers and skills do not reach the CLI, that a
+  that shared MCP servers stay in DS Bot, that Codex loads the Bot's selected skills while other CLIs use their own, that a
   CLI that is not signed in fails its turns, and that a private Bot's privacy
   rules do not cover the CLI's own tools.
 - A private Bot may move onto a local agent: the confirmation warns, it does

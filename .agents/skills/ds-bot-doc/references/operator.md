@@ -1,0 +1,98 @@
+# 在命令行调用设置 API
+
+## 识别宿主与认证
+
+所有插件操作共用宿主的 `POST <挂载路径>/api/bot`。请求是 JSON 对象 `{"endpoint":"state","payload":{}}`。同一宿主的 Desktop 前端使用已认证转发，Web 使用宿主签发的会话 Cookie。一个监听端口只说明进程在运行。先确认正在维护哪个团队、哪个宿主持有写锁。
+
+DSH Web 启动时给操作者一个含 `token` 参数的**登录地址**。客户端向该地址的同一根路径发 GET，接受服务器返回的重定向和绑定到该地址的会话 Cookie，再向同源插件 API 发 POST。主机名、端口、协议及代理挂载路径保持一致。开发环境可在自己刚启动的隔离 Web 实例的启动输出取得地址。桌面应用的进程间认证由宿主管理。对于现有 Desktop 实例，先查操作者明确配置的程序化入口或该实例已经签发的登录材料。公开 API 只接受合规会话。其他端口的登录、未认证探测和旧测试实例都不能证明已接入本团队。不要把登录地址、响应头、Cookie 或整个 state 放进日志。接口注册见 [channel.js](../../../../ds-bot/src/host/channel.js)，客户端协议见 [api.js](../../../../ds-bot/src/client/api.js)。
+
+使用随技能提供的 [request.py](../scripts/request.py)。需要 Python 3，选择响应字段时另用 jq。用 `--base` 或 `DS_BOT_BASE_URL` 指定目标应用地址。按该实例已有的登录方式从下表选一项。脚本只为目标来源使用凭据，默认只打印成功回执。
+
+| 操作者已具备的入口 | 参数或环境变量 | 如何确定 |
+| --- | --- | --- |
+| DSH Web 的启动输出 | `--web-log` / `DS_BOT_WEB_LOG` | 使用启动该实例时保存的私有输出文件。脚本只取同协议、主机、端口和挂载路径的最后一条 `dsh web:` 公告。隔离测试的文件为仓库根目录下的 `.dsh-test-<name>/web.log`。 |
+| 已正式签发的 Web 登录地址 | `--login-file` / `DS_BOT_LOGIN_FILE` | 文件内只存该实例的登录 URL，限制为本人可读。登录 URL 不放入命令行参数、仓库或对话。 |
+| 同一来源已有的操作者会话 | `--cookie-jar` / `DS_BOT_COOKIE_JAR` | 使用操作者为脚本准备的 Netscape 格式 Cookie 文件，经作用域匹配后使用。 |
+
+Desktop 通常由操作系统启动，Electron 在 `dsh-app://app/` 内转发已认证请求。查当前桌面实例应先识别监听端口和启动方式，再找为操作者公开的同一实例登录材料。若 Desktop 没有发布该入口，单凭端口不能完成认证。需要长期程序化管理时，在正常维护交接中以持锁的 DSH Web 运行团队，保留本人可读的启动输出。日用宿主正在工作时不要为拿登录地址另起同目录写宿主。
+
+在已完成写锁交接的本机维护时段，可以自行准备 Web 登录入口。选择一个空闲端口，使用目标团队已安装 DS Bot 的 Web profile，在目标终端启动。下面的例子把宿主输出留在本人可读的临时目录中。启动后，下一条 `state` 成功且 `readOnly` 为空，才表明该宿主能接受设置。结束临时维护时正常停止该宿主并释放写锁，再恢复原宿主。
+
+```sh
+operator_dir=$(mktemp -d)
+export DS_BOT_BASE_URL=http://127.0.0.1:31450
+export DS_BOT_WEB_LOG="$operator_dir/web.log"
+(
+  umask 077
+  exec dsh --profile web --host 127.0.0.1 --port 31450 --no-open >"$DS_BOT_WEB_LOG" 2>&1
+) &
+operator_pid=$!
+```
+
+```sh
+api=.agents/skills/ds-bot-doc/scripts/request.py
+python3 "$api" state --jq '{revision,readOnly,bots:[.bots[]|{id,name}],rooms:[.rooms[]|{id,name}]}'
+```
+
+临时宿主的启动终端可用 `kill -TERM "$operator_pid"` 发起正常退出，再用 `wait "$operator_pid"` 等待。确认该实例已释放写锁后清理本次临时启动输出。日常长驻 Web 的启动与停止由实际服务管理方式负责。
+
+成功响应为 `{"ok":true,"value":...}`，`value` 由操作决定。插件以 HTTP 200 返回业务拒绝，形如 `{"ok":false,"error":{"code":"bot/refused","message":"…","details":{}}}`。HTTP 401/403 在插件外发生。脚本默认仅输出成功回执。`--jq` 作用于成功的 `value`，按需选择字段。退出码 0 表示成功，1 表示传输或业务失败，2 表示输入参数错误。错误写入标准错误并隐去可能含凭据或用户原文的错误信息。写请求超时先回读对象，尤其是创建、导入、发送与发布操作。
+
+查一个项目的积压时，用已选项目群的 ID 作为 `room_id`。同一 task 有多个轮次仍只算一项，待处理收件另行统计。用户询问某个 Bot 的错误或返工时，再读有关 task 的轮次和复核记录。
+
+```sh
+jq -n --arg room "$room_id" '{roomId:$room}' |
+  python3 "$api" project-task-list --payload - --jq '{revision,pending:(.pendingIntakes|length),byStatus:(.tasks|group_by(.status)|map({status:.[0].status,count:length}))}'
+```
+
+## 更新简介、登记并绑定技能
+
+从上一次 `state` 的结果选择唯一 Bot ID，赋给 `bot_id`。同名或来源不确定时先核对群成员 ID。`intro_file` 是仅含该岗位说明的 UTF-8 Markdown 文件。`update-bot` 传差量，省略的字段保留原值。`instructions` 是持久简介，`brief` 只用于创建时的首轮说明。一次改资料可能触发宿主的资料变更通知。
+
+```sh
+jq -n --arg id "$bot_id" --rawfile instructions "$intro_file" '{id:$id,instructions:$instructions}' |
+  python3 "$api" update-bot --payload - --jq '{id,name}'
+```
+
+用 `capability-save` 登记或更新同名文本技能。文件夹技能（带子目录、引用或脚本）用 `capability-import`。以下示例同时适用于本仓库的单文件进度技能和含参考文档、Python 脚本的 ds-bot-doc，将 `skill_dir` 指向相应包即可。文件清单只包含本次需要交给 Bot 的资源。本机 Diffmap 技能还需要 `agents/openai.yaml`，其他包按自身资源目录补全清单。
+
+```sh
+skill_dir=.agents/skills/analyze-task-progress
+python3 - "$skill_dir" <<'PY' | python3 "$api" capability-import --payload -
+import base64, json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+files = [root / "SKILL.md"]
+for pattern in ("references/*.md", "scripts/*.py", "agents/*.yaml"):
+    files.extend(sorted(root.glob(pattern)))
+print(json.dumps({"files": [
+    {"path": path.relative_to(root).as_posix(), "bytes": base64.b64encode(path.read_bytes()).decode("ascii")}
+    for path in files
+]}))
+PY
+jq -n --arg bot "$bot_id" '{botId:$bot,name:"analyze-task-progress",attached:true}' |
+  python3 "$api" bot-capability --payload - --jq '.'
+```
+
+首次导入成功返回技能名。重名时先回读现有类型与内容，内容相同就复用。`bot-capability` 返回更新后的技能名数组，再通过 `state.bots[].capabilities` 核对绑定。导入目录的现有接口拒绝同名覆盖，删除会解除其他 Bot 和能力包的引用。不要为更新说明直接删除共享目录。文本技能用 `capability-save` 可保留绑定。对于本地 Codex，绑定从下一次符合条件的消息生效。API 回读证明配置保存，实际加载还需要相应会话的运行证据。
+
+项目提供了[十二个岗位的预置说明](../../../../docs/bot-role-profiles.zh.md)。用 [provision_role.py](../scripts/provision_role.py) 在已认证团队按需创建、更新或补绑定。脚本先核对目标和共享技能是否存在，按同名复用 Bot，逐项补差异，最后按 ID 回读。中断后可重跑。它沿用已配模型、目录、其他技能和权限。成员入群由群管理员按具体项目单独配置。
+
+```sh
+roles=.agents/skills/ds-bot-doc/scripts/provision_role.py
+python3 "$roles" --ensure-name '架构工程师' --role '架构工程师' --skill verify-gitnexus-context
+python3 "$roles" --bot-id "$bot_id" --skill analyze-task-progress
+```
+
+第一个命令把选中岗位的说明写入 `role,instructions`，适合初始化与明确要求覆盖简介的变更。第二个只补给现有 Bot 的技能，适合保有定制说明的团队。`--role` 对应 Markdown 中的岗位名，`--ensure-name` 是目标团队自选的显示名。可重复传 `--skill`，登录环境变量与 request.py 相同。
+
+## 定位未完成的链路
+
+| 观察结果 | 下一步 |
+| --- | --- |
+| 401 / 403 | 核对目标宿主、挂载路径和同一来源的正式登录入口。Web 启动地址只在登录交换使用。不要用其他服务的密钥或会话替代。 |
+| `state.readOnly` 有值，或 `bot/read-only` | 向持有写锁的宿主发请求。另启同目录 Web 可能只能读。正常交接前留住正在运行的工作。 |
+| `bot/not-found` | 根据具体业务错误区分操作未注册、Bot 或 task 已不存在。核对运行版本及分派器。对象不存在时用稳定 ID 重新定位。 |
+| `bot/stale`、版本冲突或响应中断 | 回读当前版本和回执。对照前置条件重新决定是否需要写入。 |
+| API 写入成功，但实际表现仍旧 | 分别核对返回值、状态回读、作用域（团队、Bot、群成员）以及下一个会话或轮次是否重新选择配置。 |
+| 找不到对应业务动作 | 先查宿主公开服务和插件现有动作能否组合完成。若缺少业务入口，补服务与通道契约、文档和隔离回归。需操作系统同意、第三方账号验证等步骤保留其授权流程。 |

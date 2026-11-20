@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { expandCapabilityNames, validateCapabilityName } from '../src/host/capabilities.js'
 import { fakeContext } from './fake-ctx.js'
@@ -112,7 +113,7 @@ test('state migration adds an empty library and Bot attachment lists', async t =
   await env.rt.load()
   assert.deepEqual(env.rt.state.capabilities, { items: {} })
   assert.deepEqual(env.rt.state.bots.chief.capabilities, [])
-  const saved = JSON.parse(await (await import('node:fs/promises')).readFile(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.deepEqual(saved.capabilities, { items: {} })
   assert.deepEqual(saved.bots.chief.capabilities, [])
 })
@@ -204,7 +205,7 @@ test('a deleted Bot drops only a pending local MCP it alone asked for', async t 
   // The kept pending request can still be approved.
   await rt.capabilityEndpoint('capability-approve', { name: 'pending-chief' })
   assert.equal(items['pending-chief'].approved, true)
-  const saved = JSON.parse(await (await import('node:fs/promises')).readFile(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal(saved.capabilities.items['pending-mine'], undefined)
 })
 
@@ -524,4 +525,44 @@ test('a failed HTTP MCP mount does not show the encoded secret from its URL', as
   const status = env.rt.capabilityStatusesView().chief['exa-cap']
   assert.equal(status.state, 'error')
   assert.equal(status.error, 'Connection failed: fetch https://mcp.exa.test/mcp?apiKey=[secret:EXA_API_KEY]')
+})
+
+
+test('folder import preserves files, rejects partial or conflicting imports, and expands per Bot and group', async t => {
+  const env = await setup()
+  t.after(() => env.dispose())
+  const { rt, home } = env
+  const file = (path, bytes) => ({ path, bytes: Buffer.from(bytes).toString('base64') })
+  const files = [
+    file('SKILL.md', '---\nname: data-check\ndescription: >-\n  Check imported\n  data.\n---\nRead references/input.bin.'),
+    { path: 'empty', directory: true },
+    file('references/input.bin', [0, 255, 47]),
+    file('scripts/run.sh', '#!/bin/sh\nexit 0\n'),
+  ]
+  const upload = list => rt.capabilityEndpoint('capability-import', { files: list })
+  const imports = join(home, 'skill-folders')
+  await assert.rejects(upload(files.slice(1)), /SKILL.md/)
+  await assert.rejects(upload([{ ...files[0], directory: true }]), /SKILL.md/)
+  await assert.rejects(upload([...files, file('../escape', 'broken')]), /Invalid file path/)
+  assert.deepEqual(readdirSync(imports), [])
+  const results = await Promise.allSettled([upload(files), upload(files)])
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+  assert.equal(readdirSync(imports).length, 1)
+  const item = rt.capabilityLibraryView().find(entry => entry.name === 'data-check')
+  assert.equal(item.description, 'Check imported data.')
+  assert.equal(item.content, 'Read references/input.bin.')
+  const root = join(imports, item.folderId)
+  assert.deepEqual(readdirSync(join(root, item.name, 'empty')), [])
+  assert.deepEqual(readFileSync(join(root, item.name, 'references/input.bin')), Buffer.from([0, 255, 47]))
+  assert.equal(savedTeam(home).capabilities.items[item.name].folderId, item.folderId)
+  await rt.capabilitySave({ name: 'data-pack', kind: 'pack', items: [item.name] }, { ui: true })
+  const toggle = attached => rt.capabilityEndpoint('bot-capability', { botId: 'chief', name: 'data-pack', attached })
+  await toggle(true)
+  assert.deepEqual(rt.codexSkillsFor('chief'), [{ name: item.name, root }])
+  assert.deepEqual(rt.codexSkillsFor('room-chief'), rt.codexSkillsFor('chief'))
+  assert.deepEqual(rt.codexSkillsFor('worker'), [{ name: item.name }])
+  await toggle(false)
+  assert.deepEqual(rt.codexSkillsFor('chief'), rt.codexSkillsFor('worker'))
+  await rt.capabilityDelete(item.name, { ui: true })
+  assert.equal(existsSync(root), false)
 })

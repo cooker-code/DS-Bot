@@ -16,8 +16,9 @@ test('mentionsIn finds members in order, longest name first', () => {
   assert.deepEqual(names(mentionsIn('no mentions', members)), { all: false, found: [] })
 })
 
-test('isPass takes empty replies and [PASS] forms', () => {
-  for (const text of ['', '[PASS]', ' 【pass】 then more', '(pass)', 'pass.', 'Pass！', '  PASS  ']) assert.equal(isPass(text), true, text)
+test('a literal PASS is an ordinary message', () => {
+  assert.equal(isPass(''), true)
+  for (const text of ['[PASS]', ' 【pass】 then more', '(pass)', 'pass.', 'Pass！', '  PASS  ']) assert.equal(isPass(text), false, text)
   for (const text of ['passing the ball', 'I pass on this one', 'ok']) assert.equal(isPass(text), false, text)
 })
 
@@ -56,4 +57,30 @@ test('a reference takes out only its own "@label", so a typed call with the same
   // "@Kate" is not the reference "K", so the "@K" after it is the one taken out.
   assert.deepEqual(names(mentionsIn('@Kate, @K', [...members, { name: 'Kate' }], [{ labels: ['K'] }])), { all: false, found: ['Kate'] })
   assert.deepEqual(names(mentionsIn('@K notes and @K', members, [{ labels: ['K notes'] }])), { all: false, found: ['K'] })
+})
+
+test('a member returning to A sees only A turns, tool results and attachments, with host instructions intact', async () => {
+  const { taskHistory } = await import('../src/host/task-routing.js')
+  const open = taskId => ({ role: 'user', source: { kind: 'bot', taskId } })
+  const a = open('A')
+  const b = open('B')
+  const rules = { role: 'developer', content: 'tool boundaries' }
+  const aTool = { role: 'tool', content: 'A evidence' }
+  const bImage = { role: 'user', source: { kind: 'attachments' }, content: 'B.png' }
+  const aReply = { role: 'assistant', content: 'A done' }
+  const direct = { role: 'user', source: { kind: 'user' }, content: 'unassigned' }
+  const answer = { role: 'user', source: { kind: 'user-question-reply', projectSource: a.source }, content: 'Answer for A' }
+  const messages = [rules, a, aTool, aReply, b, bImage, answer, direct, a]
+  assert.deepEqual(taskHistory(messages, 'A', 'bot'), [rules, a, aTool, aReply, answer, a])
+  assert.deepEqual(taskHistory(messages, 'B', 'bot'), [rules, b, bImage])
+})
+
+test('only structured task IDs control delivery', async () => {
+  const { inboundScope, outgoingScope } = await import('../src/host/task-routing.js')
+  const a = '11111111-1111-4111-8111-111111111111'
+  const b = '22222222-2222-4222-8222-222222222222'
+  assert.match(inboundScope({ text: `> [${a}] First message` }), /^intake-/)
+  assert.equal(inboundScope({ text: `> [${b}] First message`, taskId: a }), a)
+  assert.throws(() => outgoingScope({ taskId: a }, b, 'Another card', true, true), /different task/)
+  assert.throws(() => outgoingScope(undefined, 'run-1', 'Another card', true), /UUID/)
 })

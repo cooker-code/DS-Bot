@@ -10,7 +10,8 @@
 # Environment: CONTEXT_WINDOW (the mock models' context window, in tokens, with an 8,000
 # token reply; default: the adapter's own), CHECK_RATIO (the plugin's checkRatio), MOCK_DELAY_MS,
 # DSH_HARNESS (the deepseek-harness checkout; default: beside this checkout, else at the
-# same place in the main worktree).
+# same place in the main worktree). DSH_CLI selects a packaged dsh executable when the
+# source checkout has no compiled Web assets.
 set -eu
 NAME=${1:?usage: bench.sh <name> <web-port> <mock-port> [start|stop|reset|status]}
 WEB_PORT=${2:?usage: bench.sh <name> <web-port> <mock-port> [start|stop|reset|status]}
@@ -109,9 +110,10 @@ start() {
   if ! alive web; then
     log="$HOME_DIR/web.log"
     rm -f "$log" "$HOME_DIR/web.pid"
+    if [ -n "${DSH_CLI:-}" ]; then set -- "$DSH_CLI"; else set -- pnpm -s dsh; fi
     (cd "$DSH_HARNESS" && DSH_HOME="$HOME_DIR" DEEPSEEK_BASE_URL="http://127.0.0.1:$MOCK_PORT/v1" DEEPSEEK_API_KEY=mock-key \
       exec "$SETSID" sh -c 'set -eu; echo $$ >"$1"; shift; exec "$@"' sh "$HOME_DIR/web.pid" \
-      pnpm -s dsh --profile web --patch apps/web/tests/pin-browse-picker.overlay.yml --patch "$HOME_DIR/bench.patch.yml" \
+      "$@" --profile web --patch apps/web/tests/pin-browse-picker.overlay.yml --patch "$HOME_DIR/bench.patch.yml" \
       --no-open --port "$WEB_PORT") </dev/null >"$log" 2>&1 &
     # The process writes its own pid just before dsh starts; wait for that file so a
     # start still in progress is not read as an exit.

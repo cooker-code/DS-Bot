@@ -29,6 +29,10 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // The token keeps a late exit timer from closing a palette opened again since.
     closePalette: (token) => { ui.set(state => (state.palette && (token === undefined || state.palette.token === token) ? { ...state, palette: null } : state)) },
     // Searching one group's own history, from its header.
+    openArchive: (roomId, mode, boundary) => ui.set(state => ({ ...state, groupArchive: { roomId, mode, boundary, token: Date.now() } })),
+    closeArchive: () => ui.set(state => ({ ...state, groupArchive: null })),
+    discussions: (roomId, detail) => call('group-discussions', { roomId, detail }),
+    archiveDiscussions: (roomId, action, ids) => after(call('archive-discussions', { roomId, action, ids })),
     openGroupSearch: (roomId) => { if (roomId) ui.set(state => ({ ...state, groupSearch: { roomId, token: Date.now() }, palette: null, newChat: null, menu: null })) },
     closeGroupSearch: (token) => { ui.set(state => (state.groupSearch && (token === undefined || state.groupSearch.token === token) ? { ...state, groupSearch: null } : state)) },
     openExchange: (a, b) => { if (a && b) ui.set(state => ({ ...state, exchange: [a, b] })) },
@@ -145,7 +149,12 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     saveProviderModels: body => call('provider-models-save', body),
     removeProvider: provider => after(call('provider-remove', { provider })),
     // After a failed turn: the Bot answers the user's last unanswered message, which is never sent again.
-    resume: botId => after(call('resume', { botId })),
+    resume: (botId, target) => {
+      const request = call('resume', { botId, ...(target ? { target } : {}) }, AbortSignal.timeout(20_000))
+      // A slow roster refresh must not hold the acknowledgement of an accepted delivery.
+      void after(request).catch(() => {})
+      return request
+    },
     folders: () => call('folders'),
     folderPick: () => call('folder-pick'),
     folderList: path => call('folder-list', { path: path ?? '' }),
@@ -155,6 +164,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     duplicateBot: id => after(call('duplicate-bot', { id })),
     setPrefs: prefs => after(call('set-prefs', prefs)),
     setMain: (id, main = true, options = {}) => after(call('set-main', { id, main, ...options })),
+    setProjectWorkspacePolicy: (roomId, policy) => after(call('set-project-workspace-policy', { roomId, policy })),
     updateRoom: (id, patch) => after(call('update-room', { id, ...patch })),
     roomTodoCheck: (roomId, id, done) => after(call('room-todo', { roomId, id, done })),
     roomTodoRemove: (roomId, id) => after(call('room-todo', { roomId, id, action: 'remove' })),
@@ -191,10 +201,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
       })
     },
     clearReadOnlyPart: () => ui.set(state => (state.readOnlyPart === null ? state : { ...state, readOnlyPart: null })),
-    stopChat: botId => {
-      ui.set(state => (state.readOnlyPart === null ? state : { ...state, readOnlyPart: null }))
-      return after(call('stop-chat', { botId }))
-    },
+    stopChat: (botId, sessionId) => after(call('stop-chat', { botId, sessionId })),
     stopRoomWork: roomId => after(call('stop-room-work', { roomId })),
     goalDraft: (roomId, text) => after(call('goal-draft', { roomId, text })),
     goalControl: (roomId, goalId, action, stopWork) => after(call('goal-control', { roomId, goalId, action, ...(stopWork ? { stopWork: true } : {}) })),
@@ -202,6 +209,9 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // group as a user message that calls its owner; cancelling is the panel's own.
     taskNote: (roomId, id, text) => after(call('task-note', { roomId, id, text })),
     taskCancel: (roomId, id) => after(call('task-cancel', { roomId, id })),
+    decideAcceptance: (roomId, taskId, reviewId, decision, feedback) =>
+      after(call('project-acceptance', { roomId, taskId, reviewId, decision, feedback })),
+    deleteTasks: (roomId, items) => after(call('task-delete', { roomId, items })),
     // The goal island: `goalCompose` holds the room whose draft form is open,
     // `goalOpen` the room whose panel is open.
     composeGoal: roomId => ui.set(state => ({ ...state, goalCompose: roomId, goalOpen: roomId })),
@@ -234,10 +244,6 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     mailRuleSet: payload => after(call('mail-rule-set', payload)),
     mailSendAnswer: (requestId, choice, extra = {}) => after(call('mail-send-answer', { requestId, choice, ...extra })),
     mailSignInCode: payload => after(call('mail-sign-in-code', payload)),
-    phoneSet: settings => after(call('phone-set', settings)),
-    phonePair: () => after(call('phone-pair')),
-    phonePairCancel: () => after(call('phone-pair-cancel')),
-    phoneRemove: id => after(call('phone-remove', { id })),
     imAdd: payload => after(call('im-add', payload)),
     imUpdate: (id, patch) => after(call('im-update', { id, ...patch })),
     imRemove: id => after(call('im-remove', { id })),
@@ -247,6 +253,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     imRetry: id => after(call('im-retry', { id })),
     imLoginStart: payload => call('im-login-start', payload),
     imLoginWait: payload => call('im-login-wait', payload),
+    importSkillFolder: files => after(call('capability-import', { files })),
     saveCapability: capability => after(call('capability-save', capability)),
     deleteCapability: name => after(call('capability-delete', { name })),
     approveCapability: name => after(call('capability-approve', { name })),
@@ -263,6 +270,9 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // Hours come back in this browser's time zone, so days start at local midnight.
     usage: () => call('usage', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
     // The details panel's status line: turns, speed, cache hits and context for one Bot.
+    sessionTimes: (botId, ids) => call('session-times', { botId, ids }),
+    roomContext: roomId => call('room-context', { roomId }),
+    memberSummary: (roomId, botId, sessionId) => call('member-summary', { roomId, botId, sessionId }),
     runStats: botId => call('run-stats', { botId }),
     // `summarize` starts a summary when the entries changed; `regenerate` always does.
     memoryView: (id, flags = {}) => call('memory-view', { ...memoryOf(id), ...flags }),

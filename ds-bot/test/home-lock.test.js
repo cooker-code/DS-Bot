@@ -6,6 +6,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam, seedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { homeLock } from '../src/host/home-lock.js'
 import { fakeContext } from './fake-ctx.js'
@@ -141,7 +142,7 @@ function start(t, home) {
 
 test('while another dsh holds the team, the channel reads it, refuses changes, then takes over', async (t) => {
   const home = tempHome(t)
-  writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
+  seedTeam(home, TEAM)
   // The test runner's parent process: alive, on this host, and not this process.
   writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'other' }))
   const call = start(t, home)
@@ -151,10 +152,10 @@ test('while another dsh holds the team, the channel reads it, refuses changes, t
   assert.match(view.readOnly, new RegExp(`open in another dsh \\(Web or Desktop, pid ${process.ppid} on `))
   const refused = await call('set-prefs', { theme: 'dark' })
   assert.equal(refused.error.code, 'bot/read-only')
-  assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).prefs, undefined)
+  assert.equal(savedTeam(home).prefs, undefined)
 
   // The other host saves a change: the reading host follows the file.
-  writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, revision: 8, prefs: { theme: 'light' } }))
+  seedTeam(home, { ...TEAM, revision: 8, prefs: { theme: 'light' } })
   const followed = (await call('state', {})).value
   assert.equal(followed.revision, 8)
   assert.equal(followed.prefs.theme, 'light')
@@ -162,7 +163,7 @@ test('while another dsh holds the team, the channel reads it, refuses changes, t
   // The other host exits: the next request takes over and saves.
   rmSync(join(home, 'state.lock'))
   assert.equal((await call('set-prefs', { theme: 'dark' })).ok, true)
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = savedTeam(home)
   assert.equal(saved.prefs.theme, 'dark')
   assert.equal(saved.revision, 9)
   assert.equal(JSON.parse(readFileSync(join(home, 'state.lock'), 'utf8')).pid, process.pid)
@@ -175,7 +176,7 @@ test('a reading host follows the other host\'s keys, never writes them, and keep
   const key = (name, value) => ({ name, value, purpose: '', scope: 'all', requestedBy: null, createdAt: 1, updatedAt: 1 })
   const writeKeys = (keys, revision) => {
     writeFileSync(secretsPath, JSON.stringify({ version: 1, secrets: keys }))
-    writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, revision }))
+    seedTeam(home, { ...TEAM, revision })
   }
   writeKeys([key('FIRST_KEY', 'first-value-1')], 7)
   writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'other' }))

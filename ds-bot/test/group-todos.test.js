@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -237,7 +238,7 @@ test('remove deletes one item and clear drops only the completed ones', async (t
   const one = await tool('group_todo').execute({ group: 'Video Room', action: 'clear' }, exec('chief'))
   assert.equal(one, 'Cleared 1 completed to-do from "Video Room" (0 open).')
   assert.equal((await todosOf(call)).length, 0)
-  const saved = readFileSync(join(home, 'state.json'), 'utf8')
+  const saved = JSON.stringify(savedTeam(home))
   assert.equal(saved.includes('Keep open'), false)
   assert.equal(saved.includes('Done one'), false)
   assert.equal(saved.includes('Also open'), false)
@@ -318,7 +319,7 @@ test('deleting the group deletes its list with the rest of the room', async (t) 
   const state = (await call('state', {})).value
   assert.equal(state.rooms.some(room => room.id === 'r1'), false)
   assert.equal(JSON.stringify(state).includes('Only in this room'), false)
-  const saved = readFileSync(join(home, 'state.json'), 'utf8')
+  const saved = JSON.stringify(savedTeam(home))
   assert.equal(saved.includes('Only in this room'), false)
 })
 

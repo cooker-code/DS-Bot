@@ -17,9 +17,9 @@ export const dshCollapsed = () => {
 }
 
 // The track the collapsed shell sidebar keeps: nothing under a frameless window
-// (Windows title bar, macOS desktop), its icon rail elsewhere.
+// (macOS desktop), its icon rail elsewhere.
 export const collapsedTrackWidth = () =>
-  document.documentElement.hasAttribute('data-windows-titlebar') || document.documentElement.dataset.platform === 'darwin' ? 0 : 56
+  document.documentElement.dataset.platform === 'darwin' ? 0 : 56
 
 // The conversation column's margins live in one rule of our own, matched on the
 // column's exact class. A custom property on <body> would restyle the whole page,

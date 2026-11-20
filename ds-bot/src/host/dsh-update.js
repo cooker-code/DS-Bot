@@ -101,12 +101,10 @@ export function install(rt) {
     try {
       status.current = await currentDsh()
       status.kind = installKind()
-      // The desktop app pins its DSH and updates it as a whole, so it has nothing to offer.
-      const inApp = process.env.DS_BOT_APP === '1'
       // The release the running package itself verified stays the floor: a bot
       // older than its own declaration has nothing newer to offer.
-      const declared = inApp ? [] : [{ verifiedDsh: PKG.dsBot?.verifiedDsh }]
-      const released = inApp ? null : await releasedDeclaration(sourceOf(await installSpecOf(ctx)))
+      const declared = [{ verifiedDsh: PKG.dsBot?.verifiedDsh }]
+      const released = await releasedDeclaration(sourceOf(await installSpecOf(ctx)))
       if (released) declared.push(released)
       const newestDeclared = declared
         .filter(entry => cleanVersion(entry.verifiedDsh))
@@ -145,10 +143,10 @@ export function install(rt) {
     if (status.kind !== 'npm') throw new Error('This DSH updates with its app')
     const chosen = target
     Object.assign(status, { phase: 'installing', error: null })
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    const npm = 'npm'
     const args = ['install', '-g', `${DSH_PACKAGE}@${chosen.version}`]
     const runner = rt.dshSpawn ?? ((command, argv, options) => spawn(command, argv, options))
-    running = runner(npm, args, { windowsHide: true })
+    running = runner(npm, args)
     let output = ''
     running.stdout?.on?.('data', chunk => { output = `${output}${chunk}`.slice(-4000) })
     running.stderr?.on?.('data', chunk => { output = `${output}${chunk}`.slice(-4000) })

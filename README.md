@@ -1,12 +1,14 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg"><img src="docs/images/logo.svg" alt="DS Bot" width="260"></picture></p>
 
+This fork supports macOS only.
+
 # DS Bot
 
 English | [中文](README.zh.md)
 
 ![version](https://img.shields.io/badge/version-v0.3_preview-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-4D6BFE) ![license](https://img.shields.io/badge/license-Apache_2.0-green)
 
-DS Bot is an open-source project built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH), available as a standalone desktop app or as a DSH plugin. It turns DSH into bots that you create, talk to and work with.
+DS Bot is an open-source plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). It turns DSH into bots that you create, talk to and work with.
 
 ## Sponsors
 
@@ -23,14 +25,6 @@ DS Bot is an open-source project built on [DeepSeek Harness](https://github.com/
 
 ## Install
 
-**Desktop app (Windows, macOS, Linux)**
-
-The desktop app brings its own DSH, so you don't need to install DSH first. Download the installer for your system from [Releases](https://github.com/Fei2411/DS-Bot/releases/latest), open it, and set up a model in Settings (it can also copy your existing bot team from DSH).
-
-If your system warns about an unsigned app: on Windows select **More info** → **Run anyway**; on macOS open **System Settings** → **Privacy & Security** and select **Open Anyway**.
-
-**As a plugin in DSH**
-
 First install DSH and set up at least one model in it. DS Bot uses the models from DSH.
 
 - **DSH Desktop**: In the sidebar, select **Plugins** → **Add plugin**, enter `ds-bot` (in mainland China, set **Registry** to **Mainland China mirror**), then select **Install** and **Enable now**.
@@ -40,10 +34,6 @@ First install DSH and set up at least one model in it. DS Bot uses the models fr
 npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add ds-bot
 npx @deepseek-ai/dsh@0.2.2-rc.1 web
 ```
-
-**Docker (NAS, Linux server)**
-
-See [`docker/README.md`](docker/README.md).
 
 ## Setup
 
@@ -89,19 +79,19 @@ Note that a private bot cannot be a main bot or join group chats. This boundary 
 
 Coding-agent CLIs you already use on your computer (Claude Code, Codex CLI, Cursor CLI, GitHub Copilot, Devin CLI, OpenCode, Gemini CLI, Antigravity, Kimi CLI, Kilo CLI, and others) can be connected as bots directly. Pick Local agent when creating a bot (or switch in the bot's settings), and it will use the CLI's own sign-in, plan and models while working like any other bot in private chats, group chats, handoffs and memory.
 
-There are a few limits to keep in mind: a local agent uses the CLI's own tools and context, so shared capabilities and connectors in DS Bot are not passed to it, and switching how a bot runs starts a fresh conversation part; only CLIs or custom CLIs that reject MCP servers altogether run without team tools such as creating bots or handing off work. Also, Cursor CLI saves the last selected model as its own global default (`~/.cursor`), so if you pick a specific model for a Cursor bot in DS Bot, other Cursor bots on the default model and Cursor in your terminal will switch to it too — keep "CLI default" if you don't want to change your global default (sign in to Cursor first so the model list loads).
+There are a few limits to keep in mind: a local agent uses the CLI's own tools and context, and Codex also loads the shared skills enabled for that bot. Shared MCP servers and connectors stay in DS Bot, and switching how a bot runs starts a fresh conversation part; only CLIs or custom CLIs that reject MCP servers altogether run without team tools such as creating bots or handing off work. Also, Cursor CLI saves the last selected model as its own global default (`~/.cursor`), so if you pick a specific model for a Cursor bot in DS Bot, other Cursor bots on the default model and Cursor in your terminal will switch to it too — keep "CLI default" if you don't want to change your global default (sign in to Cursor first so the model list loads).
 
 ### Browser
 
-Each bot has its own isolated browser with separate sign-ins, and can import cookies from a file or from your local browsers. Turn on a browser plugin in Settings → Browser to let bots open and operate web pages on their own; posting, uploading, downloading and deleting need your approval, and sign-in, captchas or payments hand back to you with a card so you can take over and hand back at any time.
+In DSH Desktop, each bot has its own browser panel. You can open a page and ask the bot to read the active tab. Panel sign-ins are isolated per bot and last until you quit the host.
 
-The browser feature is available in the desktop app and DSH Desktop only (not in DSH Web), and only the desktop app keeps browser sign-ins after you quit and supports cookie import. On Windows, new Chrome and Edge cookies encrypted with v20 cannot be read directly — export them to a file with a browser extension first.
+Enable a browser plugin in Settings to let bots operate a separate Chromium profile. Actions such as posting, uploading, downloading and deleting follow the approval rules.
 
 ### Computer use
 
 Turn on Settings → Computer use to let bots operate apps on your computer as far as you allow. You can set a level (view only, background, or foreground) and allowed apps for each bot, with a top bar showing when a bot is working so you can pause or take over at any time; apps like system settings and password managers are never given to a bot.
 
-All bots share your desktop, so only one bot can use a given app or the foreground mouse at a time. On Windows, Chrome and Electron apps often ignore background input and need "foreground", and apps running as administrator cannot be controlled; macOS requires 14 or later with Accessibility and Screen Recording permissions; Linux supports X11, with limited Wayland support.
+All bots share your desktop, so only one bot can use a given app or the foreground mouse at a time. macOS requires 14 or later with Accessibility and Screen Recording permissions.
 
 ### IM
 
@@ -113,11 +103,11 @@ Messages only flow while your computer is awake and DS Bot is running. WeChat on
 
 In Settings → Connectors, you can sign in to GitHub, Gmail, QQ Mail, 163 and other mailboxes, and remote MCP servers, or import existing configs from Claude Desktop, Cursor and VS Code. Credentials stay in DS Bot's secrets so bots never see the raw values, and emails written by a bot wait for your confirmation by default.
 
-In Settings → Capabilities, you can manage shared MCP servers, skills and packs for the team and enable them per bot; local commands added by a bot need your approval before they run.
+In Settings → Capabilities, choose **Import skill folder** and select the folder containing `SKILL.md`. Its scripts, references and assets are saved with the skill. Enable it in each bot’s settings. Codex bots can share a working folder and still use different skills. A switch takes effect on the next turn, including for same-name copies in the project or user skill directories. You can also manage shared MCP servers and packs here. Local commands added by a bot need your approval before they run.
 
 ### Office files
 
-Bots can create, check and edit Word (`.docx`), PowerPoint (`.pptx`) and Excel (`.xlsx`) documents directly, and render pages to images to check layout. The desktop app includes the full runtime out of the box; DSH Web does not bundle this runtime, so it can only check and edit existing documents, while creating files from scratch and rendering pages require the desktop app or DSH Desktop.
+Bots can create, check and edit Word (`.docx`), PowerPoint (`.pptx`) and Excel (`.xlsx`) documents directly, and render pages to images to check layout. DSH Desktop supplies the runtime for creating and rendering documents. DSH Web supports checking and editing existing files by default.
 
 ### Usage
 
@@ -127,7 +117,7 @@ In **Settings** → **Usage**, you can see token usage by time, by bot and by mo
 
 ## Data
 
-All data stays on your own computer: in the folder you chose on first start in the desktop app (`~/.ds-bot` by default), or in `bot/` and `sessions/` in the DSH home folder (`~/.dsh` by default) for the plugin. Uninstalling the app or the plugin does not delete this data.
+DSH stores the team and its conversations in `bot/` and `sessions/` under its home directory (`~/.dsh` by default). Uninstalling the plugin preserves these files.
 
 ## Development
 

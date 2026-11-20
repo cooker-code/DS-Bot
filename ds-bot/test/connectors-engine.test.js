@@ -2,12 +2,16 @@
 // real node:http upstream, and mail on fake transports. No network leaves the
 // test process (fakes listen on 127.0.0.1 or answer in memory).
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { createServer } from 'node:http'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { promisify } from 'node:util'
+
+const execFileP = promisify(execFile)
 
 process.env.DS_BOT_GITHUB_OAUTH_CLIENT_ID = 'test-gh-client'
 
@@ -487,9 +491,8 @@ test('custom connectors get unique ids that never collide with the catalog', asy
 
 test('import scan returns env names only and never writes the source files', async (t) => {
   const fakeHome = mkdtempSync(join(tmpdir(), 'dsb-fakehome-'))
-  const appData = join(fakeHome, 'AppData', 'Roaming')
   // Every supported platform location sees the same file.
-  const dirs = [join(fakeHome, 'Library', 'Application Support', 'Claude'), join(fakeHome, '.config', 'Claude'), join(appData, 'Claude')]
+  const dirs = [join(fakeHome, 'Library', 'Application Support', 'Claude')]
   for (const dir of dirs) mkdirSync(dir, { recursive: true })
   const configPath = join(dirs[0], 'claude_desktop_config.json')
   for (const dir of dirs) writeFileSync(join(dir, 'claude_desktop_config.json'), JSON.stringify({ mcpServers: { jira: { command: 'npx', args: ['-y', 'jira-mcp'], env: { JIRA_TOKEN: 'RAW-SECRET' } }, docs: { url: 'https://docs.example.com/mcp' } } }))
@@ -500,10 +503,8 @@ test('import scan returns env names only and never writes the source files', asy
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true }); rmSync(fakeHome, { recursive: true, force: true }) })
   await rt.load()
   const realHome = process.env.HOME
-  const realAppData = process.env.APPDATA
   process.env.HOME = fakeHome
-  process.env.APPDATA = appData
-  t.after(() => { process.env.HOME = realHome; if (realAppData === undefined) delete process.env.APPDATA; else process.env.APPDATA = realAppData })
+  t.after(() => { process.env.HOME = realHome })
   const scanned = await rt.connectorEndpoint('connector-import-scan', {})
   const jira = scanned.find(s => s.name === 'jira')
   assert.deepEqual(jira.envNames, ['JIRA_TOKEN'])
@@ -1097,4 +1098,16 @@ test('manual client fallback keeps and closes the original OAuth callback listen
   assert.equal(new URL(second.row.url).searchParams.get('redirect_uri'), first.redirectUri)
   await rt.connectorEndpoint('connector-cancel', { id: 'notion' })
   assert.equal(first.listener.listening, false)
+})
+
+test('loading oauth does not load @modelcontextprotocol/client at import time', async () => {
+  const script = `
+    import { registerHooks } from 'node:module'
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier === '@modelcontextprotocol/client') throw new Error('MCP client loaded at import time')
+      return next(specifier, context)
+    } })
+    await import(${JSON.stringify(new URL('../src/host/connectors/oauth.js', import.meta.url).href)})
+  `
+  await execFileP(process.execPath, ['--input-type=module', '-e', script])
 })

@@ -136,6 +136,35 @@ test('an image in a Bot chat is read for that chat, and the chat gets the readin
   assert.match(bench.requests[1].messages[0].content[0].text, /A red triangle\./)
 })
 
+test('a project clarification reaches the model once when its scoped request re-enters the stream', async t => {
+  const { ctx, rt, bench, stop } = start()
+  t.after(stop)
+  await rt.load()
+  const stream = ctx.llm.stream
+  let passes = 0
+  ctx.llm.stream = options => {
+    assert.ok(++passes <= 2, 'a scoped clarification must reach the model after at most one rewrite')
+    return stream(options)
+  }
+  for (const key of ['card-a', 'intake-b']) {
+    const scope = key.startsWith('intake-') ? { intakeId: key } : { taskId: key }
+    const source = { kind: 'bot', roomId: 'r1', exchangeId: 'dispatch', ...scope }
+    rt.live.set('b2', { info: source })
+    rt.roomOf('r1').projectReplyScopes = { typed: key }
+    const selected = { ...userText('Selected answer'), source: { kind: 'user-question-reply', projectSource: source } }
+    const typed = { ...userText('Typed answer'), id: 'typed' }
+    const unrelated = { ...userText('Other card'), source: { ...source, taskId: 'other' } }
+    for (const answer of [selected, typed]) {
+      passes = 0
+      const before = bench.requests.length
+      const chunks = await drain(ctx.llm.stream({ provider: 'deepseek', model: 'v4', sessionId: 'b2', messages: [unrelated, answer] }))
+      assert.equal(chunks.at(-1).reason.kind, 'stop')
+      assert.equal(bench.requests.length, before + 1)
+      assert.deepEqual(bench.requests.at(-1).messages, [{ ...answer, source: { ...answer.source, ...scope } }])
+    }
+  }
+})
+
 test('an image in a group is read for the group, and the group still relays its own rounds', async (t) => {
   const { ctx, rt, bench, stop } = start()
   t.after(stop)

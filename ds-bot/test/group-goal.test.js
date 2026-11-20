@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
@@ -17,7 +18,7 @@ const seed = (room = {}, extraRooms = {}) => ({
     b: { id: 'b', name: 'Writer', role: 'Write', sessionId: 'b', createdAt: 2 },
     c: { id: 'c', name: 'Tester', role: 'Test', sessionId: 'c', createdAt: 3 },
   },
-  rooms: { r1: { id: 'r1', name: 'Ops', members: ['a', 'b', 'c'], mode: 'admin', admin: 'a', named: true, sessions: { a: 'ga', b: 'gb', c: 'gc' }, log: [], seq: 0, seen: {}, ...room }, ...extraRooms },
+  rooms: { r1: { id: 'r1', name: 'Ops', taskManagementEnabled: false, members: ['a', 'b', 'c'], mode: 'admin', admin: 'a', named: true, sessions: { a: 'ga', b: 'gb', c: 'gc' }, log: [], seq: 0, seen: {}, ...room }, ...extraRooms },
   agents: {},
   exchanges: [],
   exchangeTurns: {},
@@ -122,7 +123,7 @@ const settle = async (check) => {
   assert.ok(check(), 'condition not reached')
 }
 const text = message => message.content.map(block => block.text ?? '').join('\n')
-const saved = host => JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8'))
+const saved = host => savedTeam(host.home)
 const goal = host => saved(host).rooms.r1.goal
 const logLines = host => saved(host).rooms.r1.log
 
@@ -275,7 +276,7 @@ test('the admin and member prompts carry the goal block', async (t) => {
   const again = host.round('c2', host.say('@Tester hello'))
   await settle(() => host.agentOf('gc').calls.length === 1)
   assert.match(text(host.begin('gc')), /You have no task in this stage\./)
-  host.finish('gc', '[PASS]')
+  host.finish('gc', '')
   await settle(() => again() !== undefined)
 })
 
@@ -329,7 +330,7 @@ test('an idle round wakes the admin for a goal check; [PASS] waits for the user'
   assert.match(prompt, /goal check/)
   assert.match(prompt, /Goal check from DS Bot/)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => check() !== undefined)
   assert.equal(goal(host).idle, true)
   assert.equal(host.agentOf('r1').calls.filter(call => call.source?.role === 'goal' && call.source.goal === 'nudge').length, 0)
@@ -363,7 +364,7 @@ test('two goal checks without progress mark the goal idle; a user message clears
   const third = host.round('c4', host.say('@Chief new ask'))
   await settle(() => host.agentOf('ga').calls.length === 4)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => third() !== undefined)
   assert.deepEqual([goal(host).idle, goal(host).nudges], [undefined, 1])
 })
@@ -601,7 +602,7 @@ test('a member call while the goal waits brings it back', async (t) => {
   const first = host.round('c1', host.say('@Chief go'))
   await settle(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => first() !== undefined)
   const one = host.round('c2', host.takeGoal())
   await settle(() => host.agentOf('ga').calls.length === 2)
@@ -659,7 +660,7 @@ test('a draft queued with another post still calls the admin on its note', async
   host.begin('ga')
   host.finish('ga', 'Aligning it.')
   host.begin('gc')
-  host.finish('gc', '[PASS]')
+  host.finish('gc', '')
   await settle(() => result() !== undefined)
   assert.ok(logLines(host).some(line => line.who === 'User' && line.text === 'Build the site'))
 })
@@ -711,4 +712,75 @@ test('a member still working at round end wakes the admin when its work settles'
   const left = host.agentOf('r1').calls.filter(call => call.source?.role === 'goal')
   assert.ok(left.length <= 1, `settles queued ${left.length} extra checks`)
   assert.equal(host.takeGoal(), undefined)
+})
+
+test('repeated turn settlements without member progress respect the idle check budget (#1330)', async (t) => {
+  const host = await start(t)
+  await startGoal(host)
+  const nudges = () => host.agentOf('r1').calls.filter(call => call.source?.role === 'goal' && call.source.goal === 'nudge')
+  const settled = []
+  const orig = host.rt.goalSettled
+  host.rt.goalSettled = (...args) => {
+    const pending = orig(...args)
+    settled.push(pending)
+    return pending
+  }
+
+  for (let turn = 1; turn <= 6; turn += 1) {
+    host.emit('ga', 'turn/start', { turn })
+    host.emit('ga', 'assistant/message', { message: { content: [{ type: 'text', text: '' }] } })
+    host.emit('ga', 'turn/end', { turn, reason: { kind: 'completed' } })
+    assert.equal(settled.length, 1)
+    await Promise.all(settled.splice(0))
+  }
+
+  assert.equal(nudges().length, 2, 'PASS-only settlements must stop after 2 goal checks')
+  assert.equal(goal(host).nudges, 2)
+  assert.equal(goal(host).idle, true)
+})
+
+test('concurrent and admin-interleaved goalSettled calls stop at the idle limit (#1330)', async (t) => {
+  const host = await start(t)
+  await startGoal(host)
+  const room = host.rt.roomOf('r1')
+  const nudges = () => host.agentOf('r1').calls.filter(call => call.source?.role === 'goal' && call.source.goal === 'nudge')
+
+  await Promise.all(Array.from({ length: 6 }, () => host.rt.goalSettled(room)))
+  assert.equal(nudges().length, 2)
+  assert.equal(goal(host).nudges, 2)
+  assert.equal(goal(host).idle, true)
+
+  // User message clears idle, then admin-only rounds + settlements still stop at 2 more checks.
+  host.rt.goalUserMessage('r1')
+  for (let i = 0; i < 6; i += 1) {
+    await host.rt.goalDrive(room, { stoppedOnly: false, slots: [{ id: 'a', status: 'posted', worked: true }] })
+    await host.rt.goalSettled(room)
+  }
+  assert.equal(nudges().length, 4)
+  assert.equal(goal(host).nudges, 2)
+  assert.equal(goal(host).idle, true)
+
+  // Real non-admin member work in a round still resets the check budget once idle is cleared.
+  host.rt.goalUserMessage('r1')
+  room.goal.nudges = 2
+  await host.rt.goalDrive(room, { stoppedOnly: false, slots: [{ id: 'b', status: 'posted', worked: true }] })
+  assert.equal(nudges().length, 5)
+  assert.equal(goal(host).nudges, 1)
+  assert.notEqual(goal(host).idle, true)
+
+  // A late task report clears idle and lets a subsequent settlement queue one check.
+  room.goal.nudges = 2
+  room.goal.idle = true
+  room.goal.stages[0].tasks[0].status = 'working'
+  host.rt.goalTaskReported('r1', 'b')
+  await host.rt.goalSettled(room)
+  assert.equal(nudges().length, 6)
+  assert.equal(goal(host).nudges, 1)
+  assert.notEqual(goal(host).idle, true)
+
+  // Admin [PASS] on a goal-check round marks idle immediately; later settlements do not wake it.
+  await host.rt.goalDrive(room, { goalNudge: true, stoppedOnly: false, slots: [{ id: 'a', status: 'passed' }] })
+  for (let i = 0; i < 4; i += 1) await host.rt.goalSettled(room)
+  assert.equal(nudges().length, 6)
+  assert.equal(goal(host).idle, true)
 })

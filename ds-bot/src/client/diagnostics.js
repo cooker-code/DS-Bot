@@ -1,6 +1,7 @@
 // What went wrong in this browser, for Settings → Feedback and the report it builds.
 // Calls whose failures the interface swallows (polls, previews) still land here.
 import { t, language } from './i18n.js'
+import { redactCredentials } from '../shared/redact-credentials.js'
 
 const MAX = 30
 // The same failure again within this window bumps a count instead of a new line.
@@ -74,6 +75,25 @@ export const knownFailure = code => (Object.hasOwn(FAILURES, code ?? '') ? t(FAI
 
 export function failureLabel(code, message) {
   return knownFailure(code) ?? (message || code || t('Unknown error'))
+}
+
+// Local agent adapters can return a native socket code or just the transport's message.
+function networkFailureCode(code, message) {
+  if (code === 'TIMEOUT' || code === 'TRANSPORT') return code
+  const detail = !code || code === 'UNKNOWN' || code === 'LOCAL_AGENT_ERROR' ? message : code
+  if (/\b(?:ETIMEDOUT|UND_ERR_(?:CONNECT|HEADERS|BODY)_TIMEOUT|connection timed out|request timed out)\b/i.test(detail)) return 'TIMEOUT'
+  if (/\b(?:ECONNRESET|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|UND_ERR_SOCKET|fetch failed|failed to fetch|socket hang up|network error)\b/i.test(detail)) return 'TRANSPORT'
+}
+
+export function modelFailureLine(name, code, status, message, { privateChat = false } = {}) {
+  const network = networkFailureCode(code, message)
+  // Some adapters only return a message. Keep it visible without guessing its cause.
+  const unclassified = !code || code === 'UNKNOWN' || code === 'LOCAL_AGENT_ERROR'
+  if (privateChat && !network && !(unclassified && message)) return
+  const text = code === 'AUTH' ? '' : redactCredentials(message).slice(0, 500)
+  const reason = failureLabel(network ?? code, text)
+  const details = [code, status && `HTTP ${status}`, text].filter(value => value && value !== reason)
+  return `${name} · ${reason}${details.length ? ` (${details.join(' · ')})` : ''}`
 }
 
 // GitHub refuses very long addresses; past this the diagnostics go by the clipboard.

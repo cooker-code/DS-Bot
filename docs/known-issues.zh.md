@@ -32,7 +32,7 @@ dsh: disabling profile plugin row "bot": its declared peer dependencies cannot b
 
 **原因：** DeepSeek Harness 加载插件前，会检查 profile 里的每一行插件配置。这条信息表示有一行的 id 是 `bot`，却没有包名。DS Bot 自己加的那一行带有包名 `ds-bot`，所以没有包名的那一行多半来自 profile 文件夹里的文件，比如 `cordis.patch.yml` 里一条已经对不上 DS Bot 那一行的 `- id: bot` 覆盖配置。我们没能复现这个问题，所以还不知道这样的一行是怎么留下来的。
 
-**怎么处理：** profile 文件夹是 `~/.dsh/profiles/web/`（Windows：`C:\Users\<用户名>\.dsh\profiles\web\`）；设置了 `DSH_HOME` 时，是其中的 `profiles/web/`。Desktop 用 `profiles/desktop/`。
+**怎么处理：** profile 文件夹是 `~/.dsh/profiles/web/`；设置了 `DSH_HOME` 时，是其中的 `profiles/web/`。Desktop 用 `profiles/desktop/`。
 
 1. 退出 DSH。
 2. 打开 profile 文件夹里的 `cordis.patch.yml`，找 `id: bot` 但没有 `name: ds-bot` 的一行，删掉这一行。改之前先备份这个文件。
@@ -76,20 +76,3 @@ Error: configured web provider "auto" is not registered
 想确认结果，可以运行 `npx @deepseek-ai/dsh@0.2.2-rc.1 --profile web --dump-config`，看 `web` 那一行。另外，有的插件会在 DSH 运行时设置搜索 provider，时间在 profile patch 之后。以后关掉这类插件时，也要再检查一下这个设置。
 
 另见插件 README 的 [Web search](../ds-bot/README.md#web-search) 一节和 issue [#128](https://github.com/Fei2411/DS-Bot/issues/128)。
-
-## Linux：加载 libghostty-vt.so 报「GLIBC_2.27 not found」
-
-**在哪里：** 在 glibc 低于 2.28 的 Linux 系统上（CentOS 7 自带 glibc 2.17），桌面 AppImage、deb 或本机装的 `dsh web` 启动即失败。动态加载器报告缺少某个 glibc 版本，例如：
-
-```text
-libghostty-vt.so: GLIBC_2.27 not found
-```
-
-**原因：** DeepSeek Harness 自带的原生库（包括 `libghostty-vt.so`）是按比 CentOS 7 更新的 glibc 符号编译的。DS Bot 是插件，没法重编 DSH 的库，所以没有适配 glibc 2.17 的版本可装。可以用 `ldd --version` 查看本机版本。
-
-**怎么处理：** 改用 Docker 镜像——容器里有自己的、更新的 glibc，宿主 glibc 不再起决定作用。见 [`docker/`](../docker/README.md)（英文）：构建或拉取镜像、发布端口，然后用局域网内任意浏览器打开 UI。注意这几点：
-
-- 容器自带 DSH 和配套原生库。别把宿主机的 `libghostty-vt.so` 复制或挂载进容器，混用会破坏它。
-- 需要能跑 Debian Bookworm 镜像的 Docker（或 Podman）。CentOS 7 自带的内核和 Docker 偏旧，如果 Docker 本身就跑不起来，换 Podman 或更新版 Docker。这个组合没有实机验证过——镜像本身是在现代宿主机上由 CI 测过的。
-- 数据存在挂载的数据目录（`/data`）里，不是你真实的 `~/.dsh`；容器不会去读写它。
-- 停止用 `docker compose down`（或 `docker stop`），会话能正常收尾。

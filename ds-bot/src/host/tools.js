@@ -1,5 +1,10 @@
+import { assistantId, runsProject } from './project-assistant.js'
 // Team tools: the roster, bot-to-bot messages, group chat settings and posts, and the
 // question and view cards. Group rounds and reading chats are in groups.js.
+import { taskError } from '../shared/task-settings.js'
+import { projectQuestion } from './project-intake.js'
+import { clarifyIntake, developmentHandoff, projectRoomForCard } from './project-tasks.js'
+import { outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readAvatar } from './avatar.js'
@@ -36,6 +41,7 @@ const GOAL_REFUSAL = 'Bot chats do not run /goal. To give a group a goal, use Se
 // has no Bot; a Bot's tasks deliver to its own chat, which DS Bot moves on with each part.
 const SCHEDULE_TARGET_TOOLS = ['schedule_create', 'schedule_edit']
 const SCHEDULE_TARGET_REFUSAL = 'A Bot’s scheduled tasks run in its own chat. Use target "this_session".'
+const SCHEDULE_UPDATE_FIELDS = new Set(['id', 'action', 'title', 'prompt', 'rrule', 'target', 'active', 'expectedUpdatedAt'])
 const DELEGATION_REFUSAL = 'Bots do not start subagents, teammates or workflows. Do the work yourself, or hand it to another Bot with message_bot.'
 const MODE_PARAM = {
   type: 'string',
@@ -174,7 +180,7 @@ export function install(rt) {
   const bodyOf = (message) => {
     const content = Array.isArray(message.content) ? message.content : []
     const first = content.find(block => block?.type === 'text')?.text ?? ''
-    return { text: first.slice(first.indexOf('\n') + 1), files: content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment) }
+    return { text: first.slice(first.indexOf('\n') + 1), files: content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment), images: content.filter(block => block?.type === 'image' && block.attachment !== undefined).map(block => block.attachment) }
   }
 
   // A tool that throws shows as failed in the chat, instead of as sent or stopped.
@@ -253,6 +259,8 @@ export function install(rt) {
     description: 'Send a message to another Bot on the team. If that Bot is working, it reads your message at its next step and can change course, then answers once that work is done; if it is idle, it starts on it right away. Its reply arrives later as a new message to you; with reply_to "user" it answers the user in its own chat instead. Do not message a Bot that is waiting for the result of the work you are doing (the Bot that asked you for it, or one above that): your answer reaches it by itself once you end your turn and everything you handed on is back. In a group chat it reaches only members of that group, as writing "@Name" there does. With request_id you name the request yourself: a repeat of that name with the same message is not sent again, but gives the receipt of the first call back.',
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
+      taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
+      card_round: { type: 'integer', description: 'After project_task read, the group admin sends the saved DS Bot assignment and attachments from its session in the project group. Send its round, taskId, reply_to=user, and request_id to the assigned owner. Put only extra instructions in message.' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
       reply_to: {
         type: 'string',
@@ -280,15 +288,31 @@ export function install(rt) {
       if (String(args.message ?? '').trim() === '') return 'Write a message to send.'
       const name = typeof args.request_id === 'string' ? args.request_id.trim() : ''
       if (name.length > NAME_MAX) return `The request_id is ${name.length} characters long; a request name is at most ${NAME_MAX}.`
-      const text = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
       const room = rt.roomOf(rt.groupOwners.get(exec.agent?.id)?.roomId)
+      const source = rt.live.get(exec.agent?.id)?.info
+      const cardDispatch = args.card_round !== undefined
+      const cardId = args.taskId ?? source?.taskId
+      const scopedRoom = rt.roomOf(source?.roomId ?? room?.id)
+      const projectRoom = scopedRoom && Object.hasOwn(scopedRoom.projectCards ?? {}, cardId)
+        ? scopedRoom : projectRoomForCard(rt, cardId)
+      if (projectRoom && (!projectRoom.members.includes(sender.id) || !projectRoom.members.includes(target.id))) throw taskError('NOT_GROUP_MEMBER')
+      if (projectRoom && ((room && room.id !== projectRoom.id) || (source?.roomId && source.roomId !== projectRoom.id))) throw taskError('GROUP_CONTEXT_MISMATCH')
+      if (projectRoom && !taskRoom(projectRoom)) throw taskError('TASK_MANAGEMENT_DISABLED')
+      const sharedTaskRoom = room ?? projectRoom
+      const key = outgoingScope(source, args.taskId, args.message, Boolean(cardDispatch || cardId), sharedTaskRoom && (runsProject(rt, sharedTaskRoom, sender.id) || rt.isAdminOf(sharedTaskRoom, sender.id)))
+      if (projectRoom && source?.intakeId && !projectRoom.projectCards[key]?.intakes.includes(source.intakeId)) refuse('Attach this intake to its card before sending.')
+      if (key?.startsWith('intake-')) refuse('Identify the persistent card before assigning work.')
+      const message = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
+      if (cardDispatch && (!key || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a private card handoff with taskId, current card_round, reply_to=user and request_id.')
+      const handoff = cardDispatch ? developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom?.projectCards?.[key], target.id, args.card_round) : undefined
+      let text = tagged(key, message)
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
       const request = name === '' ? undefined : rt.requestIdentity({
         caller: sender.id,
         context: room === undefined ? 'chat' : `room:${room.id}`,
         name,
         payload: {
-          to: target.id,
+          to: target.id, ...scopeFields(key), ...(cardDispatch ? { card_round: args.card_round } : {}),
           message: String(args.message ?? '').replace(/\r\n?/g, '\n').trim(),
           reply_to: args.reply_to === 'user' ? 'user' : 'me',
           when: args.when === 'queue' ? 'queue' : 'now',
@@ -303,13 +327,32 @@ export function install(rt) {
         if (outcome.status === 'readonly') refuse(`Not sent: this window cannot save the Bot team, so it cannot record the request_id "${name}". Send it from the window that owns the team, or leave the request_id out.`)
         return outcome.receipt
       }
+      const receiptWithHandoff = async outcome => {
+        const receipt = answer(outcome)
+        if (!handoff || !['sent', 'replay'].includes(outcome.status)) return receipt
+        const exchangeId = handoff.round.dispatchId
+        const entry = rt.exchangeOf(exchangeId, sender.id, target.id)
+        if (!entry) return receipt
+        const saved = await rt.exchangeText(entry)
+        return receipt + '\nCard handoff: ' + JSON.stringify({ exchangeId, text: saved.text, ...(saved.whole === false ? { whole: false } : {}) })
+      }
       if (request !== undefined) {
         const seen = await rt.knownRequest(request)
-        if (seen !== undefined) return answer(seen)
+        if (seen !== undefined) return receiptWithHandoff(seen)
       }
-      if (room !== undefined) {
+      if (handoff) {
+        const ack = 'Check the assignment and, for code changes, the actual worktree. Confirm with project_task start using this taskId and round ' + args.card_round + '. Report mismatches to the manager. For a planned node, save completed and remaining checks with project_task checkpoint, and use block to report evidence and the condition needed to continue. When finished, call project_task submit with the result and checks, then notify the manager with this taskId.'
+        const instruction = assistantId(projectRoom) ? ack.replace('then notify the manager with this taskId.', 'the host notifies the task assistant automatically.') : ack
+        text = tagged(key, [message, handoff.text, instruction].join('\n\n'))
+      }
+      const coordinator = projectRoom && !handoff && (rt.isAdminOf(projectRoom, target.id) || target.id === assistantId(projectRoom))
+      if (room !== undefined && !handoff && !coordinator) {
         const refusal = groupRefusal(room, sender, target)
         if (refusal !== undefined) refuse(refusal)
+        if (key && scopeOf(source) !== key) {
+          const send = async () => { await rt.postToRoom(room, sender, tagged(key, `@${target.name} ${args.message}`), scopeFields(key)); return `Queued card ${key} for ${target.name}.` }
+          return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
+        }
         const send = () => callInGroup(exec, room, sender, target, text.trim())
         return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
       }
@@ -328,7 +371,7 @@ export function install(rt) {
         // The part of the sender's own chat this request comes from: its answer goes back
         // to that part's thread.
         const fromPart = callerPart(exec).fromPart
-        const chat = rt.chatOf(target.id)
+        const chat = coordinator ? await rt.memberSession(projectRoom, target.id) : rt.chatOf(target.id)
         const agent = await rt.resolveAgent(chat)
         const status = rt.statusOf(target.id)
         // A request it has not read yet, sent for the same work, takes this one in, so
@@ -336,7 +379,7 @@ export function install(rt) {
         // sender's own chat are two conversations, though: one answer could come back to
         // only one of them, so their requests are sent and answered apart.
         const earlier = unreadRequest(agent, sender.id, toUser)
-        const joinable = earlier !== undefined
+        const joinable = !cardDispatch && earlier !== undefined && !projectRoom && scopeOf(earlier.message.source) === key
           && (toUser || ((earlier.message.source.senderPart ?? undefined) === fromPart && rt.sameWork(earlier.message.source.exchangeId, work)))
         const before = joinable ? bodyOf(earlier.message) : undefined
         let long = await rt.attachLong(before ? `${before.text}\n\n${text}` : text, `Message from ${sender.name}.txt`)
@@ -346,12 +389,14 @@ export function install(rt) {
         const joins = before !== undefined && agent.inbox?.remove?.(earlier.message.id) === true
         if (before !== undefined && !joins) long = await rt.attachLong(text, `Message from ${sender.name}.txt`) ?? long
         const working = rt.live.get(chat)?.turn !== undefined
-        const steer = (args.when !== 'queue' && !toUser) || (joins && earlier.steered)
-        const exchangeId = joins ? earlier.message.source.exchangeId : randomUUID()
+        const activeKey = scopeOf(rt.live.get(chat)?.info)
+        const steer = activeKey === key && ((args.when !== 'queue' && !toUser) || (joins && earlier.steered))
+        const exchangeId = handoff?.round.dispatchId ?? (joins ? earlier.message.source.exchangeId : randomUUID())
         if (joins) rt.forgetDelivery?.(exchangeId)
-        else if (!toUser) rt.openWork(exchangeId, { from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
+        else if (!toUser) rt.openWork(exchangeId, { ...scopeFields(key), from: sender.id, to: target.id, parent: work, ...(room ? { fromRoom: room.id } : {}), ...(fromPart ? { fromPart } : {}) })
         try {
-          await rt.deliver({ fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+          if (handoff) developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom.projectCards[key], target.id, args.card_round)
+          await rt.deliver({ ...scopeFields(key), ...(projectRoom ? { roomId: projectRoom.id } : {}), ...(coordinator ? { sessionId: chat } : {}), ...callerRoom(exec), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, images: handoff?.images ?? (joins ? before.images : []), files: [...long.files, ...(handoff?.files ?? []), ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
         } catch (error) {
           // The delivery stays noted for the next start while its Bot exists
           // (resume.js), and the resent request still answers up the tree, so the
@@ -359,7 +404,16 @@ export function install(rt) {
           if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)
           throw error
         }
-        const sent = toUser
+        if (handoff) {
+          // A node on the same card may have advanced while delivery was in flight.
+          const delivered = rt.roomOf(projectRoom.id)?.projectCards?.[key]?.rounds[args.card_round - 1]
+          if (delivered?.dispatchId !== exchangeId) throw new Error('The dispatched round is no longer available.')
+          delivered.sentAt ??= Date.now()
+          await rt.save({ required: true })
+        }
+        const sent = coordinator && toUser
+          ? `Delivered to ${target.name} in "${projectRoom.name}". It can report the result to this group.`
+          : toUser
           ? `Delivered to ${target.name}. It will answer the user in its own chat; nothing comes back to you, so point the user to ${target.name}'s chat instead of relaying.`
           : working && steer
             ? `Delivered to ${target.name} while it is working: it reads your message at its next step and answers once that work is done. Its reply will arrive later as a new message; do not wait for it.`
@@ -380,6 +434,20 @@ export function install(rt) {
         if (elsewhere.length === 0) return out
         const stop = rt.isMain(sender.id) ? ' If it must not go on there, use stop_bot.' : ''
         return `${out} Your message does not reach its work in ${elsewhere.map(whereOf).join(' and ')}.${stop}`
+      }
+      if (handoff) {
+        // A sender's request name and the card's assignment round each identify
+        // one delivery, including when two callers retry under different names.
+        const dispatch = rt.requestIdentity({ caller: sender.id, context: 'project-dispatch:' + key,
+          name: String(args.card_round), payload: { owner: target.id, message } })
+        return receiptWithHandoff(await rt.admitRequest(request, async () => {
+          const outcome = await rt.admitRequest(dispatch, async () => {
+            const receipt = await send()
+            if (request.unsent) dispatch.unsent = true
+            return receipt
+          })
+          return answer(outcome)
+        }))
       }
       return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
     },
@@ -612,6 +680,7 @@ export function install(rt) {
       group: GROUP_REF,
       name: { type: 'string', description: 'New group name; an empty string names it after its members again' },
       notice: { type: 'string', description: 'Replacement notice, the shared instructions every member reads; an empty string clears it; at most 2000 characters' },
+      taskManagementEnabled: { type: 'boolean', description: 'Enable or disable group task management.' },
       add_members: { type: 'array', items: { type: 'string' }, description: 'Exact names of Bots to add' },
       remove_members: { type: 'array', items: { type: 'string' }, description: 'Exact names of Bots to remove' },
       admin: { type: 'string', description: 'Member to make the admin; "none" leaves the group without one (Main Bots only)' },
@@ -655,6 +724,7 @@ export function install(rt) {
         const { room: next, changes } = await rt.updateRoom(room.id, {
           name: args.name,
           notice: args.notice,
+          taskManagementEnabled: args.taskManagementEnabled,
           mode: args.mode,
           admin,
           add: add.bots.map(bot => bot.id),
@@ -777,6 +847,7 @@ export function install(rt) {
     description: 'Post a message into a group chat as yourself. A Main Bot may post into any group, any other Bot into a group it is in. A Main Bot\'s or the group admin\'s post starts a round: members reply in the group, where the user reads them. Another member\'s post calls only the members it names with "@Name"; without one it is only written into the group.',
     parameters: {
       group: GROUP_REF,
+      taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
       message: { type: 'string', required: true, description: 'What to say; write "@Name" to choose who answers, and a name without "@" to only mention a member' },
       report_back: { type: 'boolean', description: 'Also send the members\' replies back to you as a new message when the round ends' },
     },
@@ -793,7 +864,10 @@ export function install(rt) {
       const info = rt.live.get(exec.agent?.id)?.info
       if (info?.role === 'room' && info.roomId === room.id) return `You are speaking in "${room.name}" right now. Write your message as your reply instead.`
       const folder = rt.sessionFolder?.(exec.agent?.session ?? exec.agent)
-      const text = absoluteLinks(String(args.message ?? '').trim(), folder)
+      const key = outgoingScope(info, args.taskId, args.message, Boolean(args.taskId || scopeOf(info)), rt.isAdminOf(room, self))
+      const origin = key && (info?.roomId ?? projectRoomForCard(rt, key)?.id)
+      if (origin && origin !== room.id) refuse('Report the task in the group that owns it.')
+      const text = tagged(key, absoluteLinks(String(args.message ?? '').trim(), folder))
       if (text === '') return 'Write a message to post.'
       // Counted on the whole message. A post past MESSAGE_INLINE_MAX keeps only its
       // first LONG_HEAD characters, and the round reads this list instead of that text.
@@ -819,7 +893,7 @@ export function install(rt) {
       try {
         // A post that wants the replies names the conversation it was written
         // from, so the report comes back there instead of the own chat.
-        await rt.postToRoom(room, sender, long.text, { mentions, ...(claims ? { claims } : {}), ...(reportBack ? { reportBack: true, ...callerRoom(exec) } : {}), ...(member ? { member: true } : {}), ...(sub ? { sub } : {}), ...(long.length ? { length: long.length } : {}) }, long.files)
+        await rt.postToRoom(room, sender, long.text, { ...scopeFields(key), mentions, ...(claims ? { claims } : {}), ...(reportBack ? { reportBack: true, ...callerRoom(exec) } : {}), ...(member ? { member: true } : {}), ...(sub ? { sub } : {}), ...(long.length ? { length: long.length } : {}) }, long.files)
       } catch (failure) {
         if (sub !== undefined) rt.dropWork(sub)
         return `Could not post in "${room.name}": ${failure.message}`
@@ -875,7 +949,7 @@ export function install(rt) {
         .filter(option => option.label !== '')
         .slice(0, 6)
       if (options.length === 0) return 'Give at least one option.'
-      state.questions[id] = {
+      const question = {
         id: randomUUID(),
         ...(exec.callId ? { callId: exec.callId } : {}),
         question: String(args.question ?? '').trim(),
@@ -885,8 +959,15 @@ export function install(rt) {
         ...(args.allowCustom === true ? { allowCustom: true } : {}),
         askedAt: Date.now(),
       }
+      const source = rt.live?.get(id)?.info
+      const target = projectQuestion(rt, id, source)
+      if (target && question.question) {
+        question.projectSource = source
+        if (target.card) target.card.clarification = question.question
+        else clarifyIntake(rt.roomOf(source.roomId), target.receipt, question.question)
+      }
+      state.questions[id] = question
       await rt.save()
-      rt.cardShown?.(id, 'question', state.questions[id].question)
       exec.concludeTurn?.()
       return 'The card is on screen; the user\'s answer arrives as their next message.'
     },
@@ -920,7 +1001,6 @@ export function install(rt) {
         askedAt: Date.now(),
       }
       await rt.save()
-      rt.cardShown?.(id, 'view', title)
       exec.concludeTurn?.()
       return 'The view is on screen; the user\'s answer arrives as their next message.'
     },
@@ -945,6 +1025,7 @@ export function install(rt) {
     const held = scoped.get(id)
     if (held === undefined) return
     scoped.delete(id)
+    clearTimeout(held.retryTimer)
     for (const dispose of held.disposers) {
       try {
         dispose()
@@ -966,8 +1047,18 @@ export function install(rt) {
   }
   ctx.effect(() => () => { for (const id of scoped.keys()) unscope(id) }, 'ds-bot: scoped team tools')
 
-  // A wanted Session whose Agent cannot take scoped tools yet is warned about
-  // once; held.tools stays unset, so the next step's check tries again.
+  const retryBotTools = (agent, held) => {
+    if (held.retryTimer !== undefined || (held.retries ?? 0) >= 5) return
+    held.retryTimer = setTimeout(() => {
+      held.retryTimer = undefined
+      held.retries = (held.retries ?? 0) + 1
+      if (scoped.get(agent.session?.id) !== held) return
+      shareBotTools(agent)
+    }, 1000)
+    held.retryTimer.unref?.()
+  }
+
+  // Warn once, but also retry independently of the next step.
   const registerless = new WeakSet()
   const shareBotTools = (agent) => {
     if (agent === undefined) return
@@ -989,6 +1080,11 @@ export function install(rt) {
       held = undefined
     }
     if (!wanted) return
+    if (held === undefined) {
+      held = { agent, relay: relayOnly, tools: false, restricted: false, filtered: false, disposers: [], unlisted: new Set() }
+      scoped.set(id, held)
+      agent.ctx?.effect?.(() => () => { if (scoped.get(id) === held) unscope(id) })
+    }
     // A live Agent can be scoped while the modules that add tools are still installing:
     // loading the plugin again walks the live Agents from the load the memory module
     // starts, and the tools added after it (memory, secrets, connectors) would never
@@ -1017,6 +1113,12 @@ export function install(rt) {
           rt.warn('ds-bot: team tool %s not added to %s: %s', def.name, id, error)
         }
       }
+      if ([...rt.teamTools, ...(localBot ? (rt.localAgentTools ?? []) : [])].some(def => (!relayOnly || def.name === 'group_relay') && !held.added?.has(def.name))) {
+        retryBotTools(agent, held)
+      } else {
+        clearTimeout(held.retryTimer)
+        held.retryTimer = undefined
+      }
       return
     }
     if (typeof agent.ctx?.tools?.register !== 'function') {
@@ -1024,6 +1126,7 @@ export function install(rt) {
         registerless.add(agent)
         rt.warn('ds-bot: %s needs the team tools but its Agent cannot register them yet', id)
       }
+      retryBotTools(agent, held)
       return
     }
     const disposers = []
@@ -1035,7 +1138,7 @@ export function install(rt) {
         const dispose = agent.ctx.tools.register(def)
         if (typeof dispose === 'function') {
           disposers.push(dispose)
-          ;(held ??= { relay: relayOnly, tools: false, restricted: false, filtered: false, disposers: [], unlisted: new Set() }).toolLifts ??= new Map()
+          held.toolLifts ??= new Map()
           held.toolLifts.set(def.name, dispose)
         }
         registered.push(def.name)
@@ -1045,7 +1148,6 @@ export function install(rt) {
         failed.push(`${def.name}: ${error.message ?? error}`)
       }
     }
-    held ??= { relay: relayOnly, tools: false, restricted: false, filtered: false, disposers: [], unlisted: new Set() }
     held.agent = agent
     held.relay = relayOnly
     held.tools = true
@@ -1057,6 +1159,11 @@ export function install(rt) {
     // assemble adds the pending names to the step's list once, then clears them.
     for (const name of registered) held.unlisted.add(name)
     if (failed.length > 0) rt.warn('ds-bot: team tools not served to %s: %s', id, failed.join('; '))
+    if (failed.length > 0) retryBotTools(agent, held)
+    else {
+      clearTimeout(held.retryTimer)
+      held.retryTimer = undefined
+    }
   }
 
   // The standard preset registers `subagent` (model selection) in each Agent's own
@@ -1075,7 +1182,7 @@ export function install(rt) {
       return {
         ...assembled,
         ...Array.isArray(assembled.tools) ? { tools: assembled.tools.filter(tool => !HIDDEN_TOOLS.includes(tool.name)) } : {},
-        sections: assembled.sections.filter(section => !HIDDEN_SECTIONS.has(section.name)),
+        ...Array.isArray(assembled.sections) ? { sections: assembled.sections.filter(section => !HIDDEN_SECTIONS.has(section.name)) } : {},
       }
     })
     held.filtered = true
@@ -1221,6 +1328,10 @@ export function install(rt) {
   ctx.tools.guard((exec) => {
     if (!rt.isBotSession(exec.agent?.id)) return undefined
     if (exec.name === BLOCKING_QUESTION_TOOL) return `Bots cannot use ${BLOCKING_QUESTION_TOOL}. Ask with ask_user in your own chat, or ask in your reply.`
+    if (exec.name === 'schedule_edit' && exec.arguments?.action === 'update') {
+      const unsupported = Object.keys(exec.arguments).filter(field => !SCHEDULE_UPDATE_FIELDS.has(field))
+      if (unsupported.length > 0) return `These schedule_edit fields are not editable: ${unsupported.join(', ')}. To change frequency, send rrule with a DTSTART anchor in the intended time zone followed by an RRULE line (for example, "DTSTART;TZID=Asia/Taipei:20261118T090000\nRRULE:FREQ=HOURLY;INTERVAL=3"); this converts the task to kind rrule.`
+    }
     const target = exec.arguments?.target
     if (SCHEDULE_TARGET_TOOLS.includes(exec.name) && target !== undefined && target !== 'this_session') return SCHEDULE_TARGET_REFUSAL
     return DELEGATION_TOOLS.includes(exec.name) ? DELEGATION_REFUSAL : undefined

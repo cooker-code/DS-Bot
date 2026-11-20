@@ -1,7 +1,7 @@
 import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
-import { NotificationWatcher } from './notifications.js'
 import { createPortal } from 'react-dom'
 import { CommandPalette } from './palette.js'
+import { DiscussionArchive } from './discussion-archive.js'
 import { GroupSearch } from './group-search.js'
 import { NewChat } from './new-chat.js'
 import { ExchangeDialog } from './exchange.js'
@@ -18,7 +18,7 @@ import { OpeningCover, openingModel } from './opening.js'
 const DIALOG_EXIT_MS = 160
 const MENU_EXIT_MS = 120
 
-export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useBrowserHolds, useUpdate, useFrame, useSidebarPref, useSettingsShellHeld, actions }) {
+export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useUpdate, useFrame, useSidebarPref, useSettingsShellHeld, actions }) {
   const roster = useRoster(value => value)
   const ui = useUi(value => value)
   useRegistry(value => value)
@@ -67,11 +67,12 @@ export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useA
   // Bot fills the conversation area instead of the chat that was there before.
   const opening = openingModel({ pending: ui.pendingOpen ?? null, current, roster })
   return h(Fragment, null,
-    h(NotificationWatcher, { key: 'ds-bot:notifications', useSessions, useSessionStatus, useRoster, useWork, actions }),
     opening ? createPortal(h(OpeningCover, { model: opening, column: layout.column }), document.body) : null,
-    pane ? createPortal(h(BotPanel, { pane, leaving: shown === null, room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }), document.body) : null,
+    pane ? createPortal(h(BotPanel, { pane, leaving: shown === null, room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages }), document.body) : null,
     ui.newChat ? createPortal(h(NewChat, { key: `${ui.newChat}:${ui.newChatSection ?? ''}`, mode: ui.newChat, sectionId: ui.newChatSection ?? null, paneLeft: layout.column, roster, actions }), document.body) : null,
     ui.palette ? createPortal(h(CommandPalette, { key: ui.palette.token, start: ui.palette.query, token: ui.palette.token, roster, actions, useSessions }), document.body) : null,
+    ui.groupArchive && roster.roomsById[ui.groupArchive.roomId] ? createPortal(h(DiscussionArchive, { key: ui.groupArchive.token,
+      room: roster.roomsById[ui.groupArchive.roomId], request: ui.groupArchive, actions, roster, useUi }), document.body) : null,
     ui.groupSearch && roster.roomsById[ui.groupSearch.roomId]
       ? createPortal(h(GroupSearch, { key: ui.groupSearch.token, room: roster.roomsById[ui.groupSearch.roomId], roster, token: ui.groupSearch.token, actions }), document.body)
       : null,

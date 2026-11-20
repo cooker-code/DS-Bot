@@ -1,4 +1,5 @@
 // Delivery: how one Bot, the user, or DS Bot itself puts a message into a Bot Session.
+import { scopeFields, scopeOf, tagged } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
@@ -81,7 +82,8 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+    const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -92,6 +94,8 @@ export function install(rt) {
     const source = {
       kind: SOURCE_KIND,
       form: 'relay',
+      ...scopeFields(key),
+      ...(intakeSeq !== undefined ? { intakeSeq } : {}),
       role,
       exchangeId,
       senderName: fromName,
@@ -108,28 +112,39 @@ export function install(rt) {
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
     }
-    const targetSessionId = sessionId ?? rt.chatOf(toId)
+    const member = rt.groupOwners.get(sessionId) ?? rt.pastOwners.get(sessionId)
+    const destination = () => {
+      if (!member?.roomId || member.botId !== toId) return sessionId ?? rt.chatOf(toId)
+      const current = rt.roomOf(member.roomId)?.sessions?.[toId]
+      if (!current) throw new Error('The recipient no longer has a session in this group.')
+      return current
+    }
     // On disk before it goes out: a message the book could not keep is not sent, so none is
     // delivered with no record of it. A resend keeps the record it has; only a merged request
     // replaces it with its added text.
     const book = fromId !== undefined && from !== undefined && recordExchange && EXCHANGE_ROLES.has(role) && !deferred && !resumed && !retried ? pairBook(fromId, toId) : undefined
     if (book !== undefined && (merged || !rt.ledger.records(book).some(record => record.event === undefined && record.id === exchangeId))) {
-      rt.ledger.append(book, { id: exchangeId, from: fromId, to: toId, role, text, time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
+      rt.ledger.append(book, { id: exchangeId, ...scopeFields(key), from: fromId, to: toId, role, text, time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
       await rt.ledger.written(book)
     }
-    await rt.ensureCapabilities(targetSessionId)
-    const agent = await resolveAgent(targetSessionId)
+    let agent, targetSessionId
+    do {
+      targetSessionId = destination()
+      await rt.ensureCapabilities(targetSessionId)
+      agent = await resolveAgent(targetSessionId)
+    } while (targetSessionId !== destination())
     // A steered message cuts into a running turn at its next step; a follow-up
     // queues for the next turn (see turns.js for how each is routed).
     const message = createUserMessage({
       content: [
-        { type: 'text', text: `${headerFor(role, fromName, room?.name, audience, note, deferred, { resumed, retried, resent, abandoned, asker })}\n${text}` },
+        { type: 'text', text: `${tagged(key, headerFor(role, fromName, room?.name, audience, note, deferred, { resumed, retried, resent, abandoned, asker }))}\n${text}` },
         ...images.map(attachment => ({ type: 'image', attachment })),
         ...files.map(attachment => ({ type: 'file', attachment })),
       ],
       source,
     })
-    if (steer) agent.steer(message)
+    const live = rt.live?.get(targetSessionId)
+    if (steer && scopeOf(live?.info) === key) agent.steer(message)
     else agent.followup(message)
     await ctx.sessions.flush(agent.session)
     if (book !== undefined) {

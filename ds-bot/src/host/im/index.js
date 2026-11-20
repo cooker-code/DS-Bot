@@ -52,8 +52,8 @@ export function install(rt) {
         greeting: `Hello, I am ${values.name}.`,
         question: `${values.bot} asks: `,
         approval: `${values.bot} asks for approval: `,
-        secretAsk: `${values.bot} needs the key ${values.name} — fill it on the computer or the phone app.`,
-        viewShow: `${values.bot} shared a card — answer it on the computer or the phone app.`,
+        secretAsk: `${values.bot} needs the key ${values.name} — fill it on the computer.`,
+        viewShow: `${values.bot} shared a card — answer it on the computer.`,
         answered: 'answered',
         numbers: 'reply with the number',
         numbersMulti: 'reply with the numbers, separated by spaces',
@@ -72,8 +72,8 @@ export function install(rt) {
         greeting: `你好，我是 ${values.name}。`,
         question: `${values.bot} 问你：`,
         approval: `${values.bot} 请你审批：`,
-        secretAsk: `${values.bot} 要密钥 ${values.name}，请在电脑或手机 App 上填。`,
-        viewShow: `${values.bot} 发了一个卡片，请在电脑或手机 App 上回复。`,
+        secretAsk: `${values.bot} 要密钥 ${values.name}，请在电脑上填。`,
+        viewShow: `${values.bot} 发了一个卡片，请在电脑上回复。`,
         answered: '已答',
         numbers: '回复编号',
         numbersMulti: '回复编号，多选用空格隔开',
@@ -92,8 +92,8 @@ export function install(rt) {
         greeting: `你好，我是 ${values.name}。`,
         question: `${values.bot} 問你：`,
         approval: `${values.bot} 請你審批：`,
-        secretAsk: `${values.bot} 要金鑰 ${values.name}，請在電腦或手機 App 上填。`,
-        viewShow: `${values.bot} 發了一個卡片，請在電腦或手機 App 上回覆。`,
+        secretAsk: `${values.bot} 要金鑰 ${values.name}，請在電腦上填。`,
+        viewShow: `${values.bot} 發了一個卡片，請在電腦上回覆。`,
         answered: '已答',
         numbers: '回覆編號',
         numbersMulti: '回覆編號，多選用空格隔開',
@@ -112,8 +112,8 @@ export function install(rt) {
         greeting: `こんにちは、${values.name} です。`,
         question: `${values.bot} からの質問：`,
         approval: `${values.bot} からの承認リクエスト：`,
-        secretAsk: `${values.bot} がシークレット ${values.name} を必要としています。PC またはスマホアプリで入力してください。`,
-        viewShow: `${values.bot} がカードを共有しました。PC またはスマホアプリで回答してください。`,
+        secretAsk: `${values.bot} がシークレット ${values.name} を必要としています。PCで入力してください。`,
+        viewShow: `${values.bot} がカードを共有しました。PCで回答してください。`,
         answered: '回答済み',
         numbers: '番号を返信',
         numbersMulti: '番号をスペース区切りで返信',
@@ -132,8 +132,8 @@ export function install(rt) {
         greeting: `안녕하세요, ${values.name}입니다.`,
         question: `${values.bot}의 질문: `,
         approval: `${values.bot}의 승인 요청: `,
-        secretAsk: `${values.bot}에서 시크릿 ${values.name}이(가) 필요합니다. 컴퓨터나 휴대폰 앱에서 입력해 주세요.`,
-        viewShow: `${values.bot}에서 카드를 보냈습니다. 컴퓨터나 휴대폰 앱에서 응답해 주세요.`,
+        secretAsk: `${values.bot}에서 시크릿 ${values.name}이(가) 필요합니다. 컴퓨터에서 입력해 주세요.`,
+        viewShow: `${values.bot}에서 카드를 보냈습니다. 컴퓨터에서 응답해 주세요.`,
         answered: '응답함',
         numbers: '번호로 답장',
         numbersMulti: '공백으로 구분하여 번호로 답장',
@@ -152,8 +152,8 @@ export function install(rt) {
         greeting: `Hola, soy ${values.name}.`,
         question: `${values.bot} pregunta: `,
         approval: `${values.bot} pide aprobación: `,
-        secretAsk: `${values.bot} necesita la clave ${values.name} — rellénala en el ordenador o en la app móvil.`,
-        viewShow: `${values.bot} compartió una tarjeta — respóndela en el ordenador o en la app móvil.`,
+        secretAsk: `${values.bot} necesita la clave ${values.name} — rellénala en el ordenador.`,
+        viewShow: `${values.bot} compartió una tarjeta — respóndela en el ordenador.`,
         answered: 'respondido',
         numbers: 'responde con el número',
         numbersMulti: 'responde con los números separados por espacios',
@@ -172,8 +172,8 @@ export function install(rt) {
         greeting: `Bonjour, je suis ${values.name}.`,
         question: `${values.bot} demande : `,
         approval: `${values.bot} demande une approbation : `,
-        secretAsk: `${values.bot} a besoin de la clé ${values.name} — renseignez-la sur l’ordinateur ou l’application mobile.`,
-        viewShow: `${values.bot} a partagé une carte — répondez-y sur l’ordinateur ou l’application mobile.`,
+        secretAsk: `${values.bot} a besoin de la clé ${values.name} — renseignez-la sur l’ordinateur.`,
+        viewShow: `${values.bot} a partagé une carte — répondez-y sur l’ordinateur.`,
         answered: 'répondu',
         numbers: 'répondez avec le numéro',
         numbersMulti: 'répondez avec les numéros séparés par des espaces',
@@ -192,8 +192,8 @@ export function install(rt) {
         greeting: `Hallo, ich bin ${values.name}.`,
         question: `${values.bot} fragt: `,
         approval: `${values.bot} bittet um Freigabe: `,
-        secretAsk: `${values.bot} benötigt den Schlüssel ${values.name} — gib ihn am Computer oder in der Smartphone-App ein.`,
-        viewShow: `${values.bot} hat eine Karte geteilt — beantworte sie am Computer oder in der Smartphone-App.`,
+        secretAsk: `${values.bot} benötigt den Schlüssel ${values.name} — gib ihn am Computer ein.`,
+        viewShow: `${values.bot} hat eine Karte geteilt — beantworte sie am Computer.`,
         answered: 'beantwortet',
         numbers: 'mit der Nummer antworten',
         numbersMulti: 'mit durch Leerzeichen getrennten Nummern antworten',
@@ -930,7 +930,7 @@ export function install(rt) {
         const buttons = imPlatform(conn.platform)?.buttons === true ? cardButtons.approval(entry.id) : undefined
         await sendCard(conn, cardKey, targets, cardText.approval(bot?.name ?? '?', entry), buttons)
       }
-      // Secret requests: text only — the key is typed on the computer or phone.
+      // Secret requests: text only — the key is typed on the computer.
       for (const [botId, list] of Object.entries(state.secretRequests ?? {})) {
         const bot = rt.botOf(botId)
         if (bot === undefined) continue
@@ -1461,7 +1461,7 @@ export function install(rt) {
         if (asked === undefined) dropOrigin(session.id)
         else claimOrigin(session.id, asked.connId, asked.chatKey, asked.senderId, asked.binding)
       } else if (source?.kind === REPLY_KIND) {
-        // Web and phone answers carry no registered IM request.
+        // Web answers carry no registered IM request.
         dropOrigin(session.id)
       } else if (source?.kind === SOURCE_KIND && source.role === 'post') {
         // A member's late result relayed into the group's own Session. The group's work

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam, seedTeam } from './team-state.js'
 import { apply } from '../index.js'
 import { foldCalls } from '../src/host/usage.js'
 import { fakeContext } from './fake-ctx.js'
@@ -80,6 +81,8 @@ function start(home, { listedExtra, logsExtra, subagentsExtra, background = fals
   const pages = []
   const warnings = []
   const ctx = fakeContext()
+  const workspace = { path: home, sessionIds: ['s-g1'] }
+  ctx.workspaceRegistry = { get: () => workspace, list: () => [workspace] }
   ctx.logger.warn = (template, ...args) => warnings.push([template, ...args])
   ctx.sessionController = {
     list: async () => ({ items: [
@@ -195,9 +198,9 @@ test('a call made in a group chat stays group use after the room is gone', async
   assert.equal(totals(before)['Chief/group'], 330)
   await first.ctx.dispose()
 
-  const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = savedTeam(home)
   state.rooms = {}
-  writeFileSync(join(home, 'state.json'), JSON.stringify(state))
+  seedTeam(home, state)
 
   const second = start(home)
   const after = (await second.call('usage', { timeZone: 'Asia/Shanghai' })).value
@@ -221,9 +224,9 @@ test('a plain chat journals its owner before the first scan, so a deleted Bot ke
   }
   await first.ctx.dispose()
 
-  const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = savedTeam(home)
   delete state.bots.b2
-  writeFileSync(join(home, 'state.json'), JSON.stringify(state))
+  seedTeam(home, state)
 
   // Writer's old Session is still listed (archived, not deleted), so the scan
   // reads its log and the journaled owner attributes it to the deleted Bot.

@@ -13,11 +13,11 @@ const SEARCH_TOOLS = ['glob', 'grep']
 const SHELL_TOOLS = ['bash', 'pwsh', 'terminal_open', 'terminal_send']
 const SESSION_TOOLS = ['session_search', 'session_event_search', 'session_trace', 'session_event_trace', 'session_event_read']
 
-// Windows and macOS file systems ignore case.
-const fold = text => (process.platform === 'linux' ? text : text.toLowerCase())
+// The default macOS filesystem ignores case.
+const fold = text => text.toLowerCase()
 const overlap = (a, b) => within(a, b) || within(b, a)
 const strings = value => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(strings) : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [])
-// The same path as a shell writes it: forward slashes, and on Windows both drive forms.
+// Recognize alternate path spellings in shell arguments.
 const asShell = (path) => {
   const slashed = path.replace(/\\/g, '/')
   const drive = /^([a-z]):\//i.exec(slashed)
@@ -34,7 +34,7 @@ export function install(rt) {
   // Every Session a private Bot speaks from: its own chat, the parts it opened while it
   // was busy (a background part reads and writes in that Bot's name), its earlier parts
   // and its groups. A deleted Bot's archive lists them itself.
-  const sessionsOf = bot => [...new Set([bot.id, ...(bot.sessionIds ?? [rt.chatOf(bot.id), ...(bot.segments ?? []).map(segment => segment.sessionId), ...openSessions(bot), ...rt.groupSessionsOf(bot.id)])])]
+  const sessionsOf = bot => [...new Set([bot.id, ...(bot.sessionIds ?? [rt.chatOf(bot.id), ...(bot.segments ?? []).map(segment => segment.sessionId), ...openSessions(bot), ...Object.keys(bot.removedSessions ?? {}), ...rt.groupSessionsOf(bot.id)])])]
   const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
 
   // A path as it is and as the file system resolves it, folded for comparing. realBeyond
@@ -71,6 +71,11 @@ export function install(rt) {
   ].filter(Boolean).map(spellings))).flat()
   const sharedFiles = async () => (await Promise.all([
     rt.statePath,
+    join(rt.home, 'state'),
+    join(rt.home, 'skill-folders'),
+    join(rt.home, 'skill-text'),
+    join(rt.home, 'team.sqlite'),
+    join(rt.home, 'state.json'),
     join(rt.home, 'chat-index.sqlite'),
     join(rt.home, 'chat-index.sqlite-wal'),
     join(rt.home, 'chat-index.sqlite-shm'),

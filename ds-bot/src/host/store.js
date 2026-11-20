@@ -1,11 +1,12 @@
-// Store: the saved team (state.json), its migrations, the lock that keeps a second dsh
+// Store: the saved team (state/catalog.sqlite, bots.sqlite and per-room files), its migrations, the lock that keeps a second dsh
 // host on the same data from writing it, and the indexes that map a Session to the Bot
 // or group chat it belongs to.
-import { copyFileSync, mkdirSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LEGACY_THEMES, MAX_EXCHANGES, ROOM_MODES, SECTION_COLORS, SECTION_NAME_MAX, TEXT_KEPT } from './constants.js'
-import { replaceFile } from './files.js'
+import { splitTeamStorage } from './team-storage/split.js'
+import { teamSnapshot } from './team-storage/member-settings.js'
 import { homeLock } from './home-lock.js'
 import { currentColor, headOf, normalize, unquote } from './text.js'
 import { AMBIGUOUS_OLD_ROUTES, legacyRoute } from './local-agents/engines.js'
@@ -17,7 +18,10 @@ import { AMBIGUOUS_OLD_ROUTES, legacyRoute } from './local-agents/engines.js'
 export const own = (table, key) => (table != null && Object.hasOwn(table, key) ? table[key] : undefined)
 
 export function install(rt) {
-  const { ctx, home, statePath } = rt
+  const { ctx, home } = rt
+  const legacyPath = join(home, 'state.json')
+  const storage = rt.teamStorage ?? splitTeamStorage(home)
+  const statePath = storage.path
 
   /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, privateArchives:any[], rooms:Record<string,any>, agents:Record<string,any>, sections:any[], capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, revision:number}} */
   const state = { version: 1, mainBotIds: [], bots: {}, privateArchives: [], rooms: {}, agents: {}, sections: [], capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, requests: {}, questions: {}, views: {}, closedCards: {}, prefs: {}, switching: {}, revision: 0 }
@@ -33,21 +37,15 @@ export function install(rt) {
   let holder
   let lockBroken = false
   let stuck
+  let sourcePath = statePath
   let warnedReadOnly = false
   let stopped = false
-  // mtime and size of the state.json this host last read or wrote.
+  // Identity and modification stamp of the durable state this host last observed.
   let seen = ''
   // Bumped each time the in-memory state is replaced from the file, so a queued
   // save cannot write a snapshot taken of the state it replaced.
   let lockEpoch = 0
-  const stamp = () => {
-    try {
-      const { mtimeMs, size } = statSync(statePath)
-      return `${mtimeMs}:${size}`
-    } catch {
-      return ''
-    }
-  }
+  const stamp = storage.stamp
   const lock = homeLock(join(home, 'state.lock'))
   const claimLock = () => {
     if (lockBroken) return
@@ -63,7 +61,7 @@ export function install(rt) {
     }
   }
   const readOnly = () => {
-    if (stuck !== undefined) return `The Bot team file ${statePath} could not be read (${stuck}). DS Bot does not change it; fix or move the file and reload.`
+    if (stuck !== undefined) return `The Bot team file ${sourcePath} could not be read (${stuck}). DS Bot does not change it; fix or move the file and reload.`
     if (holder === undefined) return undefined
     const where = holder.pid ? `pid ${holder.pid}${holder.host ? ` on ${holder.host}` : ''}` : 'unknown process'
     return `The Bot team in ${home} is open in another dsh (Web or Desktop, ${where}). This window shows the team but cannot change it; close the other one and reload.`
@@ -72,41 +70,49 @@ export function install(rt) {
   // Synchronous on purpose: the saved team and the session indexes built from it
   // exist before the first tool or shell env call can resolve a Session.
   const readFileState = () => {
-    let contents
-    try {
-      contents = readFileSync(statePath, 'utf8')
-    } catch (error) {
-      seen = stamp()
-      if (error?.code === 'ENOENT') {
-        stuck = undefined
-        return undefined
-      }
-      stuck = error?.code ?? error?.message ?? String(error)
-      warn('ds-bot: unreadable state %s: %s', statePath, error)
-      return undefined
-    }
     seen = stamp()
-    let parsed
+    sourcePath = statePath
     try {
-      parsed = JSON.parse(contents)
-    } catch (error) {
-      const backup = `${statePath}.broken-${Date.now()}`
-      try {
-        copyFileSync(statePath, backup)
-        stuck = undefined
-        warn('ds-bot: unreadable state %s: %s; backed up as %s', statePath, error, backup)
-      } catch (copyError) {
-        stuck = copyError?.code ?? copyError?.message ?? error?.message ?? String(error)
-        warn('ds-bot: unreadable state %s: %s; backup failed: %s', statePath, error, copyError)
+      let parsed
+      if (holder === undefined) storage.recover?.()
+      if (storage.databaseExists()) {
+        parsed = storage.read()
+      } else {
+        parsed = storage.readLegacy?.()
+        if (parsed === undefined) {
+          sourcePath = legacyPath
+          let contents
+          try { contents = readFileSync(legacyPath, 'utf8') }
+          catch (error) {
+            if (error?.code !== 'ENOENT') throw error
+            stuck = undefined
+            return undefined
+          }
+          try { parsed = JSON.parse(contents) }
+          catch (error) {
+            if (holder !== undefined) throw error
+            const backup = legacyPath + '.broken-' + Date.now()
+            copyFileSync(legacyPath, backup)
+            warn('ds-bot: unreadable legacy state backed up as %s', backup)
+            stuck = undefined
+            return undefined
+          }
+        }
+        if (parsed?.version === 1 && holder === undefined) {
+          storage.import(parsed, () => {
+            if ((!lockBroken && !lock.owns()) || stamp() !== seen) throw new Error('Team changed during migration')
+          })
+          seen = stamp()
+        }
       }
-      return undefined
-    }
-    if (parsed?.version === 1) {
+      if (parsed?.version !== 1) throw new Error('saved by a newer DS Bot; update DS Bot')
       stuck = undefined
       return parsed
+    } catch (error) {
+      stuck = error?.code ?? error?.message ?? String(error)
+      warn('ds-bot: could not load the Bot team: %s', stuck)
+      return undefined
     }
-    stuck = 'saved by a newer DS Bot; update DS Bot'
-    return undefined
   }
 
   // Fill `state` from the saved file and bring an older team up to date. Returns the
@@ -115,7 +121,7 @@ export function install(rt) {
     lockEpoch += 1
     const hadCapabilities = parsed !== null && parsed !== undefined && Object.hasOwn(parsed, 'capabilities')
     for (const key of Object.keys(state)) delete state[key]
-    Object.assign(state, JSON.parse(EMPTY), parsed ?? {})
+    Object.defineProperties(state, Object.getOwnPropertyDescriptors({ ...JSON.parse(EMPTY), ...parsed }))
     state.prefs ??= {}
     // Teams saved before the DSH Agent existed carry no `agents`; corrupt values reset.
     if (state.agents === null || typeof state.agents !== 'object' || Array.isArray(state.agents)) state.agents = {}
@@ -165,6 +171,22 @@ export function install(rt) {
       }
       if (sessionIdOf(room.id) === undefined) room.id = id
       if (!Array.isArray(room.members)) room.members = []
+      if (room.taskManagementEnabled === undefined) {
+        room.taskManagementEnabled = true
+        if (!Object.hasOwn(room, 'projectAssistantId')) {
+          const name = room.notice?.match(/^\[taskAssistant:([^\]\n]+)\]$/m)?.[1]?.trim()
+          const matches = name && room.members.filter(member => state.bots[member]?.name === name)
+          if (matches?.length === 1) room.projectAssistantId = matches[0]
+          else if (name) room.unresolvedTaskAssistant = name
+        }
+        migrated = true
+      }
+      for (const task of Object.values(room.tasks ?? {})) {
+        if (task?.status === 'blocked' && task.blocked?.cause === 'failed') {
+          task.status = 'failed'
+          migrated = true
+        }
+      }
     }
     if (migrateLocalRoutes(state)) migrated = true
     // A team from before several Main Bots were allowed names a single one.
@@ -181,11 +203,12 @@ export function install(rt) {
       const seen = new Set()
       state.sections = state.sections
         .filter(sec => sec && typeof sec === 'object' && typeof sec.id === 'string' && sec.id !== '' && typeof sec.name === 'string' && sec.name.trim() !== '' && !seen.has(sec.id) && seen.add(sec.id))
-        .map(sec => ({
-          id: sec.id,
-          name: sec.name.trim().slice(0, SECTION_NAME_MAX),
-          ...(sec.collapsed === true ? { collapsed: true } : {}),
-          ...(SECTION_COLORS.includes(sec.color) ? { color: sec.color } : {}),
+        .map(({ id, name, collapsed, color, ...extra }) => ({
+          ...extra,
+          id,
+          name: name.trim().slice(0, SECTION_NAME_MAX),
+          ...(collapsed === true ? { collapsed: true } : {}),
+          ...(SECTION_COLORS.includes(color) ? { color } : {}),
         }))
     }
     const sectionIds = new Set(state.sections.map(sec => sec.id))
@@ -314,11 +337,13 @@ export function install(rt) {
         warn('ds-bot: saving the migrated Bot team failed: %s', error)
       }
     }
+    if (!stopped && readOnly() === undefined) await rt.repairGroupWorkspaces?.()
+      .catch(error => warn('ds-bot: could not check group Session workspaces: %s', error))
     // Not awaited: renaming a session must not hold up the first roster read.
     for (const room of stale) void rt.retitleRoom(room)
   })()
 
-  // An outside edit of state.json while this host held the lock, found at a
+  // An outside edit of the stored team while this host held the lock, found at a
   // reclaim or by a queued write that saw the file change: this host's in-memory
   // state goes aside first, then the file on disk is adopted. Queued behind
   // `writing` — and behind any adopt already queued — so no save or second
@@ -327,9 +352,9 @@ export function install(rt) {
   const adoptAfterReclaim = () => {
     const run = (adopting ?? writing).then(async () => {
       if (stamp() !== seen) {
-        const aside = `${statePath}.replaced-${Date.now()}`
+        const aside = join(home, 'state.replaced-' + Date.now())
         try {
-          await writeFile(aside, JSON.stringify(state))
+          await storage.backup(aside, teamSnapshot(state))
           warn('ds-bot: %s changed while no host held the team; it is adopted and this host\'s state is kept as %s', statePath, aside)
         } catch (error) {
           warn('ds-bot: %s changed while no host held the team; it is adopted, and this host\'s state is lost because it could not be kept aside: %s', statePath, error)
@@ -384,7 +409,10 @@ export function install(rt) {
       rt.onStoreSync?.()
       return
     }
-    if ((stuck !== undefined || holder !== undefined) && stamp() !== seen) adopt(readFileState())
+    if (stamp() !== seen) {
+      if (stuck !== undefined || holder !== undefined) adopt(readFileState())
+      else await adoptAfterReclaim()
+    }
     rt.onStoreSync?.()
   }
 
@@ -413,7 +441,7 @@ export function install(rt) {
     return warnReadOnly()
   }
 
-  const save = ({ required = false } = {}) => {
+  const save = ({ required = false, mutate } = {}) => {
     if (stopped) return required ? Promise.reject(new Error('The Bot team cannot be saved after this host stopped.')) : writing
     indexSessions()
     // A reading host keeps the file's revision, so its window does not skip the next change.
@@ -429,39 +457,44 @@ export function install(rt) {
       // The snapshot is taken here, so a save made while an adopt was pending
       // writes the adopted state, not the stale one it had.
       const epoch = lockEpoch
-      state.revision += 1
+      if (!mutate) state.revision += 1
       state.exchanges = state.exchanges.slice(-MAX_EXCHANGES)
-      const snapshot = JSON.stringify(state)
-      const temp = `${statePath}.${process.pid}.tmp`
+      const snapshot = mutate ? undefined : teamSnapshot(state)
+      await mkdir(home, { recursive: true })
+      const ensureLock = (checkStamp = true) => {
+        const owned = lockBroken || lock.owns()
+        // An outside edit under this host's lock goes through the adopt step
+        // instead of being written over; a removed file is just written again.
+        const current = checkStamp && owned ? stamp() : ''
+        const changed = current !== '' && current !== seen
+        if (changed) void adoptAfterReclaim().catch(() => {})
+        // A different epoch means an adopt replaced the state this snapshot was
+        // taken from — another host's writes, or an outside edit it adopted.
+        if (!owned || changed || lockEpoch !== epoch) {
+          const error = new Error(changed ? 'ds-bot: the Bot team file changed under this host\'s lock' : 'ds-bot lost the state lock to another dsh')
+          error.code = 'ELOCKLOST'
+          throw error
+        }
+      }
+      ensureLock()
+      // Apply a project command inside the existing writer queue. A failed
+      // SQLite transaction must leave the same intake available for retry.
+      const undo = mutate?.()
       try {
-        await mkdir(home, { recursive: true })
-        const ensureLock = () => {
-          if (lockBroken) return
-          const owned = lock.owns()
-          // An outside edit under this host's lock goes through the adopt step
-          // instead of being written over; a removed file is just written again.
-          const changed = owned && stamp() !== '' && stamp() !== seen
-          if (changed) void adoptAfterReclaim().catch(() => {})
-          // A different epoch means an adopt replaced the state this snapshot was
-          // taken from — another host's writes, or an outside edit it adopted.
-          if (!owned || changed || lockEpoch !== epoch) {
-            const error = new Error(changed ? 'ds-bot: the Bot team file changed under this host\'s lock' : 'ds-bot lost the state lock to another dsh')
-            error.code = 'ELOCKLOST'
-            throw error
-          }
-        }
-        ensureLock()
-        await writeFile(temp, snapshot, 'utf8')
-        ensureLock()
-        await replaceFile(temp, statePath, ensureLock)
-        seen = stamp()
-        rt.capabilitiesStateSaved?.()
-        for (const listener of savedListeners) {
-          try { listener() } catch (error) { warn('ds-bot: saved listener failed: %s', error) }
-        }
+        const next = snapshot ?? teamSnapshot(state)
+        if (mutate) next.revision = state.revision + 1
+        await storage.write(next, ensureLock)
+        // Polling clients use the revision to skip unchanged reads. Publish it
+        // only once the corresponding task changes have been applied and saved.
+        if (mutate) state.revision = next.revision
       } catch (error) {
-        await unlink(temp).catch(() => {})
+        undo?.()
         throw error
+      }
+      seen = stamp()
+      rt.capabilitiesStateSaved?.()
+      for (const listener of savedListeners) {
+        try { listener() } catch (error) { warn('ds-bot: saved listener failed: %s', error) }
       }
     })
     writing = run.catch(() => {})
@@ -549,7 +582,7 @@ export function install(rt) {
       const currentSid = chatOf(botId)
       if (sessionIdOf(currentSid) !== undefined) chatOwners.set(currentSid, botId)
       // Parts opened while the Bot was busy are its own chat too: a turn there may use
-      // the team tools, and the phone still sees only the current part. Their earlier
+      // the team tools. Their earlier
       // parts stay the Bot's as well, so their history still reads on that thread.
       for (const part of bot.openParts ?? []) {
         const partSid = sessionIdOf(part?.sessionId)
@@ -640,9 +673,9 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    state, load, save, refresh, readOnly, hasLoaded, syncReadOnly, own, onSaved, closeCard,
+    teamStorage: storage, state, load, save, refresh, readOnly, hasLoaded, syncReadOnly, own, onSaved, closeCard,
     botOf, roomOf, isMain, chatOf, sessionOfRoom, selfOf, isBotSession,
-    chatOwners, groupOwners, roomOwners, pastOwners,
+    indexSessions, chatOwners, groupOwners, roomOwners, pastOwners,
     groupSessionsOf, dropGroupSession, retireGroupSession, findBot, findRooms, isAdminOf,
   })
 }

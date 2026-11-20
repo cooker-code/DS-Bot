@@ -1,11 +1,12 @@
 // Waits a Bot gave up: one hand-off that will not come back is closed with an explicit
 // result, so the work above it goes on instead of waiting forever.
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -157,7 +158,7 @@ function turnTaker(agents, emit) {
 // The works the team file holds, once the saves made so far are done.
 const worksIn = async ({ call, home }) => {
   await call('set-prefs', {})
-  return JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).works ?? {}
+  return savedTeam(home).works ?? {}
 }
 
 // Chief asks Writer for work, and Writer hands it on to Tester and ends its turn, so
@@ -310,7 +311,7 @@ test('a restart gives up a wait whose target no longer exists, and only those', 
   const host = await start(team)
   await settled(() => {
     try {
-      const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+      const saved = savedTeam(home)
       return saved.works?.['gone-bot'] === undefined && saved.works?.['gone-room'] === undefined
     } catch { return false }
   })
@@ -356,7 +357,7 @@ test('a restart leaves a subagent wait alone, whatever the Session read says', a
     // The sweep ran: the work for the deleted Bot is settled.
     await settled(() => {
       try {
-        return JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).works?.['gone-bot'] === undefined
+        return savedTeam(home).works?.['gone-bot'] === undefined
       } catch { return false }
     })
     const works = await worksIn(host)

@@ -2,8 +2,8 @@
 // platform's own bundled router) and `office-tools` (the CLI that inspects,
 // checks and edits Office packages). Registered when a `skills` service exists;
 // the sub-fiber stays inactive where it does not, so the plugin runs the same
-// in DSH Web, DSH Desktop and the desktop app.
-import { existsSync, readFileSync } from 'node:fs'
+// in DSH Web and DSH Desktop.
+import { readFileSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { isSea } from 'node:sea'
 import { fileURLToPath } from 'node:url'
@@ -28,11 +28,8 @@ export function cliPath(manifest = CLI) {
   return manifest.replace(`${sep}app.asar${sep}`, `${sep}app.asar.unpacked${sep}`)
 }
 
-// Where the commands run: the app's Office payload when it shipped, plain Node
-// hosts (DSH Web, a developer Node), or the workspace-dependencies tool's node.
-export function officeNode(env = process.env) {
-  const bundled = env.DS_BOT_OFFICE_NODE
-  if (bundled !== undefined && existsSync(bundled)) return { node: bundled }
+// Packaged DSH hosts supply a standalone interpreter through workspace dependencies.
+export function officeNode() {
   if (process.versions.electron === undefined && !isSea()) return { node: process.execPath }
   return { node: undefined }
 }
@@ -42,7 +39,7 @@ function runtimeBlock() {
   const { node } = officeNode()
   const paths = node === undefined
     ? `The commands need a standalone Node. Call the \`load_workspace_dependencies\` tool and use its \`node\` value; if that tool is not in the catalog, these commands are unavailable here.`
-    : `Run the commands as \`"${node}" "${cli}" …\` in Bash, or \`& "${node}" "${cli}" …\` in PowerShell.`
+    : `Run the commands as \`"${node}" "${cli}" …\` in Bash.`
   return `\n\n## Office tools\n\n${JSON.stringify({ officeTools: { node, cli } }, undefined, 2)}\n\n${paths}`
 }
 

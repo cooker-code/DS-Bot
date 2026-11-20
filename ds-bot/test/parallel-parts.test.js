@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -10,6 +10,7 @@ import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -80,7 +81,7 @@ async function team(t, archived = [], state = TEAM, live = ['m1', 'w1', 'w2', 'w
   return { home, registry, call, ctx, rt }
 }
 
-const saved = home => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+const saved = home => savedTeam(home)
 const until = async (check, ms = 2000) => {
   const end = Date.now() + ms
   while (!check()) {
@@ -203,20 +204,29 @@ test('a new part takes a model picked while the part was being made', async (t) 
   assert.deepEqual(selections, ['w5:deepseek/old', 'w2:deepseek/new', 'w5:deepseek/new'])
 })
 
-test('a foreground switch to an archived part does not touch the background part', async (t) => {
+test('opening a saved session keeps both running threads and targets Stop by session', async (t) => {
   const { home, registry, call, rt } = await team(t, ['w1'])
   await call('state')
   rt.live.set('w3', { turn: {} })
+  rt.live.set('w2', { turn: {} })
   const result = await call('bot-open-part', { botId: 'w1', sessionId: 'w1' })
   assert.equal(result.ok, true, JSON.stringify(result))
   const writer = saved(home).bots.w1
   assert.equal(writer.sessionId, 'w1')
-  assert.deepEqual(writer.segments.map(segment => segment.sessionId), ['w2'])
+  assert.deepEqual(writer.segments, [])
   // The background part and its chain stay exactly where they were.
   assert.equal(writer.openParts[0].sessionId, 'w3')
   assert.deepEqual(writer.openParts[0].segments.map(segment => segment.sessionId), ['w4'])
-  // Only the part the foreground left is archived; the background part stays live.
-  assert.deepEqual([...registry.archivedSessionIds], ['w2'])
+  assert.deepEqual(writer.openParts.map(p => p.sessionId), ['w3', 'w2'])
+  assert.deepEqual([...registry.archivedSessionIds], [])
+  assert.deepEqual((await call('state')).value.partsRunning, { w2: true, w3: true })
+  rt.live.set('w1', { turn: {} })
+  assert.equal((await call('bot-open-part', { botId: 'w1', sessionId: 'w2' })).ok, true)
+  const cancelled = []
+  rt.resolveAgent = async id => ({ cancel: () => cancelled.push(id) })
+  assert.equal((await call('stop-chat', { botId: 'w1', sessionId: 'w1' })).value, true)
+  assert.equal((await call('stop-chat', { botId: 'm1', sessionId: 'w2' })).value, false)
+  assert.deepEqual(cancelled, ['w1'])
 })
 
 
@@ -275,4 +285,132 @@ test('send, answer-question, and view-reply on an earlier segment of an openPart
     ['followup', 'w3'],
     ['followup', 'w3'],
   ])
+})
+
+test('an idle Bot opens a blank session in its work folder and leaves the old thread readable', async t => {
+  const { rt, call, home } = await team(t)
+  await call('state')
+  rt.botOf('w1').workDir = home
+  rt.resolveAgent = async id => ({ id, status: 'idle', session: { id, requestHeader: () => undefined } })
+  rt.createSession = async (title, { dir }) => {
+    assert.equal(title, 'Writer')
+    assert.equal(dir, home)
+    return 'fresh'
+  }
+  assert.equal((await call('bot-new-part', { botId: 'w1' })).ok, true)
+  const current = saved(home).bots.w1
+  assert.equal(current.sessionId, 'fresh')
+  assert.deepEqual(current.segments, [])
+  assert.deepEqual((await rt.earlierPage('fresh')).items, [])
+  assert.deepEqual(rt.partsOfThread('w1', 'w2').map(part => part.sessionId), ['w1', 'w2'])
+})
+
+test('batch deletion rejects a foreign or running session before removing any selection', async t => {
+  const { rt, call, registry, home } = await team(t)
+  await call('state')
+  const remove = sessionIds => call('bot-delete-parts', { botId: 'w1', sessionIds })
+  assert.equal((await remove(['w1', 'm1'])).ok, false)
+  rt.live.set('w3', { turn: {} })
+  assert.equal((await remove(['w1', 'w3'])).error.code, 'bot/busy')
+  assert.deepEqual(saved(home).bots.w1.segments.map(p => p.sessionId), ['w1'])
+  assert.deepEqual([...registry.archivedSessionIds], [])
+})
+
+test('deleting a current and a background session preserves their unselected histories across retries', async t => {
+  const { rt, call, registry, home } = await team(t, ['w1', 'w4'])
+  await call('state')
+  const remove = () => call('bot-delete-parts', { botId: 'w1', sessionIds: ['w2', 'w3'] })
+  const res = await remove()
+  assert.equal(res.ok, true, JSON.stringify(res))
+  assert.equal(res.value, 'w1')
+  const writer = saved(home).bots.w1
+  assert.equal(writer.sessionId, 'w1')
+  assert.deepEqual(writer.openParts.map(p => p.sessionId), ['w4'])
+  assert.deepEqual(writer.removedSessions, { w2: true, w3: true })
+  assert.deepEqual([...registry.archivedSessionIds].sort(), ['w2', 'w3'])
+  assert.equal(rt.selfOf('w2'), undefined)
+  assert.equal((await remove()).value, 'w1')
+  const view = (await call('state')).value.bots.find(b => b.id === 'w1')
+  assert.equal(view.removedSessions, undefined)
+  assert.equal((await call('bot-open-part', { botId: 'w1', sessionId: 'w3' })).ok, false)
+})
+
+test('deleting every session creates one empty replacement and a repeat keeps it', async t => {
+  const { rt, call, home, registry } = await team(t, ['w1', 'w4'])
+  await call('state')
+  let creates = 0
+  rt.resolveAgent = async id => ({ id, status: 'idle', session: { id, requestHeader: () => undefined } })
+  rt.createSession = async () => { creates++; return 'blank' }
+  const remove = () => call('bot-delete-parts', { botId: 'w1', sessionIds: ['w1', 'w2', 'w3', 'w4'] })
+  assert.equal((await remove()).value, 'blank')
+  assert.equal((await remove()).value, 'blank')
+  assert.equal(creates, 1)
+  const writer = saved(home).bots.w1
+  assert.deepEqual([writer.sessionId, writer.segments, writer.openParts], ['blank', [], []])
+  assert.deepEqual([...registry.archivedSessionIds].sort(), ['w1', 'w2', 'w3', 'w4'])
+})
+
+test('selecting an archived session in a background thread keeps the unrelated foreground history intact', async t => {
+  const { call, home } = await team(t, ['w1', 'w4'])
+  await call('state')
+  assert.equal((await call('bot-open-part', { botId: 'w1', sessionId: 'w4' })).ok, true)
+  const writer = saved(home).bots.w1
+  assert.equal(writer.sessionId, 'w4')
+  assert.deepEqual(writer.segments, [])
+  assert.deepEqual(writer.openParts.map(p => p.sessionId), ['w3', 'w2'])
+  assert.deepEqual(writer.openParts[1].segments.map(p => p.sessionId), ['w1'])
+})
+
+test('a failed switch restores the archive and leaves the running foreground available for retry', async t => {
+  const { rt, registry, call, home } = await team(t, ['w1'])
+  await call('state')
+  rt.live.set('w2', { turn: {} })
+  const before = saved(home).bots.w1
+  const write = rt.teamStorage.write
+  rt.teamStorage.write = () => { throw new Error('write interrupted') }
+  try {
+    assert.equal((await call('bot-open-part', { botId: 'w1', sessionId: 'w1' })).ok, false)
+  } finally {
+    rt.teamStorage.write = write
+  }
+  assert.deepEqual(saved(home).bots.w1, before)
+  assert.equal(rt.chatOf('w1'), 'w2')
+  assert.equal(rt.isBotSession('w1'), false)
+  assert.deepEqual([...registry.archivedSessionIds], ['w1'])
+  assert.deepEqual((await call('state')).value.partsRunning, { w2: true })
+  assert.equal((await call('bot-open-part', { botId: 'w1', sessionId: 'w1' })).ok, true)
+})
+
+test('a failed deletion write leaves every session available and never archives the selection', async t => {
+  const { rt, call, registry, home } = await team(t)
+  await call('state')
+  const before = saved(home).bots.w1
+  const write = rt.teamStorage.write
+  rt.teamStorage.write = () => { throw new Error('write interrupted') }
+  try {
+    assert.equal((await call('bot-delete-parts', { botId: 'w1', sessionIds: ['w2', 'w1'] })).ok, false)
+  } finally {
+    rt.teamStorage.write = write
+  }
+  assert.deepEqual(saved(home).bots.w1, before)
+  assert.equal(rt.chatOf('w1'), 'w2')
+  assert.equal(rt.selfOf('w1'), 'w1')
+  assert.deepEqual([...registry.archivedSessionIds], [])
+})
+
+test('the restart pass finishes an interrupted archive without restoring the deleted session', async t => {
+  const { rt, ctx, registry, call, home } = await team(t, ['w4'])
+  await call('state')
+  ctx.workspaceRegistry = {
+    get archivedSessionIds() { return registry.archivedSessionIds },
+    unarchiveSession: id => registry.unarchiveSession(id),
+    archiveSession: async () => { throw new Error('archive unavailable') },
+  }
+  assert.equal((await call('bot-delete-parts', { botId: 'w1', sessionIds: ['w3', 'w4'] })).ok, false)
+  assert.equal(saved(home).bots.w1.removedSessions.w3, false)
+  ctx.workspaceRegistry = registry
+  await rt.heldBack()
+  assert.deepEqual([...registry.archivedSessionIds].sort(), ['w3', 'w4'])
+  assert.deepEqual(saved(home).bots.w1.removedSessions, { w3: true, w4: true })
+  assert.deepEqual(saved(home).bots.w1.openParts, [])
 })

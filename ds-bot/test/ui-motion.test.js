@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
+import { savedTeam } from './team-state.js'
 import { apply } from '../index.js'
 import { effectsOf } from '../src/client/themes.js'
 import { toTraditional } from '../src/client/locales/zh-tw.js'
@@ -112,7 +113,7 @@ function startHost() {
     const response = await routes['/api/bot'].fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()
   }
-  const saved = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = () => savedTeam(home)
   const stop = async () => {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })

@@ -101,7 +101,7 @@ export async function readAvatar(input, { baseDir, isData } = {}) {
   if (/^data:/i.test(value)) return readDataUrl(value).url
   if (/^https?:\/\//i.test(value)) throw new Error('An http(s) link is not downloaded here. Save the image to a file and pass its path, or pass a data URL.')
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) throw new Error(`The avatar must be a local image path or a data URL. ${HINT}`)
-  // A network path (\\host\share) would make Windows connect to that host and sign in.
+  // A network path (\\host\share) can refer to a remote host.
   if (/^[\\/]{2}/.test(value)) throw new Error('A network path is not read here. Copy the image to this computer and pass its path, or pass a data URL.')
   return readLocal(value, baseDir, isData)
 }

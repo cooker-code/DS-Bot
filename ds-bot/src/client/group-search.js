@@ -54,7 +54,7 @@ function Detail({ hit, roster, terms, back }) {
     h('button', { type: 'button', className: 'bt-gs-back', onClick: back },
       h('span', { className: 'bt-gs-back-ico', 'aria-hidden': true }, h(ChevronRightIcon)), t('Back to results')),
     h('div', { className: 'bt-gs-meta' },
-      h('span', { className: 'bt-gs-author' }, authorOf(hit, roster)),
+      h('span', { className: 'bt-gs-author' }, authorOf(hit, roster)), hit.archived && h('span', { className: 'bt-tag' }, t('Archived')),
       Number.isFinite(hit.time) ? h('span', { className: 'bt-gs-when' }, clockLabel(hit.time)) : null),
     h('div', { className: 'bt-gs-full' }, marked(hit.text, terms)),
     hit.before !== undefined || hit.after !== undefined
@@ -85,6 +85,7 @@ export function GroupSearch({ room, roster, token, actions }) {
   useEscape(close)
   const terms = termsOf(query)
   const text = query.trim()
+  const archiveKey = (room.archivedDiscussions ?? []).map(row => row.id).join(',')
   useEffect(() => {
     const mine = ++generation.current
     moreCall.current?.abort()
@@ -113,7 +114,7 @@ export function GroupSearch({ room, roster, token, actions }) {
       })
     }, DEBOUNCE_MS)
     return () => { clearTimeout(timer); controller.abort(); moreCall.current?.abort() }
-  }, [text, room.id])
+  }, [archiveKey, text, room.id])
   useEffect(() => { setPicked(null) }, [text])
   const results = answer?.results ?? []
   const loadMore = () => {
@@ -160,7 +161,7 @@ export function GroupSearch({ room, roster, token, actions }) {
             key: `${hit.seq ?? index}`, type: 'button', className: 'bt-gs-row', onClick: () => setPicked(hit),
           },
           h('div', { className: 'bt-gs-meta' },
-            h('span', { className: 'bt-gs-author' }, authorOf(hit, roster)),
+            h('span', { className: 'bt-gs-author' }, authorOf(hit, roster)), hit.archived && h('span', { className: 'bt-tag' }, t('Archived')),
             Number.isFinite(hit.time) ? h('span', { className: 'bt-gs-when' }, clockLabel(hit.time)) : null),
           h('div', { className: 'bt-gs-snippet' }, marked(snippetOf(hit.text, terms), terms))))
   const current = answer?.query === text

@@ -21,8 +21,7 @@ export const OCR_CACHE_MAX = 500
 export const MAX_AVATAR_IMAGE = 160_000
 export const ROUTE = '/api/bot'
 export const MAX_EXCHANGES = 600
-// state.json is written whole on every save, so a long message between Bots or a long
-// group line keeps only its start there. The rest stays where it already is (a message
+// The team snapshot keeps only the start of a long Bot message or group line. The rest stays where it already is (a message
 // in the Session it was delivered to) or in a file of its own (a group line).
 export const TEXT_KEPT = 2000
 // Of one group line, a member reads this much: in its prompt, and with read_group_chat.
@@ -74,10 +73,10 @@ export const AGENT_SESSION_TITLE_MAX = 80
 export const TEAM_TOOLS = [
   'list_bots', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'list_bot_models',
   'create_group', 'update_group', 'delete_group', 'group_todo', 'post_to_group', 'ask_user', 'show_view',
-  'request_secret', 'list_secrets', 'group_relay', 'read_own_chat',
+  'request_secret', 'list_secrets', 'skip_group_turn', 'group_relay', 'read_own_chat',
   'read_group_chat', 'remember', 'forget', 'recall', 'read_browser',
   'list_capabilities', 'save_capability', 'delete_capability',
-  'attach_capability', 'detach_capability', 'group_goal', 'group_task', 'list_connectors', 'request_connector',
+  'attach_capability', 'detach_capability', 'group_goal', 'group_task', 'next_group_session', 'project_task', 'list_connectors', 'request_connector',
 ]
 // Consecutive automatic admin wakes with no goal progress before the goal waits
 // for the user instead of waking the admin again.
@@ -93,7 +92,6 @@ export const OWN_CHAT_LINE_MAX = 400
 // The message an anchor points at is shown whole (up to this), so a long draft takes
 // one read instead of many searches for its pieces.
 export const ANCHOR_LINE_MAX = 8000
-export const OWN_CHAT_BRIEF = 10
 export const OWN_CHAT_READ = 12
 export const OWN_CHAT_SEARCH = 20
 export const HISTORY_PAGE = 200

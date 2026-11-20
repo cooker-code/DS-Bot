@@ -39,7 +39,7 @@ describe('office skill provider', () => {
     const [candidate] = (await provider.list()).filter(s => s.name === 'office-tools')
     const skill = await provider.get(candidate)
     assert.match(skill.content, /officeTools/)
-    assert.match(skill.content, /PowerShell/)
+    assert.match(skill.content, /in Bash/)
   })
 
   test('office skill routes to office-tools, native Office tools, and fallback operation skills', async () => {
@@ -72,17 +72,8 @@ describe('office skill provider', () => {
 })
 
 describe('office node selection', () => {
-  test('uses DS_BOT_OFFICE_NODE when the file exists', () => {
-    const { node } = officeNode({ DS_BOT_OFFICE_NODE: process.execPath })
-    assert.equal(node, process.execPath)
-  })
-  test('ignores DS_BOT_OFFICE_NODE that does not exist', () => {
-    const { node } = officeNode({ DS_BOT_OFFICE_NODE: '/no/such/node-here' })
-    // In the test harness the host is plain Node, so execPath applies.
-    assert.equal(node, process.execPath)
-  })
   test('falls back to the host interpreter under plain Node', () => {
-    const { node } = officeNode({})
+    const { node } = officeNode()
     assert.equal(node, process.execPath)
   })
 })

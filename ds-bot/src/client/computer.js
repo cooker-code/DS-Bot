@@ -169,12 +169,12 @@ const ACTION_NAMES = { click: 'Click', doubleClick: 'Double click', rightClick: 
 const actionName = (method) => {
   const known = ACTION_NAMES[method]
   if (known !== undefined) return known
-  const words = String(method ?? '').replace(/^cua_driver_native__/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim()
+  const words = String(method ?? '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim()
   return words === '' ? 'Computer' : words[0].toUpperCase() + words.slice(1)
 }
 export function ComputerCallRow({ sessionId, call, roster, actions, hooks }) {
   const { value: argValue } = toolArgs(call)
-  const method = argValue('method') ?? String(call?.name ?? '').replace(/^cua_driver_native__/, '')
+  const method = argValue('method') ?? String(call?.name ?? '')
   const stepApp = hooks?.useComputer?.(map => (map.bots?.[roster.byId[sessionId]?.id]?.steps ?? []).find(step => step.callId === call?.callId)?.app)
   const selector = argValue('params')?.selector
   // getApp names its target in the selector; a step record names the app later calls act on.

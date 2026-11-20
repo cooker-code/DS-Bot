@@ -27,7 +27,7 @@ function* chunksOf(reply) {
 
 // A Bot's own chat part with the note writer around it. `replies` are answered in
 // order by the model stream; `info` holds resolveModelInfo per route.
-async function switchPart({ replies, info = {}, fallback, route = {}, oldNote, retryPolicy }) {
+async function switchPart({ replies, info = {}, fallback, route = {}, oldNote, retryPolicy, manual = false }) {
   const requests = []
   const warnings = []
   const infos = []
@@ -37,7 +37,9 @@ async function switchPart({ replies, info = {}, fallback, route = {}, oldNote, r
   let defaultCalls = 0
   const queue = [...replies]
   const abort = new AbortController()
-  const ctx = fakeContext()
+  // Past its hard line a part moves on at the end of its turn, with a note if one
+  // can be written.
+  const ctx = fakeContext({ services: { tokenMeter: { measure: () => ({ totalTokens: 1_000_000 }) } } })
   ctx.logger = {
     warn: (template, ...args) => warnings.push(say(template, ...args)),
     info: (template, ...args) => infos.push(say(template, ...args)),
@@ -88,7 +90,8 @@ async function switchPart({ replies, info = {}, fallback, route = {}, oldNote, r
     config: {},
     state: { bots: { b1: bot }, rooms: {}, prefs: {}, exchanges: [], capabilities: { items: {} }, switching: {}, questions: {}, views: {} },
     warn: (template, ...args) => warnings.push(say(template, ...args)),
-    async save() {},
+    async save(options) { options?.mutate?.() },
+    indexSessions() {},
     async load() {},
     readOnly: () => undefined,
     botOf: id => rt.state.bots[id],
@@ -146,7 +149,8 @@ async function switchPart({ replies, info = {}, fallback, route = {}, oldNote, r
     defaultModel: async () => { defaultCalls += 1; return fallback },
   }
   partsInstall(rt)
-  await rt.newPart('s1')
+  if (manual) await rt.newPart('s1')
+  else ctx.emit('agent/status', { agent, status: 'idle' })
   for (let at = 0; at < 100 && bot.sessionId !== 's2' && !warnings.some(line => /did not move on/.test(line)); at += 1) {
     await new Promise(done => setTimeout(done, 10))
   }
@@ -268,3 +272,11 @@ test('handoff note retries transient TRANSPORT failures within the provider retr
   assert.equal(capped.requests.length, 2)
 })
 
+test('a manual new chat starts without a handoff or a model call', async () => {
+  const run = await switchPart({ replies: [new Error('the route is down')], manual: true, oldNote: 'OLD NOTE FROM PART 1' })
+  assert.equal(run.bot.sessionId, 's2', run.warnings.join(' | '))
+  assert.equal(run.requests.length, 0)
+  assert.equal(run.packageText, '')
+  assert.deepEqual(run.bot.segments, [])
+  assert.equal(run.bot.openParts[0].segments[0].note, 'OLD NOTE FROM PART 1')
+})

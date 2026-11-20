@@ -2,9 +2,9 @@
 // login-shell PATH plus the usual install folders, and an environment that
 // keeps their own sign-in but leaks nothing of ours.
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { delimiter, join, win32 } from 'node:path'
+import { delimiter, join } from 'node:path'
 
 // The CLI signs in by itself; an API key or another agent's backend variable in
 // our environment would shadow that or leak, so neither reaches the child.
@@ -25,9 +25,8 @@ export function cleanEnv(extra = {}) {
     env[key] = value
   }
   // A CLI found outside our sparse PATH (a script with `#!/usr/bin/env node`)
-  // needs the same folders to find its interpreter. Windows spells it `Path`.
-  const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
-  env[pathKey] = searchDirs().join(delimiter)
+  // needs the same folders to find its interpreter.
+  env.PATH = searchDirs().join(delimiter)
   return { ...env, ...extra }
 }
 
@@ -39,29 +38,22 @@ const outputOf = (file, args) => new Promise((resolve) => {
   } catch { resolve(undefined) }
 })
 
-// macOS/Linux apps launched from a dock icon inherit a sparse PATH; the login
+// macOS apps launched from a dock icon inherit a sparse PATH; the login
 // shell knows where the user actually installed things, and so does npm's global
 // prefix. Both are looked up in the background and kept for a minute.
 let found = { at: 0, dirs: [] }
 let looking
 export function refreshSearchDirs() {
   if (Date.now() - found.at < 60_000) return Promise.resolve()
-  const windows = process.platform === 'win32'
   looking ??= Promise.all([
-    windows ? undefined : outputOf(process.env.SHELL ?? '/bin/sh', ['-l', '-c', 'printf %s "$PATH"']),
-    // `npm bin -g` is gone since npm 9; the prefix holds the bin folder. Node starts
-    // no `.cmd` without a shell, and npm's Windows prefix is fixed, so it is not asked.
-    windows ? undefined : outputOf('npm', ['prefix', '-g']),
+    outputOf(process.env.SHELL ?? '/bin/sh', ['-l', '-c', 'printf %s "$PATH"']),
+    outputOf('npm', ['prefix', '-g']),
   ]).then(([loginPath, prefix]) => {
-    const npmBin = windows ? (process.env.APPDATA ? join(process.env.APPDATA, 'npm') : undefined)
-      : prefix?.trim() ? join(prefix.trim(), 'bin') : undefined
+    const npmBin = prefix?.trim() ? join(prefix.trim(), 'bin') : undefined
     found = { at: Date.now(), dirs: [...(loginPath ?? '').split(delimiter).filter(Boolean), ...(npmBin ? [npmBin] : [])] }
   }).finally(() => { looking = undefined })
   return looking
 }
-
-const WIN_EXT = ['.cmd', '.exe', '.bat', '']
-const candidates = (name) => (process.platform === 'win32' ? WIN_EXT.map(ext => `${name}${ext}`) : [name])
 
 // Every folder a CLI may hide in, in lookup order.
 function searchDirs() {
@@ -75,10 +67,7 @@ function searchDirs() {
     join(home, '.bun', 'bin'),
     join(home, '.cargo', 'bin'),
     join(home, '.npm-global', 'bin'),
-    process.platform === 'darwin' ? join(home, 'Library', 'pnpm') : join(home, '.local', 'share', 'pnpm'),
-    process.platform === 'win32' ? join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'npm') : '',
-    process.platform === 'win32' ? join(process.env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'agy', 'bin') : '',
-    process.platform === 'win32' ? join(home, 'scoop', 'shims') : '',
+    join(home, 'Library', 'pnpm'),
     join(home, 'bin'),
     '/opt/homebrew/bin',
     '/usr/local/bin',
@@ -91,15 +80,13 @@ function searchDirs() {
 // The executable's full path, or undefined when the CLI is not installed. Only
 // file checks: the folders from refreshSearchDirs() join once it has run.
 export function findExecutable(name) {
-  if (name.includes('/') || name.includes('\\')) {
+  if (name.includes('/')) {
     const path = name.startsWith('~') ? join(homedir(), name.slice(1)) : name
     return isFile(path) ? path : undefined
   }
   for (const dir of searchDirs()) {
-    for (const file of candidates(name)) {
-      const path = join(dir, file)
-      if (isFile(path)) return path
-    }
+    const path = join(dir, name)
+    if (isFile(path)) return path
   }
   return undefined
 }
@@ -112,61 +99,17 @@ export function findEngineExecutable(spec, find = findExecutable) {
   return undefined
 }
 
-// npm's shims name their runner in _prog: "%dp0%\node.exe" when one lies beside them, else "node".
-const SHIM_PROGRAM = /SET "_prog=(?:%dp0%\\)?([^"\\]+?)(?:\.exe)?"/iu
-const CMD_SAFE = /^[\w\-.:/\\=@+,~ ]*$/u
-
-// What a Windows shim starts: the quoted paths on its last line that passes the
-// arguments on (%*), with the shim's folder (npm "%dp0%", pnpm "%~dp0") filled in.
-function shimLaunch(shim, dir, { exists, find }) {
-  const line = shim.split(/\r?\n/u).filter(text => text.includes('%*')).at(-1) ?? ''
-  const paths = [...line.matchAll(/"([^"]+)"/gu)].map(match => match[1])
-  if (paths.length === 0) return undefined
-  const expand = path => win32.resolve(dir, path.replace(/^%~?dp0%?\\?/iu, ''))
-  const target = expand(paths.at(-1))
-  if (paths.length === 1 && /\.exe$/iu.test(target)) return { file: target }
-  const named = paths.length > 1 && paths[0] !== '%_prog%' ? expand(paths[0]) : undefined
-  const program = SHIM_PROGRAM.exec(shim)?.[1] ?? 'node'
-  const runner = named !== undefined && exists(named) ? named : exists(win32.join(dir, `${program}.exe`)) ? win32.join(dir, `${program}.exe`) : find(program)
-  return runner !== undefined && /\.exe$/iu.test(runner) ? { file: runner, script: target } : undefined
-}
-
-// The program and arguments that start `executable`. Node starts no `.cmd` or
-// `.bat` without a shell (spawn EINVAL), and a shell would mangle a system prompt
-// with quotes or line breaks. The shims that npm and pnpm install for a CLI only
-// start a script with Node or a program beside them, so that runs directly.
-export function launchOf(executable, args, { platform = process.platform, readFile = readFileSync, exists = existsSync, find = findExecutable } = {}) {
-  if (platform !== 'win32' || !/\.(?:cmd|bat)$/iu.test(executable)) return { file: executable, args }
-  let shim = ''
-  try { shim = readFile(executable, 'utf8') } catch { /* started through cmd.exe below */ }
-  const shimmed = shimLaunch(shim, win32.dirname(executable), { exists, find })
-  if (shimmed !== undefined) return { file: shimmed.file, args: shimmed.script === undefined ? args : [shimmed.script, ...args] }
-  // Another kind of batch file goes through cmd.exe, which only passes plain arguments intact.
-  if (![executable, ...args].every(arg => CMD_SAFE.test(arg))) {
-    throw new Error(`${win32.basename(executable)} is a batch file that DS Bot cannot start with these arguments. Point the agent at its .exe or Node script instead.`)
-  }
-  const line = [executable, ...args].map(arg => (arg === '' || arg.includes(' ') ? `"${arg}"` : arg)).join(' ')
-  return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`], options: { windowsVerbatimArguments: true } }
-}
-
-// spawn() for an agent CLI, also when Windows found it as a `.cmd` shim.
 export function terminateChild(child) {
   if (child === undefined) return
   try { child.kill('SIGTERM') } catch {}
   setTimeout(() => { try { child.kill('SIGKILL') } catch {} }, 5_000).unref?.()
 }
 
-export function spawnAgent(executable, args, options) {
-  const launch = launchOf(executable, args)
-  return spawn(launch.file, launch.args, { ...options, ...launch.options })
-}
-
 // One `--version` call, bounded; the version line is for display only.
 export function probeVersion(executable, args, env) {
   return new Promise((resolve) => {
     try {
-      const launch = launchOf(executable, args)
-      execFile(launch.file, launch.args, { encoding: 'utf8', timeout: 10_000, env, windowsHide: true, ...launch.options }, (error, stdout, stderr) => {
+      execFile(executable, args, { encoding: 'utf8', timeout: 10_000, env }, (error, stdout, stderr) => {
         const text = `${stdout ?? ''}${stderr ?? ''}`.split('\n').map(line => line.trim()).find(Boolean)
         resolve({ ok: error === null, version: text })
       })
@@ -203,22 +146,39 @@ function classifySignIn(error, stdout, stderr, check) {
   return null
 }
 
-// Whether a CLI is signed in: true, false, or null when it cannot tell. A missing
-// credential file proves nothing (macOS keeps some in the Keychain), so only a
-// command can say false. The output and the file stay here; only the answer leaves.
-export function probeSignIn(executable, check, { home = homedir() } = {}) {
+const SIGN_IN_TIMEOUT_MS = 3_000
+
+function probeMacKeychain({ service, account }, spawnKeychain) {
+  return new Promise((resolve) => {
+    try {
+      // Without -g or -w this looks up metadata only. A miss proves nothing:
+      // the CLI may be using a fallback credential store.
+      const child = spawnKeychain('/usr/bin/security', ['find-generic-password', '-s', service, '-a', account], {
+        env: cleanEnv(), stdio: 'ignore', signal: AbortSignal.timeout(SIGN_IN_TIMEOUT_MS), killSignal: 'SIGKILL',
+      })
+      child.once('error', () => resolve(null))
+      child.once('close', (code) => resolve(code === 0 ? true : null))
+    } catch { resolve(null) }
+  })
+}
+
+// true, false, or null when the check cannot tell. Only a CLI's status command
+// can say false; a missing credential in one store proves nothing.
+export function probeSignIn(executable, check, { home = homedir(), platform = process.platform, spawnKeychain = spawn } = {}) {
   if (check === undefined) return Promise.resolve(null)
+  if (check.macKeychain !== undefined) {
+    return platform === 'darwin' ? probeMacKeychain(check.macKeychain, spawnKeychain) : Promise.resolve(null)
+  }
   if (check.file !== undefined) return Promise.resolve(isFile(join(home, ...check.file)) ? true : null)
   return new Promise((resolve) => {
     try {
-      const launch = launchOf(executable, check.args)
-      execFile(launch.file, launch.args, { encoding: 'utf8', timeout: 3_000, env: cleanEnv(), windowsHide: true, ...launch.options }, (error, stdout, stderr) => {
+      execFile(executable, check.args, { encoding: 'utf8', timeout: SIGN_IN_TIMEOUT_MS, env: cleanEnv() }, (error, stdout, stderr) => {
         const result = classifySignIn(error, stdout, stderr, check)
         if (result !== null || check.fallback === undefined) {
           resolve(result)
           return
         }
-        void probeSignIn(executable, check.fallback, { home }).then(resolve, () => resolve(null))
+        void probeSignIn(executable, check.fallback, { home, platform, spawnKeychain }).then(resolve, () => resolve(null))
       })
     } catch { resolve(null) }
   })

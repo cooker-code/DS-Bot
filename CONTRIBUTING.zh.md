@@ -10,11 +10,11 @@
 
 ## 最重要的规则
 
-1. **基于 DSH 构建，不改 DSH。** Bot 功能是 DSH 插件：只用 DSH 有文档的插件接口（Cordis 服务、插件客户端入口、profile patch）。桌面应用只通过 DSH 有文档的入口启动 DSH（`@deepseek-ai/dsh/profile-boot`、`dsh` 命令）。不修改 DeepSeek Harness，不依赖 DSH 安装目录里的文件。功能需要 DSH 没有提供的能力时，先在这里开 Issue；修复可能应该放在 DSH 里。
+1. **基于 DSH 构建，不改 DSH。** Bot 功能是 DSH 插件：只用 DSH 有文档的插件接口（Cordis 服务、插件客户端入口、profile patch）。不修改 DeepSeek Harness，不依赖 DSH 安装目录里的文件。功能需要 DSH 没有提供的能力时，先在这里开 Issue；修复可能应该放在 DSH 里。
 2. **Bot 的工作跑在 DSH Session 里。** Bot 的身份不变，工作跑在 DSH Session 里：私聊一条、每个群各一条，上下文快满时换一条新的。每个回合都走 DSH 正常的 agent 循环、工具和模型路由。不要另加一套 agent 运行时。
 3. **任何地方都不放真实密钥。** 不要提交 API key、token、cookie、`DSH_HOME` 目录、日志，或带个人信息的截图。测试和测试台用脚本化的模拟模型，不需要密钥。
 4. **只用原创素材。** 不要从其他产品或网站复制代码、文字、图标、logo 或其他图形。唯一例外是与 Apache 2.0 兼容许可的代码：注明出处，并把它的声明加进 `NOTICE` 文件。
-5. **每个改动都要测试。** 每个改动都要跑单元测试和客户端检查（见[测试改动](#测试改动)）。
+5. **按改动范围验证。** 纯文档核对内容、链接和可执行示例。代码改动运行覆盖受影响行为的用例，见[测试改动](#测试改动)。
 
 ## 协作方式
 
@@ -72,7 +72,7 @@
 
 1. 向 `dev` 提一个 Pull Request：修改 `ds-bot/package.json` 里的版本号，根据已合并 Pull Request 的 Changelog 句子写 `CHANGELOG.md` 的这一版。
 2. 提一个从 `dev` 到 `main` 的 Pull Request，标题为 `release: vX.Y.Z`。在描述里列出这一版所有的 `Fixes #<号>`，合并时这些 Issue 会一起关闭。
-3. 合并前在 Windows 真机上做一遍[发版前真机检查](docs/dev/release-checklist.md)，改动涉及 macOS 时在 macOS 上也做一遍，结果贴在这个 PR 里。用 merge commit 合并，在 `main` 上发布 GitHub Release `vX.Y.Z`，发布时不勾「Set as the latest release」：安装包、`SHA256SUMS.txt` 和下载表都传完后，工作流会自己把它标为最新。Release 工作流会检查 tag 与版本号一致、且在 `main` 上，跑完检查后把包发到 npm（预发布版本发到 npm 的 `next` 标签）。不要手动 `npm publish`。
+3. 合并前在受影响的 macOS 环境做一遍[发版前真机检查](docs/dev/release-checklist.md)，结果贴在这个 PR 里。用 merge commit 合并，在 `main` 上发布 GitHub Release `vX.Y.Z`，发布时不勾「Set as the latest release」：插件包上传后，工作流会自己把它标为最新。Release 工作流会检查 tag 与版本号一致、且在 `main` 上，跑完检查后把包发到 npm（预发布版本发到 npm 的 `next` 标签）。不要手动 `npm publish`。
 4. 热修：从 `main` 切 `fix/hot-<短名>`，向 `main` 提 Pull Request，发一个补丁版本，再把 `main` 合回 `dev`。
 
 ## 搭建环境
@@ -117,20 +117,22 @@ git -C deepseek-harness checkout dsh-v0.2.2-rc.1
 | `ds-bot/web-search.js` | `auto` 网页搜索提供方。不依赖 Bot 团队代码 |
 | `ds-bot/cordis.patch.yml` | 插件带的 profile patch |
 | `ds-bot/test/` | 单元测试和测试数据 |
-| `ds-bot/dev/` | 单元测试用的 DSH 包（`harness/`）、模拟模型、测试台、冒烟测试、角色生成器、Linux 上的 Desktop 脚本，以及两个用真实模型的工具：上下文管家评测和日志转发 |
+| `ds-bot/dev/` | 单元测试用的 DSH 包（`harness/`）、模拟模型、测试台、冒烟测试、角色生成器，以及两个用真实模型的工具：上下文管家评测和日志转发 |
 
 ## 测试改动
 
-在 `ds-bot/` 里运行：
+纯文档只核对内容、链接和示例。代码按受影响的行为选择测试文件，客户端源码改动还要重新构建并检查生成文件。只有影响范围无法可靠界定或任务明确要求全量时，才由一个会话运行 `npm run test:all`。失败后先重跑受影响的文件。
+
+在 `ds-bot/` 里按需运行：
 
 ```sh
 npm run build                          # src/client → client.js
-npm test                               # 单元测试；client.js 过期时也会失败
+npm test -- test/group-search.test.js  # 示例：只跑与改动相关的测试文件
 node scripts/build-client.mjs --check  # client.js 与 src/client 一致
 npm run lint                           # oxlint
 ```
 
-CI 在每个 Pull Request 上，在 Linux 和 Windows 上跑同样的三项检查。它还会扫描入库的文件，查找密钥、token、个人路径和邮箱，以及只应留在本地的材料。想自己扫描，在仓库根目录运行：
+CI 在 macOS 上运行全量单元测试、生成文件一致性检查和静态检查。它还会扫描入库的文件，查找密钥、token、个人路径和邮箱，以及只应留在本地的材料。想自己扫描，在仓库根目录运行：
 
 ```sh
 mkdir -p /tmp/ds-bot-tree && git archive HEAD | tar -x -C /tmp/ds-bot-tree && node scripts/scan.mjs /tmp/ds-bot-tree
@@ -155,7 +157,7 @@ dev/bench.sh dev 3081 8771 reset    # 模拟模型 + DSH Web；数据在 ../.dsh
 
 改上下文管家或它的提示词（`src/host/steward.js`）时，还要用真实模型检查。`dev/steward-eval.mjs` 在固定的对话结尾上跑它的决策，`dev/llm-tap.mjs` 记录真实测试台的每次调用。两者都花 token，用法写在文件开头。
 
-改 Bot 浏览器时，要在 DSH Desktop 里检查。在 Linux 上，`dev/desktop-linux/` 里的脚本用 Xvfb 运行 DSH Desktop；每个脚本的用法写在开头。
+改 Bot 浏览器时，要在 DSH Desktop 里检查。
 
 ## 写改动
 

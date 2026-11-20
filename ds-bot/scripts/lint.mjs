@@ -13,8 +13,6 @@ try {
   const common = execFileSync('git', ['-C', plugin, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim()
   candidates.push(join(dirname(common), 'deepseek-harness'))
 } catch {}
-// Node runs oxlint's own script: on Windows it cannot spawn the .cmd shim in node_modules/.bin
-// without a shell.
 const bin = candidates.filter(Boolean).map(dir => join(dir, 'node_modules', 'oxlint', 'bin', 'oxlint')).find(existsSync)
 if (!bin) {
   console.error('lint: no oxlint found; run npm run harness, or set DSH_HARNESS to a deepseek-harness checkout')

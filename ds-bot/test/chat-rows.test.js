@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { stackReplies } from '../src/shared/group-replies.js'
+import { parseReplies, stackReplies } from '../src/shared/group-replies.js'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
@@ -172,4 +172,12 @@ test('a marked final reply stacks onto earlier progress and keeps later messages
   assert.deepEqual(stacked[0].claims, claims)
   assert.deepEqual(stacked[1].texts, ['Follow-up'])
   assert.equal(stacked[1].claims, undefined)
+})
+
+test('pre-ledger relay results omit an embedded forwarding receipt, including after compaction', () => {
+  const receipt = { kind: 'user', text: "[intake-ea1c7802-d9e8-46b3-9625-a0a70837cfe8] Forwarded group message #3 to 小圈's own chat." }
+  const message = { botId: 'manager', text: 'Task assigned' }
+  const content = JSON.stringify({ replies: [receipt, message] })
+  assert.deepEqual(parseReplies(content), { replies: [message], broken: false })
+  assert.deepEqual(parseReplies(content.slice(0, -2)), { replies: [message], broken: true })
 })

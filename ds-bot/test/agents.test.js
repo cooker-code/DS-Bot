@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { TEAM_TOOLS } from '../src/host/constants.js'
 import { fakeContext } from './fake-ctx.js'
@@ -191,7 +192,7 @@ test('agents survive a state reload', async (t) => {
   await call('state', {})
   const agent = (await call('add-agent')).value
   // Restart on the saved file: the agent record is adopted, not lost.
-  const saved = readFileSync(join(home, 'state.json'), 'utf8')
+  const saved = JSON.stringify(savedTeam(home))
   await stop()
   const again = start(JSON.parse(saved))
   t.after(again.stop)

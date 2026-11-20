@@ -2,6 +2,23 @@
 
 All notable changes to DS Bot are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/). Before 1.0, a minor version can contain breaking changes.
 
+## Local plugin changes
+
+Local release dates and version numbers are listed in the [local release history](local-changelog.md).
+
+### Upstream changes adopted on 2026-11-20
+
+The [sync record](upstream-changelog.md#已合入本地工作区) lists the source pull requests for these changes.
+
+- Search the model menu and filter results with the keyboard. Local agents now start with the permission preset selected for their group, Bot or host.
+- Malformed model responses can be retried. Local agent errors retain their original cause, Claude accepts chunked input, and Antigravity sign-in detection works on macOS. On Windows, Pi now receives the resolved executable path at startup.
+- Group goals retain their idle-check budget during settlement. Scheduled task edits report fields the host would otherwise ignore.
+- Chat opens file links containing `#` or `?`. Failed form requests and crashed tabs now finish pending Bot browser operations.
+- Feishu handles button cards, rich text, files and mentions. QQ, DingTalk and WeChat receive images and files, and QQ passes voice transcripts to the Bot.
+- Slack supports manually configured sign-in clients and cleans up the callback listener. Slack bold text, Telegram code blocks and multiline QQ table cells retain their formatting.
+- Chats with long formulas skip rendering offscreen message bodies. Long-reply navigation shares a scroll listener, avatar loading limits concurrent reads, and connectors load authentication and WeCom connection dependencies on first use.
+- The settings page retains its height, brief reconnects avoid flashing a warning, slash-command descriptions stay with their commands, and provider badges stay inside their cards.
+
 ## [Unreleased]
 
 ## [0.3.8] - 2026-11-16
