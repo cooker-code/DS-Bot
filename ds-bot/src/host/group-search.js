@@ -8,9 +8,11 @@ const QUERY_MAX = 200
 
 // One result line: what the chat shows of a record. Records without text (a pause, a
 // failed turn) are skipped: there is nothing to find in them.
-function lineOf(record) {
+function lineOf(record, room) {
   if (typeof record?.text !== 'string' || record.text.trim() === '') return undefined
   const line = { seq: record.seq, time: record.time, text: record.text }
+  if (room?.archivedDiscussions?.some(row => record.seq >= row.from && record.seq <= row.to &&
+    (!row.scopes || row.scopes.includes(record.taskId ?? record.intakeId ?? null)))) line.archived = true
   if (record.botId !== undefined) line.botId = record.botId
   if (record.who !== undefined) line.name = record.who
   return line
@@ -20,7 +22,7 @@ function lineOf(record) {
 // oldest first, as the ledger keeps them. `before` (oldest seq already shown) and
 // `offset` continue into older hits. hasMore is true only when a further match
 // exists: filling the page does not by itself mean the book was cut.
-export function searchGroupBook(records, query, options) {
+export function searchGroupBook(records, query, options, room) {
   const terms = [...new Set(String(query ?? '').toLowerCase().slice(0, QUERY_MAX).split(/\s+/).filter(Boolean))].slice(0, TERMS_MAX)
   if (terms.length === 0) return { results: [], hasMore: false }
   const page = options ?? {}
@@ -34,7 +36,7 @@ export function searchGroupBook(records, query, options) {
     if (before !== undefined && !(Number.isInteger(record?.seq) && record.seq < before)) continue
     const text = typeof record?.text === 'string' ? record.text.toLowerCase() : ''
     if (text === '' || !terms.every(term => text.includes(term))) continue
-    const hit = lineOf(record)
+    const hit = lineOf(record, room)
     if (hit === undefined) continue
     if (skipped < offset) {
       skipped += 1
@@ -46,8 +48,8 @@ export function searchGroupBook(records, query, options) {
     }
     results.push({
       ...hit,
-      before: at > 0 ? lineOf(records[at - 1]) : undefined,
-      after: at + 1 < records.length ? lineOf(records[at + 1]) : undefined,
+      before: at > 0 ? lineOf(records[at - 1], room) : undefined,
+      after: at + 1 < records.length ? lineOf(records[at + 1], room) : undefined,
     })
   }
   return { results, hasMore }

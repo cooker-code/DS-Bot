@@ -2,6 +2,7 @@ import { createElement as h, Fragment, useEffect, useRef, useState } from 'react
 import { NotificationWatcher } from './notifications.js'
 import { createPortal } from 'react-dom'
 import { CommandPalette } from './palette.js'
+import { DiscussionArchive } from './discussion-archive.js'
 import { GroupSearch } from './group-search.js'
 import { NewChat } from './new-chat.js'
 import { ExchangeDialog } from './exchange.js'
@@ -72,6 +73,8 @@ export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useA
     pane ? createPortal(h(BotPanel, { pane, leaving: shown === null, room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }), document.body) : null,
     ui.newChat ? createPortal(h(NewChat, { key: `${ui.newChat}:${ui.newChatSection ?? ''}`, mode: ui.newChat, sectionId: ui.newChatSection ?? null, paneLeft: layout.column, roster, actions }), document.body) : null,
     ui.palette ? createPortal(h(CommandPalette, { key: ui.palette.token, start: ui.palette.query, token: ui.palette.token, roster, actions, useSessions }), document.body) : null,
+    ui.groupArchive && roster.roomsById[ui.groupArchive.roomId] ? createPortal(h(DiscussionArchive, { key: ui.groupArchive.token,
+      room: roster.roomsById[ui.groupArchive.roomId], request: ui.groupArchive, actions, roster, useUi }), document.body) : null,
     ui.groupSearch && roster.roomsById[ui.groupSearch.roomId]
       ? createPortal(h(GroupSearch, { key: ui.groupSearch.token, room: roster.roomsById[ui.groupSearch.roomId], roster, token: ui.groupSearch.token, actions }), document.body)
       : null,
