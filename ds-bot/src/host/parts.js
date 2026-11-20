@@ -1074,11 +1074,11 @@ export function install(rt) {
   // `cutoff`: the part kept being cut off at the output limit, so it moves on without
   // asking the model for a note at the same size.
   // `engine`: because the Bot now runs on something else (see engineMoved).
-  function startSwitch(agent, { resume = false, carry = [], info, joined, overflow = false, failed, bare = false, folder = false, manual = false, cutoff = false, engine = false, hard = overflow || folder || manual || engine || cutoff } = {}) {
+  function startSwitch(agent, { resume = false, carry = [], info, joined, overflow = false, failed, bare = false, folder = false, manual = false, summary = false, cutoff = false, engine = false, hard = overflow || folder || manual || engine || cutoff } = {}) {
     const place = placeOf(agent.id)
     if (place === undefined || switches.has(agent.id) || readOnly()) return
     const resumeOrigin = resume || place.botId === undefined ? rt.holdImOrigin?.(agent.id) : undefined
-    const job = { ...place, carry: [...carry], info, joined, resume, resumeOrigin, overflow, failed, bare, folder, engine, hard, manual, cutoff, since: Date.now() }
+    const job = { ...place, carry: [...carry], info, joined, resume, resumeOrigin, overflow, failed, bare, folder, engine, hard, manual, summary, cutoff, since: Date.now() }
     switches.set(agent.id, job)
     void runSwitch(agent, job)
       .catch(error => {
@@ -1257,7 +1257,7 @@ export function install(rt) {
     // Below the hard line a part without a good note stays as it is: it still works,
     // and a later try may write one. A CLI session that was asked for a note already
     // reads as moving on, so a part on one moves on with the package instead.
-    if (written === undefined && !job.hard && !job.engine && !local) {
+    if (written === undefined && (job.summary || (!job.hard && !job.engine && !local))) {
       const count = (noteFailures.get(agent.id)?.count ?? 0) + 1
       const wait = NOTE_COOLDOWN_MS[Math.min(count, NOTE_COOLDOWN_MS.length) - 1]
       noteFailures.set(agent.id, { count, until: Date.now() + wait })
@@ -1608,16 +1608,16 @@ export function install(rt) {
     const tokens = tokensOf(agent.session)
     if (lines === undefined || tokens === undefined || tokens < lines.check || !grown(agent.id, tokens, lines)) return
     const hard = tokens >= lines.hard
-    if (!hard && Date.now() < (noteFailures.get(agent.id)?.until ?? 0)) return
+    if ((!hard || summaryMode(agent.id)) && Date.now() < (noteFailures.get(agent.id)?.until ?? 0)) return
     checking.add(agent.id)
     try {
-      if (await decide(agent, { midTurn: false }) === 'compact') {
+      if (!summaryMode(agent.id) && await decide(agent, { midTurn: false }) === 'compact') {
         const condensed = await condense(agent, lines, { inTurn: false })
         if (condensed !== false) return
       }
       if (switches.has(agent.id)) return
       if (!await canMakeRoom(agent)) return
-      startSwitch(agent, { hard: (tokensOf(agent.session) ?? tokens) >= lines.hard })
+      startSwitch(agent, { summary: summaryMode(agent.id), hard: (tokensOf(agent.session) ?? tokens) >= lines.hard })
     } finally {
       checking.delete(agent.id)
     }
@@ -1647,7 +1647,7 @@ export function install(rt) {
     if (!past && !condensed) return
     checking.add(agent.id)
     try {
-      if (await decide(agent, { midTurn: false }) === 'compact') {
+      if (!(past && summaryMode(agent.id)) && await decide(agent, { midTurn: false }) === 'compact') {
         // The CLI has just condensed: there is nothing more to do until it grows.
         if (!past) {
           partBase.set(agent.id, tokens ?? 0)
@@ -1656,7 +1656,7 @@ export function install(rt) {
         if (await condense(agent, lines, { inTurn: false }) !== false) return
       }
       if (switches.has(agent.id) || !await canMakeRoom(agent)) return
-      startSwitch(agent, { hard: (sizeOf(agent.session) ?? tokens ?? 0) >= lines.hard })
+      startSwitch(agent, { summary: past && summaryMode(agent.id), hard: (sizeOf(agent.session) ?? tokens ?? 0) >= lines.hard })
     } finally {
       checking.delete(agent.id)
     }
@@ -1699,7 +1699,40 @@ export function install(rt) {
     return next()
   })
 
+  const summaryRequests = new Set()
+  const summaryMode = id => {
+    const owner = rt.groupOwners.get(id)
+    return owner && rt.roomOf(owner.roomId)?.contextPolicy === 'summary'
+  }
+  rt.memberContext = async (room, botId) => {
+    const id = room.sessions?.[botId]
+    if (!id) return {}
+    const { session } = await rt.resolveAgent(id)
+    const route = session.requestHeader()?.config
+    const local = localPart(session)
+    const cli = local && rt.localAgentContext?.(id)
+    const pressure = local ? undefined : ctx.get('sessionProjections')?.snapshot(session, ['contextPressure']).values?.contextPressure
+    const used = local ? cli?.used : pressure?.projectedTokens ?? pressure?.pressureTokens
+    const window = local ? cli?.size : pressure?.contextWindow
+    const reasoning = route?.provider && route.model ? await rt.reasoningOf(`${route.provider}/${route.model}`) : undefined
+    return { id, model: route?.model, effort: route?.reasoningEffort ?? reasoning?.defaultEffort,
+      supportsEffort: reasoning && Boolean(reasoning.efforts?.length),
+      percent: Number.isFinite(used) && window > 0 ? Math.min(100, Math.round(used * 100 / window)) : undefined,
+      status: switches.has(id) || summaryRequests.has(id) ? 'pending' : noteFailures.has(id) ? 'failed' : undefined }
+  }
+  rt.requestMemberSummary = async (room, botId, id) => {
+    if (!id || !room.members.includes(botId) || room.sessions?.[botId] !== id) throw new Error('The member session has changed.')
+    const agent = await rt.resolveAgent(id)
+    if (readOnly() || rt.roomOf(room.id) !== room || room.sessions?.[botId] !== id) throw new Error('The member session has changed.')
+    if (switches.has(id) || summaryRequests.has(id)) return
+    if (agent.status === 'idle') startSwitch(agent, { summary: true })
+    else summaryRequests.add(id)
+  }
   ctx.on('agent/status', ({ agent, status }) => {
+    if (status === 'idle' && summaryRequests.delete(agent.id) && rt.groupOwners.has(agent.id)) {
+      startSwitch(agent, { summary: true })
+      return
+    }
     if (status === 'idle' && rt.isBotSession(agent.id)) {
       releaseRescued(agent)
       void checkContext(agent).catch(error => rt.warn('ds-bot: context check for %s failed: %s', agent.id, error))

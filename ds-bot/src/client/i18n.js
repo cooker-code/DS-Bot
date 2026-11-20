@@ -11,6 +11,23 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "No reasoning levels": "不支持推理强度",
+  "Default reasoning": "默认推理强度",
+  "Session handoff": "会话接续",
+  "Let the system decide": "由系统判断",
+  "Automatically start with a summary": "接近上限时自动带摘要换段",
+  "For ongoing work, the system chooses whether to compress this session or start a new one.": "适合连续排查。系统根据工作进度选择在原会话压缩后继续，或另开一段接续。",
+  "For independent tasks. After a member reaches the warning level, start its next session with a summary at the end of its turn.": "适合相对独立的工作。成员达到预警线后，在本轮结束时带摘要换段。",
+  "Start with summary once": "本次带摘要换段",
+  "For a new topic. Carry a summary and recent messages into this member’s next session after the current reply. Keep the group preference.": "适合切换话题。当前回复结束后，所选成员带摘要和近期消息进入新段；仅本次生效。",
+  "Summary unavailable; previous session retained.": "摘要生成失败，已保留原会话。",
+  "Handoff requested": "已请求换段",
+  "Context unavailable": "上下文暂无数据",
+  "Model unknown": "模型未知",
+  "Configured: {model}": "配置模型：{model}",
+  "Reasoning: {effort}": "推理：{effort}",
+
+
   // Shared
   'Main Bot': '主 Bot',
   Working: '进行中',
