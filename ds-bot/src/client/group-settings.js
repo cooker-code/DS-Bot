@@ -85,10 +85,21 @@ function MemberControl({ view, member, room, roster, actions, run, update }) {
   const setting = Object.hasOwn(room.memberSettings ?? {}, member.id) ? room.memberSettings[member.id] : {}
   const change = patch => update({ memberSetting: { botId: member.id, ...patch } })
   const disabled = !!roster.readOnly
-  if (view === 'role') return h('select', { className: 'bt-select', disabled, 'aria-label': `${member.name} · ${t('Role')}`,
-    value: room.admin === member.id ? 'admin' : 'member',
-    onChange: e => update({ admin: e.target.value === 'admin' ? member.id : null }) },
-    h('option', { value: 'member' }, t('Member')), h('option', { value: 'admin' }, t('Admin')))
+  if (view === 'role') {
+    const admin = room.admin === member.id
+    const assistant = room.projectAssistantId === member.id
+    function setRole(role) {
+      if (role === 'assistant') return update({ projectAssistantId: member.id })
+      if (role === 'admin') return update({ admin: member.id, ...(assistant && { projectAssistantId: null }) })
+      return update(admin ? { admin: null, projectAssistantId: null } : { projectAssistantId: null })
+    }
+    return h('select', { className: 'bt-select', disabled, 'aria-label': `${member.name} · ${t('Role')}`,
+      value: admin ? 'admin' : assistant ? 'assistant' : 'member',
+      onChange: e => setRole(e.target.value) },
+      h('option', { value: 'member' }, t('Member')),
+      h('option', { value: 'admin' }, t('Admin')),
+      h('option', { value: 'assistant', disabled: !roster.byId[room.admin] || admin }, t('Task assistant')))
+  }
   if (view === 'model') return h('select', { className: 'bt-select', disabled, 'aria-label': `${member.name} · ${t('Model')}`,
     value: setting.model ?? '', onChange: e => change({ model: e.target.value || null }) },
     h('option', { value: '' }, t('Use Bot default')),
@@ -158,25 +169,23 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
       h(SwitchRow, { label: t('Enable task management'), on: enabled, disabled: !!roster.readOnly,
         hint: enabled ? undefined : t('Existing tasks are still available to view.'),
         onChange: taskManagementEnabled => update({ taskManagementEnabled }) }),
-      h(Row, { label: t('Task assistant'), hint: assistantInvalid ? t(assistantInvalid) : undefined },
-        h('select', { className: 'bt-select', 'aria-label': t('Task assistant'), disabled: !!roster.readOnly,
-          value: assistantInvalid ? 'invalid' : room.projectAssistantId ?? '',
-          onChange: event => update({ projectAssistantId: event.target.value || null }) },
-          assistantInvalid ? h('option', { value: 'invalid', disabled: true }, t('Invalid binding')) : null,
-          h('option', { value: '' }, admin ? t('Unassigned · group admin coordinates') : t('Unassigned · choose a group admin')),
-          members.filter(member => admin && member.id !== admin.id).map(member => h('option', { key: member.id, value: member.id }, member.name)))),
       h(ProjectWorkspacePolicy, { key: room.id, room, roster, actions, run, disabled: !enabled })),
     h(GroupPermission, { room, catalog: roster.permissions, update }),
     h(Card, { title: t('Members · {count}', { count: members.length }),
       headerAction: h(Segmented, { label: t('Member settings'), value: memberView }, memberViews.map(([id, label]) =>
         h('button', { key: id, type: 'button', 'aria-pressed': memberView === id, onClick: () => setMemberView(id) }, t(label)))) },
+      assistantInvalid && memberView === 'role' ? h(Row, { label: t('Invalid binding'), hint: t(assistantInvalid) },
+        h('select', { className: 'bt-select', value: 'invalid', disabled: !!roster.readOnly, 'aria-label': t('Invalid binding'),
+          onChange: () => update({ projectAssistantId: null }) },
+          h('option', { value: 'invalid', disabled: true }, t('Invalid binding')),
+          h('option', { value: 'member' }, t('Member')))) : null,
       members.map((member) => {
         const leads = room.admin === member.id
         return h('div', { key: member.id, className: 'bt-set-row bt-bs-row bt-gs-member' },
           h('button', { type: 'button', className: 'bt-gs-who', title: t("Open {name}'s chat", { name: member.name }), onClick: () => openBot(member.id) },
             h(BotAvatar, { bot: member, size: 26, main: isMainOf(roster, member.id), admin: leads, live: false }),
             h('span', { className: 'bt-row-title' }, member.name),
-            !assistantInvalid && member.id === room.projectAssistantId ? h('span', { className: 'bt-tag' }, t('Task assistant')) : null),
+            memberView !== 'role' && !assistantInvalid && member.id === room.projectAssistantId ? h('span', { className: 'bt-tag' }, t('Task assistant')) : null),
           h(MemberControl, { view: memberView, member, room, roster, actions, run, update }),
           members.length > 2 ? h('button', { type: 'button', className: 'bt-x', 'aria-label': t('Remove {name} from the group', { name: member.name }), title: t('Remove from group'), onClick: () => update({ remove: [member.id] }) }, '×') : null)
       }),

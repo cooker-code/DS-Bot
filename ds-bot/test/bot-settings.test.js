@@ -5,7 +5,10 @@ import { test } from 'node:test'
 import { build } from 'esbuild'
 
 const { outputFiles } = await build({
-  entryPoints: [fileURLToPath(new URL('../src/client/bot-settings.js', import.meta.url))],
+  stdin: {
+    contents: "export { BotSettingsForm, InlineText } from './bot-settings.js'; export { GroupSettingsForm } from './group-settings.js'",
+    resolveDir: fileURLToPath(new URL('../src/client/', import.meta.url)),
+  },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
   external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
 })
@@ -167,4 +170,37 @@ test('a field takes its class from the page it sits in, and defaults to the Sett
   assert.equal(InlineText({ label: 'Label', value: '' }).props.className, 'bt-bs-input')
   assert.equal(InlineText({ label: 'Instructions', value: '', multiline: true }).props.className, 'bt-bs-input bt-bs-area')
   assert.equal(InlineText({ label: 'Label', value: '', className: 'bt-drawer-role-input' }).props.className, 'bt-drawer-role-input')
+})
+
+test('member role selectors read and update the group assistant binding', () => {
+  const bots = ['a', 'b', 'c'].map(id => ({ id, name: id }))
+  const roster = { byId: Object.fromEntries(bots.map(bot => [bot.id, bot])), bots }
+  const room = { id: 'room', admin: 'a', members: bots.map(bot => bot.id), projectAssistantId: 'b' }
+  const actions = { updateRoom(id, patch) { assert.equal(id, room.id); Object.assign(room, patch) } }
+  const tree = () => walk(module.exports.GroupSettingsForm({ room, roster, actions, run: value => value }))
+  function role(id) {
+    const control = tree().find(node => node.props.member?.id === id && node.props.view === 'role')
+    return control.type(control.props)
+  }
+  const pick = (id, value) => role(id).props.onChange({ target: { value } })
+  assert.equal(tree().some(node => node.props.label === 'Task assistant'), false)
+  assert.equal(role('b').props.value, 'assistant')
+  pick('c', 'assistant')
+  assert.equal(role('b').props.value, 'member')
+  assert.equal(role('c').props.value, 'assistant')
+  pick('c', 'member')
+  assert.equal(room.projectAssistantId, null)
+  assert.equal(room.admin, 'a')
+  pick('b', 'assistant')
+  pick('b', 'admin')
+  assert.equal(room.projectAssistantId, null)
+  assert.equal(role('b').props.value, 'admin')
+  assert.equal(role('b').props.children.find(node => node.props.value === 'assistant').props.disabled, true)
+  pick('b', 'member')
+  assert.equal(role('c').props.children.find(node => node.props.value === 'assistant').props.disabled, true)
+  room.unresolvedTaskAssistant = 'old name'
+  tree().find(node => node.props['aria-label'] === 'Invalid binding').props.onChange()
+  assert.equal(room.projectAssistantId, null)
+  roster.readOnly = true
+  assert.equal(role('c').props.disabled, true)
 })

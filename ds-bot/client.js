@@ -32289,18 +32289,28 @@ function MemberControl({ view, member, room: room2, roster, actions, run: run2, 
   const setting = Object.hasOwn(room2.memberSettings ?? {}, member.id) ? room2.memberSettings[member.id] : {};
   const change = (patch) => update({ memberSetting: { botId: member.id, ...patch } });
   const disabled = !!roster.readOnly;
-  if (view === "role") return (0, import_react40.createElement)(
-    "select",
-    {
-      className: "bt-select",
-      disabled,
-      "aria-label": `${member.name} · ${t("Role")}`,
-      value: room2.admin === member.id ? "admin" : "member",
-      onChange: (e) => update({ admin: e.target.value === "admin" ? member.id : null })
-    },
-    (0, import_react40.createElement)("option", { value: "member" }, t("Member")),
-    (0, import_react40.createElement)("option", { value: "admin" }, t("Admin"))
-  );
+  if (view === "role") {
+    let setRole = function(role) {
+      if (role === "assistant") return update({ projectAssistantId: member.id });
+      if (role === "admin") return update({ admin: member.id, ...assistant && { projectAssistantId: null } });
+      return update(admin ? { admin: null, projectAssistantId: null } : { projectAssistantId: null });
+    };
+    const admin = room2.admin === member.id;
+    const assistant = room2.projectAssistantId === member.id;
+    return (0, import_react40.createElement)(
+      "select",
+      {
+        className: "bt-select",
+        disabled,
+        "aria-label": `${member.name} · ${t("Role")}`,
+        value: admin ? "admin" : assistant ? "assistant" : "member",
+        onChange: (e) => setRole(e.target.value)
+      },
+      (0, import_react40.createElement)("option", { value: "member" }, t("Member")),
+      (0, import_react40.createElement)("option", { value: "admin" }, t("Admin")),
+      (0, import_react40.createElement)("option", { value: "assistant", disabled: !roster.byId[room2.admin] || admin }, t("Task assistant"))
+    );
+  }
   if (view === "model") return (0, import_react40.createElement)(
     "select",
     {
@@ -32427,23 +32437,6 @@ function GroupSettingsForm({ room: room2, roster, actions, run: run2, onDeleted 
         hint: enabled ? void 0 : t("Existing tasks are still available to view."),
         onChange: (taskManagementEnabled2) => update({ taskManagementEnabled: taskManagementEnabled2 })
       }),
-      (0, import_react40.createElement)(
-        Row,
-        { label: t("Task assistant"), hint: assistantInvalid ? t(assistantInvalid) : void 0 },
-        (0, import_react40.createElement)(
-          "select",
-          {
-            className: "bt-select",
-            "aria-label": t("Task assistant"),
-            disabled: !!roster.readOnly,
-            value: assistantInvalid ? "invalid" : room2.projectAssistantId ?? "",
-            onChange: (event) => update({ projectAssistantId: event.target.value || null })
-          },
-          assistantInvalid ? (0, import_react40.createElement)("option", { value: "invalid", disabled: true }, t("Invalid binding")) : null,
-          (0, import_react40.createElement)("option", { value: "" }, admin ? t("Unassigned · group admin coordinates") : t("Unassigned · choose a group admin")),
-          members.filter((member) => admin && member.id !== admin.id).map((member) => (0, import_react40.createElement)("option", { key: member.id, value: member.id }, member.name))
-        )
-      ),
       (0, import_react40.createElement)(ProjectWorkspacePolicy, { key: room2.id, room: room2, roster, actions, run: run2, disabled: !enabled })
     ),
     (0, import_react40.createElement)(GroupPermission, { room: room2, catalog: roster.permissions, update }),
@@ -32453,6 +32446,22 @@ function GroupSettingsForm({ room: room2, roster, actions, run: run2, onDeleted 
         title: t("Members · {count}", { count: members.length }),
         headerAction: (0, import_react40.createElement)(Segmented, { label: t("Member settings"), value: memberView }, memberViews.map(([id, label]) => (0, import_react40.createElement)("button", { key: id, type: "button", "aria-pressed": memberView === id, onClick: () => setMemberView(id) }, t(label))))
       },
+      assistantInvalid && memberView === "role" ? (0, import_react40.createElement)(
+        Row,
+        { label: t("Invalid binding"), hint: t(assistantInvalid) },
+        (0, import_react40.createElement)(
+          "select",
+          {
+            className: "bt-select",
+            value: "invalid",
+            disabled: !!roster.readOnly,
+            "aria-label": t("Invalid binding"),
+            onChange: () => update({ projectAssistantId: null })
+          },
+          (0, import_react40.createElement)("option", { value: "invalid", disabled: true }, t("Invalid binding")),
+          (0, import_react40.createElement)("option", { value: "member" }, t("Member"))
+        )
+      ) : null,
       members.map((member) => {
         const leads = room2.admin === member.id;
         return (0, import_react40.createElement)(
@@ -32463,7 +32472,7 @@ function GroupSettingsForm({ room: room2, roster, actions, run: run2, onDeleted 
             { type: "button", className: "bt-gs-who", title: t("Open {name}'s chat", { name: member.name }), onClick: () => openBot(member.id) },
             (0, import_react40.createElement)(BotAvatar, { bot: member, size: 26, main: isMainOf(roster, member.id), admin: leads, live: false }),
             (0, import_react40.createElement)("span", { className: "bt-row-title" }, member.name),
-            !assistantInvalid && member.id === room2.projectAssistantId ? (0, import_react40.createElement)("span", { className: "bt-tag" }, t("Task assistant")) : null
+            memberView !== "role" && !assistantInvalid && member.id === room2.projectAssistantId ? (0, import_react40.createElement)("span", { className: "bt-tag" }, t("Task assistant")) : null
           ),
           (0, import_react40.createElement)(MemberControl, { view: memberView, member, room: room2, roster, actions, run: run2, update }),
           members.length > 2 ? (0, import_react40.createElement)("button", { type: "button", className: "bt-x", "aria-label": t("Remove {name} from the group", { name: member.name }), title: t("Remove from group"), onClick: () => update({ remove: [member.id] }) }, "×") : null
