@@ -118,6 +118,7 @@ export function menuItemFor(key, actions, subject) {
     case 'new-tab': return { key, icon: PlusTabIcon, label: t('New browser tab'), onPick: report(() => actions.browserNewTab(subject)) }
     case 'side': return { key, icon: SideIcon, label: t('Side chat'), onPick: report(() => actions.newSideChat(subject)) }
     case 'terminal': return { key, icon: TerminalIcon, label: t('Terminal'), onPick: report(() => actions.newTerminal()) }
+    case 'sidebar-browser': return { key, icon: GlobeIcon, label: t('Browser'), onPick: report(() => actions.openSidebarBrowser()) }
     case 'files': return { key, icon: FolderIcon, label: t('Files'), onPick: report(() => actions.openFiles()) }
     default: return { sep: true }
   }

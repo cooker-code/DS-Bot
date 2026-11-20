@@ -79,6 +79,31 @@ async function team(call) {
 }
 
 const user = (seq, text, time = seq) => ({ seq, time, type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text }] } })
+test('project-task-list reads one room at the same revision as the team view, including on a read-only host', async t => {
+  const { rt, call, stop } = start()
+  t.after(stop)
+  const { chief, writer, room } = await team(call)
+  const other = (await call('create-room', { name: 'Other', members: [chief, writer.id] })).value
+  const empty = (await call('project-task-list', { roomId: room.id })).value
+  assert.deepEqual(empty.tasks, [])
+  assert.deepEqual(empty.pendingIntakes, [])
+
+  const target = rt.roomOf(room.id)
+  target.projectCards = { current: { title: 'Scoped work', rounds: [{ ownerId: writer.id, assignedAt: 10 }] } }
+  target.projectInbox = [{ id: 'queued', status: 'pending' }, { id: 'handled', status: 'done' }]
+  rt.roomOf(other.id).projectCards = { elsewhere: { title: 'Other work' } }
+  const full = (await call('state', {})).value
+  const summary = full.rooms.find(entry => entry.id === room.id)
+  rt.readOnly = () => 'Another host is writing'
+  const result = await call('project-task-list', { roomId: room.id })
+  assert.deepEqual(result, { ok: true, value: {
+    roomId: room.id, revision: full.revision, tasks: summary.projectCards, pendingIntakes: summary.pendingIntakes,
+  } })
+  assert.deepEqual(result.value.tasks.map(task => [task.taskId, task.ownerId]), [['current', writer.id]])
+  assert.deepEqual(result.value.pendingIntakes.map(item => item.id), ['queued'])
+  assert.equal((await call('project-task-list', { roomId: 'missing' })).error.code, 'GROUP_CONTEXT_REQUIRED')
+})
+
 test('stop-chat ends a Bot own-chat turn, and answers false when nothing runs', async () => {
   const { call, emit, stop } = start()
   const { chief } = await team(call)
@@ -404,12 +429,12 @@ test('browser handoff open and settle clear browserHolds on unchanged-revision s
   assert.deepEqual(nextState.browserHolds, {})
 })
 
-test('switching to an earlier part closes open question and view cards instead of leaving orphaned keys', async (t) => {
+test('switching sessions preserves the previous session’s pending cards', async (t) => {
   const { call, ctx, rt, stop } = start()
   t.after(stop)
   const { chief } = await team(call)
   const bot = rt.botOf(chief)
-  const part1 = bot.sessionId
+  const part1 = rt.chatOf(chief)
   const part2 = `s-${randomUUID()}`
   bot.segments = [{ sessionId: part1, endedAt: 100 }]
   bot.sessionId = part2
@@ -421,6 +446,8 @@ test('switching to an earlier part closes open question and view cards instead o
 
   await rt.switchPart(chief, part1)
   const after = (await call('state', {})).value
-  assert.deepEqual(after.questions, {})
-  assert.deepEqual(after.views, {})
+  assert.equal(after.questions[part2].id, 'q-1')
+  assert.equal(after.views[part2].id, 'v-1')
+  assert.equal(after.questions[part1], undefined)
+  assert.equal(after.views[part1], undefined)
 })

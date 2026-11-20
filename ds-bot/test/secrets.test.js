@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { ShellEnvRegistry } from '@deepseek-ai/dsh-shell-env'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { install as installDiagnostics } from '../src/host/diagnostics.js'
 import { inject as hostInject, name as hostName } from '../src/host/entry.js'
@@ -172,7 +173,7 @@ test('a card saves a key the Bot never sees, and the shell gets it', async (t) =
   assert.deepEqual(team.secrets.map(secret => secret.name), ['DEMO_TOKEN'])
   // Nothing the browser gets holds the value.
   assert.ok(!JSON.stringify(team).includes(value))
-  assert.ok(!readFileSync(join(bench.home, 'state.json'), 'utf8').includes(value))
+  assert.ok(!JSON.stringify(savedTeam(bench.home)).includes(value))
 
   const note = bench.delivered.at(-1)
   assert.equal(note.sessionId, 'b2')

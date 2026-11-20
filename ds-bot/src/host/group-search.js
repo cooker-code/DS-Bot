@@ -2,15 +2,19 @@
 // search reads that book instead of a second store. A hit carries its neighbours so
 // the message can be read in context. Text stays whole: the list snippets it, and
 // opening a hit shows the line.
+import { isIntakeReceipt, taskCaption, taskMessage } from '../shared/task-message.js'
+
 const SEARCH_MAX = 20
 const TERMS_MAX = 8
 const QUERY_MAX = 200
 
 // One result line: what the chat shows of a record. Records without text (a pause, a
 // failed turn) are skipped: there is nothing to find in them.
-function lineOf(record) {
-  if (typeof record?.text !== 'string' || record.text.trim() === '') return undefined
-  const line = { seq: record.seq, time: record.time, text: record.text }
+function lineOf(record, room) {
+  if (typeof record?.text !== 'string' || record.text.trim() === '' || isIntakeReceipt(record)) return undefined
+  const line = { seq: record.seq, time: record.time, text: taskCaption(taskMessage(record.text, room)) }
+  if (room?.archivedDiscussions?.some(row => record.seq >= row.from && record.seq <= row.to &&
+    (!row.scopes || row.scopes.includes(record.taskId ?? record.intakeId ?? null)))) line.archived = true
   if (record.botId !== undefined) line.botId = record.botId
   if (record.who !== undefined) line.name = record.who
   return line
@@ -20,7 +24,7 @@ function lineOf(record) {
 // oldest first, as the ledger keeps them. `before` (oldest seq already shown) and
 // `offset` continue into older hits. hasMore is true only when a further match
 // exists: filling the page does not by itself mean the book was cut.
-export function searchGroupBook(records, query, options) {
+export function searchGroupBook(records, query, options, room) {
   const terms = [...new Set(String(query ?? '').toLowerCase().slice(0, QUERY_MAX).split(/\s+/).filter(Boolean))].slice(0, TERMS_MAX)
   if (terms.length === 0) return { results: [], hasMore: false }
   const page = options ?? {}
@@ -32,10 +36,10 @@ export function searchGroupBook(records, query, options) {
   for (let at = records.length - 1; at >= 0; at -= 1) {
     const record = records[at]
     if (before !== undefined && !(Number.isInteger(record?.seq) && record.seq < before)) continue
-    const text = typeof record?.text === 'string' ? record.text.toLowerCase() : ''
-    if (text === '' || !terms.every(term => text.includes(term))) continue
-    const hit = lineOf(record)
+    const hit = lineOf(record, room)
     if (hit === undefined) continue
+    const text = (hit.text === record.text ? hit.text : hit.text + '\n' + record.text).toLowerCase()
+    if (!terms.every(term => text.includes(term))) continue
     if (skipped < offset) {
       skipped += 1
       continue
@@ -46,8 +50,8 @@ export function searchGroupBook(records, query, options) {
     }
     results.push({
       ...hit,
-      before: at > 0 ? lineOf(records[at - 1]) : undefined,
-      after: at + 1 < records.length ? lineOf(records[at + 1]) : undefined,
+      before: at > 0 ? lineOf(records[at - 1], room) : undefined,
+      after: at + 1 < records.length ? lineOf(records[at + 1], room) : undefined,
     })
   }
   return { results, hasMore }

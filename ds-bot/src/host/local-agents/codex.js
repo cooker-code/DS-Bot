@@ -1,6 +1,7 @@
 // The Codex app-server engine: `codex app-server --listen stdio://`, one
 // JSON-RPC process per route that multiplexes threads. DS Bot Sessions map to
 // threads; turns stream item notifications back.
+import { prepareCodexSkills, verifyCodexSkills } from './codex-skills.js'
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
 import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from './discover.js'
 
@@ -46,11 +47,13 @@ export class CodexEngine {
   async startPeer() {
     const bin = findEngineExecutable(this.engine, name => this.findExecutable(name))
     if (bin === undefined) throw Object.assign(new Error(`${this.engine.name} is not installed`), { code: 'NO_ADAPTER' })
-    const child = spawnAgent(bin, this.engine.args ?? [], {
+    const selection = this.engine.managedSkills?.length ? prepareCodexSkills(this.engine.managedSkills) : undefined
+    const child = spawnAgent(bin, [...(this.engine.args ?? []), ...(selection?.args ?? [])], {
       env: cleanEnv(this.engine.env ?? {}),
       stdio: ['pipe', 'pipe', 'inherit'],
       windowsHide: true,
     })
+    this.selection = selection
     this.child = child
     const peer = this.peer = new JsonRpcPeer(line => child.stdin.write(`${JSON.stringify(line)}\n`))
     wireProcess(child, peer)
@@ -78,6 +81,9 @@ export class CodexEngine {
         throw Object.assign(new Error(`${this.engine.name} closed while starting`), { code: 'LOCAL_AGENT_EXIT' })
       }
       peer.notify('initialized', {})
+      if (selection?.roots.length) {
+        await peer.request('skills/extraRoots/set', { extraRoots: selection.roots }, { timeout: 30_000 })
+      }
       return peer
     } catch (error) {
       peer.close(error)
@@ -86,6 +92,7 @@ export class CodexEngine {
         this.peer = undefined
         terminateChild(child)
       }
+      if (selection?.roots.length && error.code === -32601) throw new Error('Update the local Codex CLI to load skill folders selected in DS Bot.')
       throw error
     }
   }
@@ -181,6 +188,7 @@ export class CodexEngine {
 
   async open(dshSessionId, { cwd, mcp, resumeId, mode, instructions, model, ephemeral }) {
     const peer = await this.ensure()
+    if (this.selection) await verifyCodexSkills(peer, cwd, this.engine.managedSkills, this.selection.selected)
     const thread = this.threadFor(dshSessionId)
     if (resumeId !== undefined) thread.threadId = resumeId
     // Codex 0.166 reads `ThreadStartParams` from the top level and takes the MCP

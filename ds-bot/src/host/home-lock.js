@@ -1,5 +1,5 @@
 // One writer per plugin home. dsh Web and dsh Desktop share ~/.dsh, and each host keeps
-// the team in memory and writes state.json whole, so two hosts at once would undo each
+// the team in memory and saves a team snapshot, so two hosts at once would undo each
 // other's changes. The first host to load takes `state.lock`; a second one only reads.
 //
 // The lock is a small JSON file (pid, host, a random token) whose mtime the holder bumps

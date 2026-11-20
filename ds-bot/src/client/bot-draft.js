@@ -47,7 +47,9 @@ export function runModeNotes({ bot, roster, target, agent }) {
     : t('Its own chat and {count} group chats each start a new part with a handoff before the next turn.', { count: groups })]
   notes.push(t('Earlier messages stay readable. Its memory and instructions stay the same.'))
   if (!isLocalRoute(target)) return notes
-  if ((bot.capabilities ?? []).length > 0) notes.push(t('Its shared MCP servers and skills do not reach a local agent.'))
+  if ((bot.capabilities ?? []).length > 0) notes.push(routeOf(target) === 'local-codex-cli'
+    ? t('Codex uses the skills enabled for this Bot. Shared MCP servers stay in DS Bot.')
+    : t('Its shared MCP servers and skills do not reach a local agent.'))
   if (agent?.signedIn === false) notes.push(t('{agent} is not signed in. Sign in first, or its turns fail.', { agent: agent.name }))
   if (bot.private === true) notes.push(t('The privacy rules of a private Bot do not cover the tools of a local agent.'))
   return notes

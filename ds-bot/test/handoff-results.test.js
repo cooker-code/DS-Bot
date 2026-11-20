@@ -1,3 +1,5 @@
+import { sqliteTeamStorage } from '../src/host/team-storage/sqlite.js'
+import { savedTeam } from './team-state.js'
 // The result of work a Bot handed on, when it is longer than state.json keeps: the
 // whole result has to survive a restart, so the Bot that asked for it gets all of it.
 import assert from 'node:assert/strict'
@@ -158,7 +160,7 @@ function turnTaker(agents, emit) {
 // The works the team file holds, once the saves made so far are done.
 const worksIn = async ({ call, home }) => {
   await call('set-prefs', {})
-  return JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).works ?? {}
+  return savedTeam(home).works ?? {}
 }
 const keptIn = home => (existsSync(join(home, 'handoff-results')) ? readdirSync(join(home, 'handoff-results')) : [])
 
@@ -319,14 +321,15 @@ test('a result that could not be written is not claimed, and is reported after a
 
 test('closing or dropping work retains result files until its state save succeeds', async (t) => {
   const { home } = bench(t)
-  const rt = { home, state: { works: {} }, botOf: () => undefined, readOnly: () => undefined, warn() {}, save: async () => {} }
+  const teamStorage = sqliteTeamStorage(join(home, 'team.sqlite'), join(home, 'state.json'))
+  const rt = { home, teamStorage, state: { works: {} }, botOf: () => undefined, readOnly: () => undefined, warn() {}, save: async () => {} }
   installHandoffs(rt)
   rt.openWork('parent', { from: 'a', to: 'b' })
   rt.openWork('child', { from: 'b', to: 'c', parent: 'parent' })
   rt.closeWork('child', 'Tester', LONG)
   await delay(0)
   const saved = JSON.parse(JSON.stringify(rt.state))
-  writeFileSync(join(home, 'state.json'), JSON.stringify(saved))
+  teamStorage.write(saved, () => {})
   assert.deepEqual(keptIn(home), ['child.txt'])
   let rejectSave
   rt.save = () => new Promise((resolve, reject) => { rejectSave = reject })
@@ -342,7 +345,7 @@ test('closing or dropping work retains result files until its state save succeed
   restarted.save = () => new Promise(resolve => { finishSave = resolve })
   restarted.dropWork('parent')
   assert.deepEqual(keptIn(home), ['child.txt'])
-  writeFileSync(join(home, 'state.json'), JSON.stringify(restarted.state))
+  teamStorage.write(restarted.state, () => {})
   finishSave()
   await delay(0)
   assert.deepEqual(keptIn(home), [])
@@ -350,14 +353,15 @@ test('closing or dropping work retains result files until its state save succeed
 
 test('a save that resolves without writing during shutdown keeps the durable result', async (t) => {
   const { home } = bench(t)
-  const rt = { home, state: { works: {} }, botOf: () => undefined, readOnly: () => undefined, warn() {}, save: async () => {} }
+  const teamStorage = sqliteTeamStorage(join(home, 'team.sqlite'), join(home, 'state.json'))
+  const rt = { home, teamStorage, state: { works: {} }, botOf: () => undefined, readOnly: () => undefined, warn() {}, save: async () => {} }
   installHandoffs(rt)
   rt.openWork('parent', { from: 'a', to: 'b' })
   rt.openWork('child', { from: 'b', to: 'c', parent: 'parent' })
   rt.closeWork('child', 'Tester', LONG)
   await delay(0)
   const saved = JSON.parse(JSON.stringify(rt.state))
-  writeFileSync(join(home, 'state.json'), JSON.stringify(saved))
+  teamStorage.write(saved, () => {})
   rt.closeWork('parent', 'Writer', LONG)
   await delay(0)
   assert.deepEqual(keptIn(home), ['child.txt'])

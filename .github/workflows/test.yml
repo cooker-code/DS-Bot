@@ -46,10 +46,12 @@ jobs:
       - run: npm run lint
 
   scan:
-    name: Leak scan
+    name: Repository checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check operator API documentation
+        run: python3 .agents/skills/ds-bot-doc/scripts/check_contract.py
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -61,7 +63,7 @@ jobs:
 
   # The one check that branch rules require. A job whose needs failed is skipped,
   # and GitHub counts a skipped required check as passed, so this job always runs
-  # and fails unless the plugin test matrix and leak scan passed.
+  # and fails unless the plugin test matrix and repository checks passed.
   result:
     name: Test result
     needs: [test, scan]

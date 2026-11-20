@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { LocalAgentAdapter } from '../src/host/local-agents/adapter.js'
 import { AcpEngine } from '../src/host/local-agents/acp.js'
@@ -184,7 +185,7 @@ async function start(t, { saved = team() } = {}) {
   // `modelSelection`: where the step is about to go, as DSH captured it for the step.
   const preStep = (sessionId, messages = [], step = 1, modelSelection) => ctx.listeners.get('agent/pre-step').at(-1)(
     { agent: agentOf(sessionId), messages, step, signal: AbortSignal.timeout(60_000), ...(modelSelection === undefined ? {} : { modelSelection }) }, async () => 'next')
-  const state = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = () => savedTeam(home)
   const handoffOf = sessionId => agentOf(sessionId).calls.filter(([kind, message]) => kind === 'followup' && message.source?.role === 'handoff').map(([, message]) => textOf(message)).at(-1)
   const startCount = () => (existsSync(starts) ? readFileSync(starts, 'utf8').trim().split('\n').length : 0)
   await tool('list_bots', {}, 'a')
@@ -691,7 +692,9 @@ test('the confirmation says what the change does to this Bot', () => {
   assert.match(plain[0], /^Its own chat starts/)
   const full = runModeNotes({ bot: { id: 'b', capabilities: ['x'], private: true }, roster, target: 'local-codex-cli/default', agent: { name: 'Codex', signedIn: false } })
   assert.match(full[0], /2 group chats/)
-  assert.ok(full.some(note => /MCP servers and skills/.test(note)))
+  assert.ok(full.some(note => /Codex uses the skills enabled for this Bot/.test(note)))
+  const claude = runModeNotes({ bot: { id: 'b', capabilities: ['x'] }, roster, target: 'local-claude-code/default' })
+  assert.ok(claude.some(note => /MCP servers and skills do not reach/.test(note)))
   assert.ok(full.some(note => /Codex is not signed in/.test(note)))
   assert.ok(full.some(note => /privacy rules/.test(note)))
   const toModel = runModeNotes({ bot: { id: 'b', capabilities: ['x'], private: true }, roster, target: 'ds/flash' })

@@ -4,11 +4,13 @@
 // ledger (relayRange); one from before the ledger holds the round's `replies`
 // itself, in the order the live view draws them.
 
+import { isIntakeReceipt } from './task-message.js'
+
 // The seq range of a round's rows, or undefined for a result from before the ledger.
 export function relayRange(text) {
   try {
     const value = JSON.parse(text)
-    if (Number.isInteger(value?.from)) return { from: value.from, ...(Number.isInteger(value.to) ? { to: value.to } : {}), ...(typeof value.anchor === 'string' ? { anchor: value.anchor } : {}) }
+    if (Number.isInteger(value?.from)) return { from: value.from, ...(Number.isInteger(value.to) ? { to: value.to } : {}), ...(typeof value.anchor === 'string' ? { anchor: value.anchor } : {}), ...(Array.isArray(value.errors) && { errors: value.errors }) }
   } catch { /* an older result, or one cut short */ }
   return undefined
 }
@@ -22,7 +24,7 @@ const RELAY_LIST = /"replies"\s*:\s*\[/
 // replies array to a naive scan, so the text is split on the marker first.
 const PRUNE_MARKER = /\[\.\.\. tool result middle pruned \.\.\.\]/
 export function parseReplies(text) {
-  try { return { replies: JSON.parse(text).replies ?? [], broken: false } } catch { /* fall through */ }
+  try { return { replies: (JSON.parse(text).replies ?? []).filter(reply => !isIntakeReceipt(reply)), broken: false } } catch { /* fall through */ }
   const replies = []
   const head = RELAY_LIST.exec(text)
   if (head) {
@@ -33,7 +35,7 @@ export function parseReplies(text) {
       if (first !== -1) scanReplies(piece, first, replies)
     }
   }
-  return { replies, broken: true }
+  return { replies: replies.filter(reply => !isIntakeReceipt(reply)), broken: true }
 }
 
 function scanReplies(text, start, replies) {

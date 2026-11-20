@@ -82,7 +82,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, intakeId, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -95,6 +95,7 @@ export function install(rt) {
       kind: SOURCE_KIND,
       form: 'relay',
       ...scopeFields(key),
+      ...(intakeSeq !== undefined ? { intakeSeq } : {}),
       role,
       exchangeId,
       senderName: fromName,
@@ -111,7 +112,13 @@ export function install(rt) {
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
     }
-    const targetSessionId = sessionId ?? rt.chatOf(toId)
+    const member = rt.groupOwners.get(sessionId) ?? rt.pastOwners.get(sessionId)
+    const destination = () => {
+      if (!member?.roomId || member.botId !== toId) return sessionId ?? rt.chatOf(toId)
+      const current = rt.roomOf(member.roomId)?.sessions?.[toId]
+      if (!current) throw new Error('The recipient no longer has a session in this group.')
+      return current
+    }
     // On disk before it goes out: a message the book could not keep is not sent, so none is
     // delivered with no record of it. A resend keeps the record it has; only a merged request
     // replaces it with its added text.
@@ -120,8 +127,12 @@ export function install(rt) {
       rt.ledger.append(book, { id: exchangeId, ...scopeFields(key), from: fromId, to: toId, role, text, time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
       await rt.ledger.written(book)
     }
-    await rt.ensureCapabilities(targetSessionId)
-    const agent = await resolveAgent(targetSessionId)
+    let agent, targetSessionId
+    do {
+      targetSessionId = destination()
+      await rt.ensureCapabilities(targetSessionId)
+      agent = await resolveAgent(targetSessionId)
+    } while (targetSessionId !== destination())
     // A steered message cuts into a running turn at its next step; a follow-up
     // queues for the next turn (see turns.js for how each is routed).
     const message = createUserMessage({

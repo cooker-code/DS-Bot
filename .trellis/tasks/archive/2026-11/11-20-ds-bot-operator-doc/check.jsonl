@@ -1,0 +1,1 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对分库、写锁、事务和回读证据"}

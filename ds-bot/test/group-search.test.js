@@ -77,3 +77,18 @@ test('a long line stays whole so the opened hit can show it', () => {
   assert.equal(results[0].before?.text, beside)
   assert.ok(results[0].text.endsWith('needle'))
 })
+
+test('room search resolves task titles and suppresses only system forwarding receipts', () => {
+  const id = '71b2d169-69e1-4ae0-9a06-3a4bd09527ae'
+  const room = { notice: '[taskId]', projectCards: { [id]: { title: '工程记忆', intakes: [] } } }
+  const receipt = '[intake-' + id + "] Forwarded group message #3 to 小圈's own chat."
+  const records = [
+    { seq: 1, who: 'User', text: receipt },
+    { seq: 2, who: 'DS Bot', text: receipt },
+    { seq: 3, botId: 'writer', text: '[' + id + '] 已送达' },
+  ]
+  assert.deepEqual(searchGroupBook(records, 'Forwarded', {}, room).results.map(hit => hit.seq), [1])
+  for (const query of ['工程记忆', id]) {
+    assert.equal(searchGroupBook(records, query, {}, room).results[0].text, '工程记忆\n\n已送达')
+  }
+})

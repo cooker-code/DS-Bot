@@ -1,8 +1,10 @@
 import { createElement as h, useEffect, useState } from 'react'
+import { taskManagementEnabled } from '../shared/task-settings.js'
+import { workspacePolicies, workspacePolicyOf } from '../shared/project-workspace.js'
 import { isMainOf } from './sources.js'
 import { PlusIcon, ChevronRightIcon } from './icons.js'
 import { AdminStar, BotAvatar, BotMark, RoomAvatar } from './mark.js'
-import { Card, Row, InlineText, SwitchRow } from './bot-settings.js'
+import { Card, Row, InlineText, MarkdownSetting, SwitchRow } from './bot-settings.js'
 import { Segmented } from './motion.js'
 import { FolderMenu } from './folder-menu.js'
 import { PermissionPicker } from './permission-picker.js'
@@ -62,6 +64,20 @@ export function GroupTodos({ room, actions }) {
         }, '×'))))
 }
 
+function ProjectWorkspacePolicy({ room, roster, actions, run, disabled }) {
+  const [busy, setBusy] = useState(false)
+  const save = async value => {
+    setBusy(true)
+    try { await run(actions.setProjectWorkspacePolicy(room.id, value)) } finally { setBusy(false) }
+  }
+  return h(Row, { label: t('Git workspace policy'), stack: true,
+    hint: [t('Applies to new plans and revisions. Each task card shows its branch.'),
+      workspacePolicyOf(room) === 'auto' && t('Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.')].filter(Boolean).join(' ') },
+    h('select', { className: 'bt-select', 'aria-label': t('Git workspace policy'), disabled: disabled || busy || !!roster.readOnly, value: workspacePolicyOf(room),
+      onChange: event => { void save(event.target.value) } }, Object.entries(workspacePolicies).map(([value, label]) =>
+      h('option', { key: value, value }, t(label)))))
+}
+
 // A group chat's settings as grouped cards: its name and notice, who answers, its
 // members and admin, its permissions, its sidebar place, and deleting it. The user may
 // change all of it; the host enforces what Bots may change.
@@ -76,6 +92,12 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
   const members = room.members.map(id => roster.byId[id]).filter(Boolean)
   const outside = roster.bots.filter(bot => !room.members.includes(bot.id))
   const admin = roster.byId[room.admin]
+  const enabled = taskManagementEnabled(room)
+  const assistantInvalid = room.unresolvedTaskAssistant ? 'The previous assistant name could not be matched to one member.'
+    : !room.projectAssistantId ? undefined
+    : !members.some(member => member.id === room.projectAssistantId) ? 'The appointed assistant has left the group.'
+    : !admin ? 'Choose a group admin to activate the assistant.'
+    : room.projectAssistantId === admin.id ? 'The appointed assistant is now the group admin.' : undefined
   const mode = shownMode(room, roster)
   const modeHint = ROOM_MODES.find(([id]) => id === mode)?.[2] ?? ''
   const update = patch => run(actions.updateRoom(room.id, patch))
@@ -93,8 +115,9 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
     h(Card, { title: t('Profile') },
       h(Row, { label: t('Name'), hint: t('Leave it empty to name the group after its members.') },
         h(InlineText, { label: t('Group name'), value: room.named ? room.name : '', placeholder: t('Name after members'), maxLength: 60, onSave: name => update({ name }) })),
-      h(Row, { label: t('Notice'), hint: t('Every member reads it before speaking in this group.'), stack: true },
-        h(InlineText, { label: t('Group notice'), value: room.notice, multiline: true, maxLength: 2000, placeholder: t('Shared instructions every member reads before speaking…'), onSave: notice => update({ notice }) }))),
+      h(MarkdownSetting, { key: room.id, title: t('Notice'), hint: t('Every member reads it before speaking in this group.'),
+        label: t('Group notice'), value: room.notice, maxLength: 2000,
+        placeholder: t('Group goals, notices and background…'), onSave: notice => update({ notice }) })),
     h(Card, { title: t('Who answers') },
       h('div', { className: 'bt-set-row bt-bs-row bt-bs-stack' },
         h(Segmented, { label: t('Who answers'), value: mode }, ROOM_MODES.map(([id, label]) => h('button', {
@@ -107,7 +130,35 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
       h('div', { className: 'bt-set-row bt-bs-row' },
         h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Folder'))),
         h(FolderMenu, { value: room.workDir, group: true, actions, run, onPick: workDir => update({ workDir }) }))),
+    h(Card, { title: t('Task management') },
+      h(SwitchRow, { label: t('Enable task management'), on: enabled, disabled: !!roster.readOnly,
+        hint: enabled ? undefined : t('Existing tasks are still available to view.'),
+        onChange: taskManagementEnabled => update({ taskManagementEnabled }) }),
+      h(Row, { label: t('Task assistant'), hint: assistantInvalid ? t(assistantInvalid) : undefined },
+        h('select', { className: 'bt-select', 'aria-label': t('Task assistant'), disabled: !!roster.readOnly,
+          value: assistantInvalid ? 'invalid' : room.projectAssistantId ?? '',
+          onChange: event => update({ projectAssistantId: event.target.value || null }) },
+          assistantInvalid ? h('option', { value: 'invalid', disabled: true }, t('Invalid binding')) : null,
+          h('option', { value: '' }, admin ? t('Unassigned · group admin coordinates') : t('Unassigned · choose a group admin')),
+          members.filter(member => admin && member.id !== admin.id).map(member => h('option', { key: member.id, value: member.id }, member.name)))),
+      h(ProjectWorkspacePolicy, { key: room.id, room, roster, actions, run, disabled: !enabled })),
     h(GroupPermission, { room, catalog: roster.permissions, update }),
+    h(Card, { title: t('Member settings') }, members.map(member => {
+      const setting = Object.hasOwn(room.memberSettings ?? {}, member.id) ? room.memberSettings[member.id] : {}
+      const hasDir = Object.hasOwn(room.memberDirs ?? {}, member.id)
+      const change = patch => update({ memberSetting: { botId: member.id, ...patch } })
+      return h('details', { key: member.id, className: 'bt-set-row bt-bs-stack' },
+        h('summary', null, member.name),
+        h(Row, { label: t('Instructions'), stack: true }, h('span', null, member.instructions || t('No instructions'))),
+        h(Row, { label: t('Model') }, h('select', { 'aria-label': t('Model'), value: setting.model ?? '',
+          onChange: e => change({ model: e.target.value || null }) },
+          h('option', { value: '' }, t('Use Bot default')),
+          (roster.models ?? []).map(m => h('option', { key: m.ref, value: m.ref }, m.name ?? m.ref)))),
+        h(Row, { label: t('Working folder'), hint: !hasDir ? t('Inherit group or Bot folder') : setting.override ? t('Member override') : t('Legacy member folder') },
+          h(FolderMenu, { value: hasDir ? room.memberDirs[member.id] : undefined, actions, run, onPick: workDir => change({ workDir }) }),
+          !hasDir || room.memberDirs[member.id] !== null || !setting.override ? h('button', { type: 'button', className: 'bt-mini', onClick: () => change({ workDir: '' }) }, t('Use team workspace')) : null,
+          hasDir ? h('button', { type: 'button', className: 'bt-mini', onClick: () => change({ workDir: null }) }, t('Use inherited folder')) : null))
+    })),
     h(Card, { title: t('Members · {count}', { count: members.length }) },
       members.map((member) => {
         const leads = room.admin === member.id
@@ -115,7 +166,7 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
           h('button', { type: 'button', className: 'bt-gs-who', title: t("Open {name}'s chat", { name: member.name }), onClick: () => openBot(member.id) },
             h(BotAvatar, { bot: member, size: 26, main: isMainOf(roster, member.id), admin: leads, live: false }),
             h('span', { className: 'bt-row-title' }, member.name),
-            leads ? h('span', { className: 'bt-tag' }, t('Admin')) : null),
+            leads ? h('span', { className: 'bt-tag' }, t('Admin')) : !assistantInvalid && member.id === room.projectAssistantId ? h('span', { className: 'bt-tag' }, t('Task assistant')) : null),
           leads
             ? h('button', { type: 'button', className: 'bt-mini', title: t('Leave the group without an admin'), onClick: () => update({ admin: null }) }, t('Unset'))
             : h('button', { type: 'button', className: 'bt-mini', onClick: () => update({ admin: member.id }) }, t('Make admin')),

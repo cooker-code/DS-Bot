@@ -227,6 +227,8 @@ body{--bt-qr-paper:#fff;--bt-qr-ink:#000}
 .bt-msg:not(:last-child)>.bt-msg-line>.bt-bubble{border-end-start-radius:6px}
 .bt-bubble [class*="_markdown"]>*+*{margin-top:10px}
 .bt-bubble [class*="_markdown"]{color:inherit!important;font-size:inherit!important;line-height:inherit!important}
+body:not([data-bt-layout=flat]) .bt-astack .bt-bubble{border:1px solid var(--bt-speaker,var(--bt-line))}
+.bt-message-task{margin-bottom:4px;color:var(--bt-ink-2);font-size:12px;line-height:16px;font-weight:600}
 .bt-bubble p{margin:0}
 .bt-bubble p + p{margin-top:6px}
 .bt-bubble ul,.bt-bubble ol{margin:4px 0;padding-left:20px}
@@ -496,6 +498,12 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .bt-kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:20px;color:var(--bt-ink-2)}
 .bt-kv span:last-child{color:var(--bt-ink);font-variant-numeric:tabular-nums}
+.bt-member-context,.bt-group-context small{display:block;color:var(--bt-ink-2);font-size:12px;overflow-wrap:anywhere}
+.bt-group-context details>div{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.bt-group-context summary{cursor:pointer}
+.bt-context-help{position:relative}
+.bt-context-help button{border:1px solid currentColor;border-radius:50%;background:transparent;color:inherit;width:20px;height:20px;padding:0}
+.bt-context-help [role=tooltip]{position:absolute;right:0;bottom:100%;z-index:4;width: min(190px,50vw);padding:8px;background:Canvas;color:CanvasText;border:1px solid;border-radius:6px}
 .bt-run-stats{display:flex;flex-wrap:wrap;justify-content:center;gap:0 6px;margin-top:-6px;font-size:12px;line-height:18px;color:var(--bt-ink-2);font-variant-numeric:tabular-nums}
 .bt-run-sep{color:var(--bt-ink-3)}
 .bt-danger{color:var(--bt-danger)}
@@ -538,11 +546,11 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-dropzone[data-over]{border-color:var(--bt-accent);color:var(--bt-ink)}
 .bt-dropzone img{width:64px;height:64px;border-radius:50%;object-fit:cover}
 .bt-set-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.bt-about{white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
-.bt-about[data-open]{display:block;-webkit-line-clamp:unset}
+.bt-about-heading{display:flex;align-items:center;justify-content:space-between}
+.bt-about{white-space:normal;overflow-wrap:anywhere;overflow:hidden}
+.bt-about:not([data-open]){max-height:5lh}
 .bt-about[data-editable]{margin:0 -6px;padding:2px 6px;border-radius:6px;cursor:text;transition:background-color .12s ease}
 .bt-about[data-editable]:hover{background:var(--bt-hover)}
-.bt-about[data-editable]:focus-visible{outline:2px solid var(--bt-accent);outline-offset:1px}
 .bt-more{border:0;background:none;color:var(--bt-ink-3);font-size:12px;line-height:16px;cursor:pointer;padding:2px 0}
 .bt-more:hover{color:var(--bt-ink)}
 .bt-subhead{display:flex;align-items:center;gap:4px;padding:10px 12px 4px}
@@ -582,7 +590,9 @@ body[data-ds-dark-theme] .bt-scrim{background:rgba(0,0,0,.5)}
 .bt-settings-icon>[data-slot="settings.section.icon"]>svg{display:block!important}
 .bt-settings-actions{margin-left:auto;display:flex;align-items:center;gap:8px;min-width:0}
 .bt-settings-actions:empty{display:none}
-.bt-dsh-section{min-width:0}
+/* Give height:100% plugin pages a definite flex height through DSH's boxless slot.
+   An auto basis without shrinking keeps natural-height content inside its section. */
+.bt-dsh-section{min-width:0;display:flex;flex-direction:column;flex:1 0 auto}
 /* A DSH page opens on its own title, which the dialog head already shows. */
 .bt-dsh-section>[data-slot]>*>h2:first-child,.bt-dsh-section>[data-slot]>*>:first-child>h2:first-child{display:none}
 .bt-dsh-item{min-width:0}
@@ -619,6 +629,7 @@ body[data-ds-dark-theme] .bt-scrim{background:rgba(0,0,0,.5)}
 .bt-settings-close:hover{background:var(--bt-active);color:var(--bt-ink)}
 .bt-settings-form{display:flex;flex-direction:column;gap:18px}
 .bt-set-section{display:flex;flex-direction:column;gap:8px}
+.bt-capabilities-head,.bt-skill-actions{flex-wrap:wrap}
 .bt-set-section>h3,.bt-la-sec-head>h3{font-size:13px;line-height:18px;font-weight:600;color:var(--bt-ink);margin:0;padding:0 4px}
 .bt-browser-settings{display:flex;flex-direction:column;gap:22px}
 .bt-set-card{border:.5px solid var(--bt-glass-rim);border-radius:12px;background:var(--bt-card);box-shadow:var(--bt-card-shadow);display:flex;flex-direction:column}
@@ -707,6 +718,10 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 .bt-connector-link{flex:none;padding:0;border:0;background:none;font:inherit;font-size:12px;color:var(--bt-ink-2);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .bt-connector-link:hover:not(:disabled){color:var(--bt-ink)}
 .bt-connector-wait{flex:1;min-width:0;font-size:12px;line-height:16px;color:var(--bt-ink-2)}
+.bt-connector-setup{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:10px;background:var(--bt-tag-bg);font-size:12px;line-height:16px;color:var(--bt-ink-2)}
+.bt-connector-setup p{margin:0}
+.bt-connector-setup-uri{display:flex;align-items:center;gap:6px;min-width:0}
+.bt-connector-uri{flex:1;min-width:0;padding:3px 6px;border-radius:6px;background:var(--bt-card);box-shadow:inset 0 0 0 .5px var(--bt-line-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:15px;color:var(--bt-ink);word-break:break-all}
 .bt-connector-aside{align-self:flex-start}
 .bt-connector-error{padding-left:48px;font-size:12px;line-height:16px;color:var(--bt-danger)}
 .bt-connector-banner{padding:0 0 8px}
@@ -1144,6 +1159,9 @@ export const CONVERSATION_CSS = `
    behind them unreadable. Where the blur does not take, the chat shows through the
    rows (issues 1113 and 935), so they get a solid fill. */
 [data-composer-overlay] [data-menu-material]{--dsw-menu-surface-fill:var(--bt-card)}
+/* DSH's row spans share no semantic hooks beyond the option; keep descriptions
+   beside their labels without changing their flex sizing or overflow. */
+[data-trigger-menu] [role=option]>span{text-align:left}
 .bt-think{font-size:13px;line-height:18px;color:var(--bt-ink-2);margin:2px 0 4px;max-width:calc(var(--bt-msg-w) * 100%)}
 body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
 .bt-think summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px}
@@ -1166,9 +1184,12 @@ body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
 .bt-event-whole>span:first-child{margin-right:2px}
 /* One button cannot wrap like separate parts, so a long name is cut to fit the chat. */
 .bt-event-whole>.bt-event-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Keep message tools outside paint containment. */
+.bt-bubble,.bt-ububble{content-visibility:auto;contain-intrinsic-size:auto 160px}
 .bt-time-sep{display:flex;justify-content:center;align-items:center;height:28px;margin:14px 0 8px;font-size:12px;line-height:16px;color:var(--bt-ink-2);white-space:nowrap}
 [class*="_scroll"]>[class*="_column"]::before{content:var(--bt-first-sep,none);display:block;flex:none;height:28px;margin:17px 0 12px;font-size:12px;line-height:28px;text-align:center;color:var(--bt-ink-2);white-space:nowrap}
 .bt-activity{display:flex;align-items:center;gap:10px;margin:8px 0 4px 2px;font-size:14px;color:var(--bt-ink-2)}
+.bt-archive-dialog{box-sizing:border-box;width:min(540px,92vw);max-height:78vh;padding:16px;border:1px solid var(--bt-line-2);border-radius:12px;background:Canvas;color:CanvasText;overflow:auto}.bt-archive-dialog::backdrop{background:#0006}.bt-archive-dialog header,.bt-archive-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:12px}.bt-archive-item{display:block;width:100%;box-sizing:border-box;text-align:start;padding:8px;border:0;background:transparent;color:inherit;overflow-wrap:anywhere}.bt-discussion-menu summary{cursor:pointer;width:fit-content;list-style:none;color:var(--bt-ink-2)}
 .bt-group-replies{display:contents}
 /* A Bot chat is flat in every work-details mode, without changing the user's mode
    (it is a DSH-wide setting): step groups lose their header and stay open, and what a
@@ -1421,13 +1442,15 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-earlier-top{display:flex;justify-content:center;align-items:center;height:34px;flex:none}
 .bt-earlier-top:empty{display:none}
 .bt-earlier-top .bt-soft{height:28px;font-size:12px;padding:0 12px}
-.bt-urow{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin:6px 0}
+.bt-urow{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin:12px 0 6px}
 .bt-ububble{max-width:calc(var(--bt-msg-w) * 100%);background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:14px;line-height:24px;box-sizing:border-box;overflow-wrap:anywhere;text-wrap:pretty;text-autospace:normal}
 .bt-ububble [class*="_markdown"],.bt-ububble a{color:inherit!important}
 .bt-ububble p{margin:0;line-height:24px}
 .bt-uimages{display:block;font-size:12px;opacity:.7}
 .bt-utime{margin-top:-4px;font-size:11px;line-height:14px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bt-earlier .bt-event{margin:4px 0}
+.bt-session-times{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:3px;white-space:normal;font-size:11px;font-weight:400;color:var(--bt-ink-2)}
+.bt-agent-session-meta{display:grid;justify-items:end;gap:3px}
 .bt-agent-sessions-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .bt-agent-sessions-new{display:inline-flex;align-items:center;gap:4px;border:0;background:none;padding:2px 6px;border-radius:6px;font-size:12px;color:var(--bt-ink-2);cursor:pointer}
 .bt-agent-sessions-new:hover{background:var(--bt-hover);color:var(--bt-ink-1,inherit)}
@@ -1435,11 +1458,12 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-agent-sessions{display:flex;flex-direction:column;border:1px solid var(--bt-line-2);border-radius:10px;overflow:hidden}
 .bt-agent-sessions-warn{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;padding:8px 10px;border:.5px solid color-mix(in srgb,var(--bt-warn) 40%,transparent);border-left:3px solid var(--bt-warn);border-radius:10px;background:color-mix(in srgb,var(--bt-warn) 13%,var(--bt-card));color:var(--bt-warn);font-size:13px;line-height:17px;font-weight:500}
 .bt-agent-sessions-warn svg{flex:none;width:15px;height:15px;margin-top:1px}
-.bt-agent-session{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:9px 12px;border:0;border-top:1px solid var(--bt-line-2);background:none;text-align:left;font-size:13px;color:var(--bt-ink-1,inherit);cursor:pointer}
+.bt-agent-session{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:9px 12px;border:0;border-top:1px solid var(--bt-line-2);background:none;text-align:left;font-size:13px;color:var(--bt-ink-1,inherit);cursor:pointer}
 .bt-agent-session:first-child{border-top:0}
 .bt-agent-session:hover:not(:disabled){background:var(--bt-hover)}
 .bt-agent-session.is-current{background:var(--bt-hover);cursor:default;font-weight:600}
-.bt-agent-session-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.bt-agent-session input{flex:none;margin:0;accent-color:var(--bt-accent)}
+.bt-agent-session-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .bt-agent-session-meta{flex:0 0 auto;font-size:12px;font-weight:400;color:var(--bt-ink-3,var(--bt-ink-2))}
 .bt-agent-activity{display:flex;flex-direction:column;gap:2px;margin:4px 0 6px;max-width:100%}
 .bt-agent-act{display:flex;align-items:center;gap:8px;min-height:22px;font-size:12.5px;line-height:18px;color:var(--bt-ink-2);min-width:0}

@@ -9,7 +9,7 @@
 // rebuild. Without SQLite, read_own_chat scans the logs as before.
 import { mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ANCHOR_LINE_MAX, HISTORY_PAGE, HISTORY_PAGES_MAX, HISTORY_TIMEOUT_MS, OWN_CHAT_BRIEF, OWN_CHAT_LINE_MAX, OWN_CHAT_READ, OWN_CHAT_SEARCH } from './constants.js'
+import { ANCHOR_LINE_MAX, HISTORY_PAGE, HISTORY_PAGES_MAX, HISTORY_TIMEOUT_MS, OWN_CHAT_LINE_MAX, OWN_CHAT_READ, OWN_CHAT_SEARCH } from './constants.js'
 import { excerpt } from './text.js'
 
 const INDEX_VERSION = 3
@@ -279,15 +279,5 @@ export function install(rt) {
   // The parts of a Bot's own chat, for the model: when each ran.
   const partIndex = parts => parts.map(part => `part ${part.number} (${rt.clock(part.startedAt)} – ${part.endedAt === undefined ? 'now' : rt.clock(part.endedAt)})`).join(', ')
 
-  async function ownChatBrief(member) {
-    let lines = []
-    try { lines = await latestOwnChat(member.id, { limit: OWN_CHAT_BRIEF }) } catch (error) { rt.warn('ds-bot: brief for %s failed: %s', member.name, error) }
-    return [
-      'Your own chat with the user so far (latest messages, oldest first; private, so share only what the group needs):',
-      lines.length > 0 ? lines.join('\n') : 'Nothing yet.',
-      'This brief does not change. Call read_own_chat when you need something newer or older from your own chat.',
-    ].join('\n')
-  }
-
-  Object.assign(rt, { eventsBackwards, searchOwnChat, latestOwnChat, aroundOwnChat, partIndex, ownChatBrief })
+  Object.assign(rt, { eventsBackwards, searchOwnChat, latestOwnChat, aroundOwnChat, partIndex })
 }

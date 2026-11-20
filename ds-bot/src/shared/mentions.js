@@ -52,7 +52,9 @@ export function referenceSpans(text, labels = []) {
 // Every "@Name" and "@all" outside code, links and references, in order. Longest names
 // match first, so "@新 Bot 2" is never "@新 Bot"; a name may hold spaces.
 export function mentionSpans(text, bots, { references = [] } = {}) {
-  const value = String(text ?? '')
+  // Preserve offsets while keeping quoted Markdown (including a clipped code
+  // fence) out of the literal and reference matchers for the user's own words.
+  const value = String(text ?? '').replace(/^ {0,3}>[^\n]*/gm, line => ' '.repeat(line.length))
   const skip = [
     ...[...value.matchAll(LITERAL)].map(match => ({ start: match.index, end: match.index + match[0].length })),
     ...referenceSpans(value, references),

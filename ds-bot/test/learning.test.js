@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { agentsAnswer, agentsProblem, agentsRequest, applyEdits, LEARNING, parseJson, skillProblem, withoutReviewedAgentsRecords } from '../src/host/learning.js'
 import { fakeContext } from './fake-ctx.js'
@@ -102,7 +103,7 @@ function start({ replies = [], config = {}, history = {}, seed = TEAM, learningS
   }
   const learningPath = join(home, 'learning', 'state.json')
   const learningState = () => existsSync(learningPath) ? JSON.parse(readFileSync(learningPath, 'utf8')) : {}
-  const teamState = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const teamState = () => savedTeam(home)
   const stop = async () => {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })

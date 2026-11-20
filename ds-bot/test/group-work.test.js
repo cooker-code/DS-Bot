@@ -1,8 +1,11 @@
+import { execFileSync } from 'node:child_process'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
 import { forwardProjectIntake } from '../src/host/project-intake.js'
 import { createRuntime } from '../index.js'
@@ -23,7 +26,7 @@ const seed = (room = {}, extraRooms = {}, bots = {}, top = {}) => ({
     c: { id: 'c', name: 'Tester', role: 'Test', sessionId: 'c', createdAt: 3, ...bots.c },
     ...(bots.d ? { d: { id: 'd', name: 'Reviewer', role: 'Review', sessionId: 'd', createdAt: 4, ...bots.d } } : {}),
   },
-  rooms: { r1: { id: 'r1', name: 'Ops', members: ['a', 'b', 'c'], mode: 'admin', admin: 'a', named: true, sessions: { a: 'ga', b: 'gb', c: 'gc' }, log: [], seq: 0, seen: {}, ...room }, ...extraRooms },
+  rooms: { r1: { id: 'r1', name: 'Ops', taskManagementEnabled: false, members: ['a', 'b', 'c'], mode: 'admin', admin: 'a', named: true, sessions: { a: 'ga', b: 'gb', c: 'gc' }, log: [], seq: 0, seen: {}, ...room }, ...extraRooms },
   agents: {},
   exchanges: [],
   exchangeTurns: {},
@@ -81,7 +84,7 @@ async function start(t, room, services, extraRooms, bots, llm, top, files = {}) 
   const turns = new Map()
   const emit = (id, type, data) => {
     for (const listener of ctx.listeners.get('session/event') ?? []) {
-      if (listener.length >= 2) listener({ id }, { type, seq: ++seq, data })
+      if (listener.length >= 2) listener(agentOf(id).session, { type, seq: ++seq, data })
     }
   }
   const emitScoped = (parentId, name, info) => {
@@ -91,8 +94,7 @@ async function start(t, room, services, extraRooms, bots, llm, top, files = {}) 
   const tool = (name, args, sessionId, exec = {}) => rt.teamTools.find(d => d.name === name).execute(args, { agent: { id: sessionId }, ...exec })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   // A Session takes up the newest message it was sent, as a new turn.
-  const begin = (sessionId) => {
-    const message = agentOf(sessionId).calls.at(-1)
+  const begin = (sessionId, message = agentOf(sessionId).calls.at(-1)) => {
     agentOf(sessionId).inbox.nextTurn.length = 0
     agentOf(sessionId).inbox.nextStep.length = 0
     const turn = (turns.get(sessionId) ?? 0) + 1
@@ -117,7 +119,7 @@ async function start(t, room, services, extraRooms, bots, llm, top, files = {}) 
     read.cancel = () => { stop.abort(); rt.stopRoomRound(rt.roomOf(sessionId)?.id ?? sessionId) }
     return read
   }
-  const say = text => ({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+  const say = (text, taskId) => ({ content: [{ type: 'text', text }], source: { kind: 'user', ...(taskId && { taskId }) } })
   const takePost = () => {
     const post = agentOf('r1').calls.shift()
     return { content: post.content, source: post.source }
@@ -167,7 +169,7 @@ test('work past the grace lets the round go on, and the member that asked answer
   await settle(() => host.agentOf('ga').calls.length === 2)
   assert.match(text(host.agentOf('ga').calls[1]), /Writer: 整理好了，在 docs\/ 下。/)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => second() !== undefined)
   assert.deepEqual(host.agentOf('gc').calls, [])
 })
@@ -350,7 +352,7 @@ test('late work whose result went out as a step line still tells the member that
   await settle(() => third() !== undefined)
   assert.deepEqual(kinds(third()), [['done', 'Writer'], ['message', 'Chief']])
   assert.deepEqual(host.agentOf('gc').calls, [])
-  const log = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1.log.map(line => [line.who, line.kind ?? 'message'])
+  const log = savedTeam(host.home).rooms.r1.log.map(line => [line.who, line.kind ?? 'message'])
   assert.deepEqual(log.slice(-3), [['Writer', 'message'], ['Writer', 'done'], ['Chief', 'message']])
 })
 
@@ -416,7 +418,7 @@ test('replies that arrive after the wait for a group was given up come back mark
   assert.equal(report.source.work, undefined)
   // The note that told the late answer apart is used up, and it stays that way.
   await host.call('set-prefs', {})
-  const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(host.home)
   assert.equal(saved.works[groupWork], undefined)
   assert.deepEqual(saved.abandonedWorks ?? {}, {})
   // Chief no longer waits for the group.
@@ -575,11 +577,11 @@ test('a late post that calls a member reaches it every time, with no count to st
     const round = host.round(`c${turn}`, post)
     await settle(() => host.agentOf('gc').calls.length === turn)
     host.begin('gc')
-    host.finish('gc', '[PASS]')
+    host.finish('gc', '')
     await settle(() => round() !== undefined)
     assert.equal(round().replies.filter(reply => reply.kind === 'paused').length, 0)
   }
-  const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1
+  const saved = savedTeam(host.home).rooms.r1
   assert.equal(saved.relays, undefined)
   assert.equal(saved.paused, undefined)
 })
@@ -587,7 +589,7 @@ test('a late post that calls a member reaches it every time, with no count to st
 // #198: a post during a running round waited for the round's own relay before
 // anyone could see it. It is written into the log and the running round at once,
 // and the relay it still opens shows it again nowhere.
-const logLines = host => JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1.log
+const logLines = host => savedTeam(host.home).rooms.r1.log
 const busyRound = async (t, room, services) => {
   const host = await start(t, room, services)
   const first = host.round('c1', host.say('@Writer 整理文档'))
@@ -657,7 +659,7 @@ test('a late reply during a running round is logged at once, called in that roun
   host.finish('ga', '确认过了。')
   await settle(() => host.agentOf('ga').calls.length === 3)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => second() !== undefined)
   assert.ok(second().replies.some(reply => reply.botId === 'b' && reply.text === '整理好了，在 docs/ 下。'))
   assert.equal(host.agentOf('ga').calls.length, 3)
@@ -985,7 +987,7 @@ test('a member post that names nobody is rejected with report_back', async (t) =
   assert.match(posted, /Nobody would answer: your post only calls the members you name/)
   assert.equal(host.agentOf('r1').calls.length, 0)
   assert.equal(logLines(host).length, 0)
-  assert.deepEqual(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).works ?? {}, {})
+  assert.deepEqual(savedTeam(host.home).works ?? {}, {})
 })
 
 test('a member post during a running round is logged at once and calls nobody next', async (t) => {
@@ -1054,7 +1056,7 @@ test('the user stops a member\'s work in a group, and the group shows it', async
   const result = host.round('c1', post)
   await settle(() => result() !== undefined)
   assert.deepEqual(kinds(result()), [['stopped', 'Writer']])
-  const log = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1.log
+  const log = savedTeam(host.home).rooms.r1.log
   assert.deepEqual(log.map(line => [line.who, line.kind]), [['Writer', 'stopped']])
 })
 
@@ -1179,7 +1181,7 @@ test('a member whose delivery failed sees the round it missed in its next prompt
   await settle(() => first() !== undefined)
   assert.deepEqual(kinds(first()), [['message', 'Chief'], ['failed', 'Writer']])
   // The failed delivery leaves the member where it was: it has read nothing yet.
-  assert.equal(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1.seen.b, undefined)
+  assert.equal(savedTeam(host.home).rooms.r1.seen.b, undefined)
 
   // Its next prompt carries the round it missed.
   const second = host.round('c2', host.say('@Writer 继续'))
@@ -1235,7 +1237,7 @@ test('what a member writes while it works shows in the round at once, and its @ 
   await settle(() => result() !== undefined)
   assert.deepEqual(result().replies.map(reply => [reply.name, reply.text]), [['Writer', '收到，我先看看 docs/ 的结构。@Tester 你等下帮我验一下'], ['Tester', '验过了。'], ['Writer', '整理好了。']])
   assert.equal(host.agentOf('gc').calls.length, 1, 'one call per turn, however many lines name the member')
-  const log = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1.log
+  const log = savedTeam(host.home).rooms.r1.log
   assert.deepEqual(log.map(line => line.who), ['User', 'Writer', 'Tester', 'Writer'])
 })
 
@@ -1607,8 +1609,8 @@ test('a member that passes on the promise retry is posted once (#872)', async (t
   host.finish('gb', '好的，我看看。')
   await settle(() => host.agentOf('gb').calls.length === 2)
   const retry = host.begin('gb')
-  assert.match(text(retry), /reply \[PASS\]; it stays posted/)
-  host.finish('gb', '[PASS]')
+  assert.match(text(retry), /call skip_group_turn; it stays posted/)
+  host.finish('gb', '')
   await settle(() => first() !== undefined)
   assert.deepEqual(first().replies.map(reply => [reply.name, reply.text]), [['Writer', '好的，我看看。']])
 })
@@ -1624,7 +1626,7 @@ test('a late member that passes on the promise retry still hands the work back (
   await settle(() => host.agentOf('gb').calls.length === 2 && host.agentOf('r1').calls.length === 1)
   assert.equal(host.takePost().source.progress, true, 'the opening goes to the group')
   host.begin('gb')
-  host.finish('gb', '[PASS]')
+  host.finish('gb', '')
   await settle(() => host.agentOf('r1').calls.length === 1)
   const post = host.takePost()
   assert.deepEqual([post.source.done, post.source.askedBy], [true, 'a'])
@@ -1653,7 +1655,7 @@ test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only
   const pausedReplies = first().replies.filter(reply => reply.kind === 'paused')
   assert.equal(pausedReplies.length, 1)
   assert.deepEqual([pausedReplies[0].idle, pausedReplies[0].botId, pausedReplies[0].names], [true, 'a', ['Writer']])
-  const saved = () => JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).rooms.r1
+  const saved = () => savedTeam(host.home).rooms.r1
   assert.deepEqual(saved().paused.map(entry => [entry.id, entry.idle]), [['b', true]])
   assert.match(await host.tool('read_group_chat', { group: 'Ops' }, 'a'),
     /\[Paused: Chief and Writer went back and forth 6 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
@@ -1668,9 +1670,9 @@ test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only
   const third = host.round('c3', host.say('好了，说正事'))
   await settle(() => host.agentOf('gb').calls.length === 4 && host.agentOf('ga').calls.length === 5)
   assert.match(text(host.begin('gb')), /Chief mentioned you/)
-  host.finish('gb', '[PASS]')
+  host.finish('gb', '')
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => third() !== undefined)
   assert.equal(saved().paused, undefined)
 })
@@ -1750,7 +1752,7 @@ for (const noticeFirst of [true, false]) {
     host.emitScoped('gb', 'subagent/end', ending)
     if (!noticeFirst) host.emit('gb', 'user/message', notice)
     host.emit('gb', 'turn/start', { turn: 2 })
-    host.finish('gb', '[PASS]')
+    host.finish('gb', '')
     await until(() => rt.state.revision > revBefore)
     assert.deepEqual(host.agentOf('r1').calls, [], 'no fake empty round is posted to the group Session')
     const view = (await host.call('group-rows', { roomId: 'r1', from: first().from, anchor: first().anchor })).value
@@ -1787,7 +1789,7 @@ for (const [reason, summary] of [['error', 'failed before it finished.'], ['max-
     const revBefore = rt.state.revision
     host.emit('gb', 'user/message', notice)
     host.emit('gb', 'turn/start', { turn: 2 })
-    host.finish('gb', '[PASS]')
+    host.finish('gb', '')
     await until(() => rt.state.revision > revBefore)
     assert.deepEqual(host.agentOf('r1').calls, [])
     const view = (await host.call('group-rows', { roomId: 'r1', from: first().from, anchor: first().anchor })).value
@@ -1856,7 +1858,7 @@ test('a helper failure in a running round preserves the idle guard, does not mar
   assert.equal(room.log.filter(row => row.reason === 'helper-failed').length, 1)
   assert.equal(room.log.filter(row => row.botId === 'b').length, 0)
   host.emitScoped('gb', 'subagent/end', { id: 'sub-1', stopReason: 'completed', runId: 'run-1', provider: 'spawn', local: true })
-  host.finish('gb', '[PASS]')
+  host.finish('gb', '')
   await settle(() => round() !== undefined)
   assert.equal(round().failed, undefined, 'member own turn was not marked failed')
 })
@@ -1940,7 +1942,7 @@ test('a member two Bots called wakes each of them for its own call when it finis
   assert.equal(wakeNote(host.agentOf('ga').calls[1]), 'Writer finished the work you asked for')
   assert.equal(host.agentOf('gc').calls.length, 1, 'Tester is not woken for Chief\'s call')
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 
   await settle(() => host.agentOf('gb').calls.length === 2)
   assert.equal(wakeNote(host.agentOf('gb').calls[1]), 'Tester mentioned you')
@@ -1952,7 +1954,7 @@ test('a member two Bots called wakes each of them for its own call when it finis
   assert.match(text(host.agentOf('gc').calls[1]), /Writer: 测试跑完，全过。/)
   assert.equal(host.agentOf('ga').calls.length, 2, 'Chief is not woken for Tester\'s call')
   host.begin('gc')
-  host.finish('gc', '[PASS]')
+  host.finish('gc', '')
   await settle(() => first() !== undefined)
   assert.equal(rt.roomBatchPending('r1'), false)
 })
@@ -2009,7 +2011,7 @@ test('a member two Bots called wakes each of them for its own call when it finis
   assert.match(text(host.agentOf('ga').calls[1]), /Writer: R1：日志里缺环境变量 FOO。/)
   assert.match(text(host.agentOf('ga').calls[1]), /Tester: R2：测试全过。/)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => wake() !== undefined)
   assert.equal(host.agentOf('gc').calls.length, 1, 'Tester is not woken for Chief\'s call')
 
@@ -2028,7 +2030,7 @@ test('a member two Bots called wakes each of them for its own call when it finis
   assert.match(text(host.agentOf('gc').calls[1]), /Writer: R3：磁盘还剩 40G。/)
   assert.equal(host.agentOf('ga').calls.length, 2, 'Chief is not woken for Tester\'s call')
   host.begin('gc')
-  host.finish('gc', '[PASS]')
+  host.finish('gc', '')
   await settle(() => third() !== undefined)
   assert.equal(rt.roomBatchPending('r1'), false)
 })
@@ -2073,7 +2075,7 @@ test('a late pass inside a parallel batch posts its change line quietly', async 
   const changes = { sessionId: 'gb', seq: 21, turn: 5, total: 1, added: 4, deleted: 1, files: [{ path: 'batch.md', added: 4, deleted: 1 }] }
   rt.turnChanges = async sessionId => (sessionId === 'gb' ? changes : undefined)
   host.emit('gb', 'tool/result', { callId: 'k1' })
-  host.finish('gb', '[PASS]')
+  host.finish('gb', '')
   await settle(() => host.agentOf('r1').calls.length > 0)
   const post = host.takePost()
   assert.equal(post.source.done, true)
@@ -2134,7 +2136,7 @@ test('a batch wake does not repeat a result that its prompt shows anyway', async
   assert.equal(count(text(wake), 'R2-TESTER'), 1)
   assert.ok(!text(wake).includes(RESULTS))
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 // An answer that came inside the round is a result too, and a long wait lets it leave the
@@ -2179,7 +2181,7 @@ test('a batch wake reads a result that left the room\'s log from the group\'s ow
   assert.equal(count(text(wake), 'Tester: R2-TESTER：测试全过。'), 1)
   assert.equal(count(text(wake), 'R1-WRITER'), 1)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 test('a batch wake names the message of a result it cannot read', async (t) => {
@@ -2193,7 +2195,7 @@ test('a batch wake names the message of a result it cannot read', async (t) => {
   assert.match(prompt, new RegExp(`\\[Tester's result, message #${seq}, is not available here; read_group_chat with seq ${seq} reads it\\]`))
   assert.equal(count(prompt, 'R1-WRITER'), 1)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 test('a batch wake brings the images and files of a result line along', async (t) => {
@@ -2209,7 +2211,7 @@ test('a batch wake brings the images and files of a result line along', async (t
   assert.deepEqual(wake.content.filter(block => block.type === 'file').map(block => block.attachment), [attachment])
   assert.deepEqual(wake.content.filter(block => block.type === 'image').map(block => block.attachment), [image])
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 // Three Bots call one member: a call of another Bot stays a call of its own, answered by
@@ -2239,7 +2241,7 @@ test('a member three Bots called answers each call in a turn of its own and wake
     assert.match(text(host.agentOf(caller).calls[1]), new RegExp(`Writer: ${work}做完了。`))
     for (const [other] of turns.slice(index + 1)) assert.equal(host.agentOf(other).calls.length, 1, `${other} is not woken for another call`)
     host.begin(caller)
-    host.finish(caller, '[PASS]')
+    host.finish(caller, '')
   }
   await settle(() => first() !== undefined)
   assert.equal(rt.roomBatchPending('r1'), false)
@@ -2266,11 +2268,11 @@ test('a batch that takes over from an emptied one keeps its finished work', asyn
   assert.equal(wakeNote(wake), 'Tester and Writer finished the work you asked for')
   assert.match(text(wake), /Tester: R2-TESTER：测试全过。/)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   // The second call still gets its turn.
   await settle(() => host.agentOf('gb').calls.length === 2)
   host.begin('gb')
-  host.finish('gb', '[PASS]')
+  host.finish('gb', '')
   await settle(() => first() !== undefined)
 })
 
@@ -2292,7 +2294,7 @@ test('a batch whose last member fails wakes the caller with the results of the o
   assert.equal(count(text(wake), 'R1-WRITER'), 1)
   assert.ok(text(wake).includes(RESULTS))
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 test('a result posted early is taken in after its batch finished, and the wake still carries it', async (t) => {
@@ -2316,7 +2318,7 @@ test('a result posted early is taken in after its batch finished, and the wake s
   assert.equal(count(text(wake), 'R1-WRITER'), 1)
   assert.equal(count(text(wake), 'R2-TESTER'), 1)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 test('a wake reads a long result that left the room\'s log whole', async (t) => {
@@ -2326,7 +2328,7 @@ test('a wake reads a long result that left the room\'s log whole', async (t) => 
   assert.ok(prompt.includes(`Tester: ${'长'.repeat(5000)}`))
   assert.ok(!prompt.includes('was not kept'))
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 // A member that gave up its place in the round (it waits for an approval) works for the
@@ -2352,7 +2354,7 @@ test('work a member does after it gave up its place in the round still counts fo
   assert.equal(wakeNote(wake), 'Writer and Tester finished the work you asked for')
   assert.match(text(wake), /Writer: 文档已改完。/)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => first() !== undefined)
 })
 
@@ -2371,7 +2373,7 @@ test('tool work done for one Bot\'s call does not count as work for another Bot\
   host.finish('gb', '甲做完了。')
   await settle(() => host.agentOf('ga').calls.length === 2)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   // Tester's call is answered in words alone.
   await settle(() => host.agentOf('gb').calls.length === 2)
   host.begin('gb')
@@ -2388,7 +2390,7 @@ test('a batch wake says which member finished with no closing message of its own
   step(host, 'gb', 'R1-WRITER：日志结论是缺环境变量 FOO。', 'p1')
   await relay()
   host.emit('gb', 'tool/result', { callId: 'p1' })
-  host.finish('gb', '[PASS]')
+  host.finish('gb', '')
   for (let i = 0; i < 30; i += 1) await new Promise(resolve => setImmediate(resolve))
   assert.equal(host.agentOf('ga').calls.length, 1, 'Tester is still at work')
   host.emit('gc', 'tool/result', { callId: 'k2' })
@@ -2400,7 +2402,7 @@ test('a batch wake says which member finished with no closing message of its own
   assert.ok(text(wake).includes('Finished without a closing message: Writer.'))
   assert.ok(!text(wake).includes('Finished without a closing message: Writer and'))
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 // #977: a final reply that announces work while no tool, job or subagent runs is marked
@@ -2439,7 +2441,7 @@ test('work that did run, a peer handoff and an existing file in a spaced folder 
   host.finish('gb', '正在导出报告到 [report.pptx](report.pptx)，稍后汇报。')
   await settle(() => host.agentOf('ga').calls.length === 2)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => first() !== undefined)
   for (const reply of first().replies) assert.equal(reply.claims, undefined)
 })
@@ -2508,7 +2510,7 @@ test('a late pass that changed files posts its completion line', async (t) => {
   const host = await start(t)
   const changes = { sessionId: 'gb', seq: 12, turn: 3, total: 1, added: 2, deleted: 0, files: [{ path: 'late.md', added: 2, deleted: 0 }] }
   rt.turnChanges = async () => changes
-  await rt.lateRoomReply('gb', {}, '[PASS]', { toolCount: 1 })
+  await rt.lateRoomReply('gb', {}, '', { toolCount: 1 })
   const post = host.takePost()
   assert.equal(post.source.done, true)
   assert.deepEqual(post.source.changes, changes)
@@ -2521,7 +2523,7 @@ test('a late pass that changed files posts its completion line', async (t) => {
 test('a late pass that changed nothing posts nothing', async (t) => {
   const host = await start(t)
   rt.turnChanges = async () => undefined
-  await rt.lateRoomReply('gb', {}, '[PASS]', { toolCount: 1 })
+  await rt.lateRoomReply('gb', {}, '', { toolCount: 1 })
   assert.equal(host.agentOf('r1').calls.length, 0)
 })
 
@@ -2550,7 +2552,7 @@ test('a call batch is saved with the team while its member works', async (t) => 
   t.mock.timers.tick(ROOM_WORK_GRACE_MS)
   await settle(() => first() !== undefined)
   await rt.save()
-  const saved = Object.values(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).roomBatches)
+  const saved = Object.values(savedTeam(host.home).roomBatches)
   assert.deepEqual(saved.map(batch => [batch.roomId, batch.by, batch.pending, batch.worked]), [['r1', 'a', ['b'], true]])
   host.finish('gb', '文档好了')
 })
@@ -2571,7 +2573,7 @@ test('after a restart a batch whose last member is gone wakes the caller with th
   assert.match(wake, /TESTER-RESULT/)
   assert.equal(host.agentOf('gb').calls.length, 0)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
   await settle(() => Object.keys(rt.state.roomBatches).length === 0)
 })
 
@@ -2640,7 +2642,7 @@ test('a post waiting for the next round does not start one after the user stops 
   await settle(() => host.agentOf('ga').calls.length === 1)
   assert.match(text(host.agentOf('ga').calls[0]), /the user wants to set a goal/)
   host.begin('ga')
-  host.finish('ga', '[PASS]')
+  host.finish('ga', '')
 })
 
 // While a round finishes (goal check, save), the group is still taken: a message that comes
@@ -2741,9 +2743,144 @@ test('stopping a group while its round finishes starts nothing afterwards', asyn
 
 const cardA = '11111111-1111-4111-8111-111111111111'
 const cardB = '22222222-2222-4222-8222-222222222222'
-const taskNotice = { notice: 'Prefix card messages with [taskId].' }
+const taskNotice = { taskManagementEnabled: true, notice: '' }
 
-test('DS Bot assigns a group intake, delivers its original image once, and records the owner starting and submitting', async t => {
+test('a late group member network failure is visible under its own task', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  rt.ledger.append('group-r1', { event: 'anchor', id: 'task', from: 1, scopeKeys: [cardA] })
+  rt.ledger.append('group-r1', { event: 'anchor', id: 'other', from: 1, scopeKeys: [cardB] })
+  await rt.lateRoomFailure('gc', { roomId: room.id, taskId: cardA }, { code: 'TRANSPORT', message: 'socket hang up' })
+  const rows = anchor => rt.groupRowsView(room.id, 1, undefined, anchor).rows
+  assert.deepEqual(rows('task').map(row => [row.name, row.code, row.text]), [['Tester', 'TRANSPORT', 'socket hang up']])
+  assert.deepEqual(rows('other'), [])
+  assert.equal(host.agentOf('r1').calls.at(-1).source.taskId, cardA)
+})
+
+test('a timeout from each assigned Bot is reported on its own card in the group', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  room.projectCards = {}
+  for (const [taskId, ownerId] of [[cardA, 'b'], [cardB, 'c']]) {
+    const dispatchId = 'dispatch-' + ownerId
+    rt.ledger.append('group-r1', { event: 'anchor', id: taskId, from: 1, scopeKeys: [taskId] })
+    room.projectCards[taskId] = { id: taskId, title: 'Review', acceptance: 'Verify', intakes: [],
+      rounds: [{ ownerId, dispatchId, assignedAt: 1, sentAt: 2, plan: 'Check' }] }
+    await rt.deliver({ fromId: 'a', toId: ownerId, taskId, exchangeId: dispatchId, role: 'request', audience: 'user', text: 'Review' })
+    host.begin(ownerId)
+    host.emit(ownerId, 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'TIMEOUT', message: 'request timed out' } } })
+  }
+  for (const [taskId, name] of [[cardA, 'Writer'], [cardB, 'Tester']]) {
+    const rows = rt.groupRowsView(room.id, 1, undefined, taskId).rows
+    assert.deepEqual(rows.map(row => [row.name, row.code, row.text]), [[name, 'TIMEOUT', 'request timed out']])
+  }
+})
+
+test('a group manager failure exposes its sanitized cause once on the original group request', async t => {
+  const host = await start(t, taskNotice)
+  const first = host.round('first', host.say('Inspect the annotated page'))
+  await until(() => first() !== undefined)
+  host.begin('ga')
+  const other = host.round('other', host.say('Unrelated request'))
+  await until(() => other() !== undefined)
+  const end = { turn: 1, reason: { kind: 'error', error: { code: 'TRANSPORT', message: 'fetch failed at https://model.example/?token=example-secret' } } }
+  host.emit('ga', 'turn/end', end)
+  host.emit('ga', 'turn/end', end)
+  const rows = call => rt.groupRowsView('r1', call().from, undefined, call().anchor).rows
+  assert.deepEqual(rows(first).map(row => [row.kind, row.name, row.code]), [['failed', 'Chief', 'TRANSPORT']])
+  assert.match(rows(first)[0].text, /fetch failed/)
+  assert.doesNotMatch(rows(first)[0].text, /example-secret/)
+  assert.deepEqual(rows(other), [])
+  assert.equal(rt.ledger.records('group-r1').filter(row => row.who === 'User').length, 2)
+})
+
+test('only the dispatched owner turn exposes its failure on a card with no public reply yet', async t => {
+  const host = await start(t, taskNotice)
+  const first = host.round('intake', host.say('Review the page'))
+  await until(() => first() !== undefined)
+  const intake = host.begin('ga').source.intakeId
+  const taskId = cardA
+  rt.roomOf('r1').projectCards = { [taskId]: { id: taskId, title: 'Review page', acceptance: 'Find issue', intakes: [intake],
+    rounds: [{ ownerId: 'b', dispatchId: 'inspect-page', assignedAt: 1, sentAt: 2, plan: 'Inspect page' }] } }
+  await rt.deliver({ fromId: 'a', toId: 'b', taskId, exchangeId: 'inspect-page', role: 'request', audience: 'user', text: 'Inspect page' })
+  const dispatched = host.begin('b')
+  await host.tool('project_task', { action: 'start', taskId, round: 1 }, 'b')
+  const failure = { code: 'UNKNOWN', message: 'Model stream closed unexpectedly' }
+  let publishing = true
+  const updates = []
+  host.agentOf('b').session.append = (type, data) => { assert.equal(publishing, false); updates.push([type, data]) }
+  host.emit('b', 'todo/write', { todos: [{ content: 'test patch', status: 'in_progress' }] })
+  host.emit('b', 'turn/end', { turn: 1, reason: { kind: 'error', error: failure } })
+  publishing = false
+  await Promise.resolve()
+  assert.deepEqual(updates, [['todo/write', { todos: [{ content: 'test patch', status: 'pending' }] }]])
+  const unrelated = { role: 'request', audience: 'user', taskId, senderSessionId: 'a', exchangeId: 'unrelated-private-message' }
+  rt.projectRequestFailed('b', unrelated, { code: 'UNKNOWN', message: 'Private conversation' })
+  const rows = rt.groupRowsView('r1', first().from, undefined, first().anchor).rows
+  assert.deepEqual(rows.map(row => [row.kind, row.name, row.code, row.text]), [['failed', 'Writer', 'UNKNOWN', failure.message]])
+  const card = () => host.tool('project_task', { action: 'read', roomId: 'r1', taskId }, 'ga').then(JSON.parse)
+  assert.equal((await card()).status, 'failed')
+  host.ctx.sessionController.inspect = async () => ({ events: [
+    { type: 'turn/start', data: { turn: 1 } }, { type: 'user/message', data: dispatched },
+    { type: 'tool/call', data: { name: 'edit', arguments: { path: '/existing/change.js' } } },
+    { type: 'turn/end', data: { turn: 1, reason: { kind: 'error', error: failure } } },
+  ] })
+  const earlier = (await host.ctx.sessionController.inspect()).events
+  host.ctx.sessionController.inspect = async () => ({ events: [...earlier,
+    { type: 'turn/start', data: { turn: 2 } }, { type: 'user/message', data: { source: { kind: 'user' } } },
+    { type: 'turn/end', data: { turn: 2, reason: { kind: 'aborted' } } },
+  ] })
+  delete rt.botOf('b').failures.b
+  const target = { taskId, roomId: 'r1', round: 1, failedAt: (await card()).rounds[0].failedAt }
+  const retry = target => host.call('resume', { botId: 'b', target })
+  for (const wrong of [{ roomId: 'wrong' }, { taskId: 'wrong' }, { round: 2 }, { failedAt: 0 }]) {
+    assert.equal((await retry({ ...target, ...wrong })).error.code, 'bot/stale')
+  }
+  const receipts = await Promise.all([retry(target), retry(target)])
+  assert.ok(receipts.every(r => r.ok))
+  assert.equal(host.agentOf('b').calls.length, 2)
+  const retried = host.begin('b')
+  assert.equal(retried.source.taskId, taskId)
+  assert.equal(retried.source.exchangeId, 'inspect-page')
+  assert.match(text(retried), /existing\/change.js/)
+  assert.equal((await card()).status, 'active')
+  await host.tool('project_task', { action: 'submit', taskId, round: 1, result: 'Checked current file' }, 'b')
+  assert.equal((await card()).status, 'review')
+})
+
+test('Z site clarification creates one durable card and an explicit supplement reuses it', async t => {
+  const host = await start(t, { taskManagementEnabled: undefined, sessionId: 'group-part-2', parts: [{ sessionId: 'r1', endedAt: 1 }] })
+  const room = rt.roomOf('r1')
+  const first = host.round('first', host.say('Investigate Z site'), 'group-part-2')
+  await until(() => first() !== undefined)
+  host.begin('ga')
+  const clarify = () => host.tool('project_task', { action: 'clarify', reason: 'Which site URL?', title: 'Z site' }, 'ga').then(JSON.parse)
+  const [card, replay] = await Promise.all([clarify(), clarify()])
+  assert.equal(card.status, 'clarify')
+  assert.equal(replay.taskId, card.taskId)
+  host.finish('ga', 'Which site URL?')
+  const input = { roomId: room.id, taskId: card.taskId, text: 'Use the staging Z site.', requestId: 'one-supplement' }
+  const results = await Promise.all([host.call('continue-project-task', input), host.call('continue-project-task', input)])
+  assert.ok(results.every(r => r.ok), JSON.stringify(results))
+  assert.equal(host.agentOf('r1').calls.length, 0)
+  assert.equal(host.agentOf('group-part-2').calls.length, 1)
+  const post = host.agentOf('group-part-2').calls[0]
+  assert.equal(post.source.taskId, card.taskId)
+  const next = host.round('supplement', post, 'group-part-2')
+  await until(() => next() !== undefined)
+  assert.equal(host.begin('ga').source.taskId, card.taskId)
+  assert.deepEqual(Object.keys(savedTeam(rt.home).rooms.r1.projectCards), [card.taskId])
+  assert.equal(room.projectCards[card.taskId].clarification, undefined)
+  const change = value => host.call('update-room', { id: room.id, ...value })
+  await change({ taskManagementEnabled: false })
+  await change({ notice: '[taskId]\n[taskAssistant:Tester]' })
+  assert.equal(room.taskManagementEnabled, false)
+  assert.equal(room.projectAssistantId, undefined)
+  assert.equal((await host.call('continue-project-task', input)).error.code, 'TASK_MANAGEMENT_DISABLED')
+  assert.equal((await host.call('project-task-detail', input)).value.taskId, card.taskId)
+})
+
+test('an in-flight phase-one manager assignment retains its original handoff, attachments and callbacks after upgrade', async t => {
   const attachments = fakeAttachments()
   const receipt = await attachments.saveImage({ mediaType: 'image/jpeg', width: 1, height: 1, data: new Uint8Array([1]) })
   const host = await start(t, taskNotice, { attachments })
@@ -2751,34 +2888,37 @@ test('DS Bot assigns a group intake, delivers its original image once, and recor
   original.content.push({ type: 'image', attachment: receipt })
   const ended = host.round('intake', original)
   await until(() => ended() !== undefined)
-  const manager = host.begin('a')
+  const manager = host.begin('ga')
   assert.match(text(manager), /Inspect the unmarked request source/)
   assert.deepEqual(manager.content.find(block => block.type === 'image').attachment, receipt)
-  assert.equal(host.agentOf('ga').calls.length, 0)
+  assert.equal(host.agentOf('a').calls.length, 0)
   const room = rt.roomOf('r1')
   const line = rt.ledger.records('group-r1').find(row => row.who === 'User')
   await forwardProjectIntake(rt, room, line.intakeId, line.seq)
-  assert.equal(host.agentOf('a').calls.length, 1)
-  const project = (args, session = 'a') => host.tool('project_task', args, session).then(JSON.parse)
+  assert.equal(host.agentOf('ga').calls.length, 1)
+  assert.deepEqual(rt.ledger.records('group-r1').filter(row => row.intakeId === line.intakeId), [line])
+  const project = (args, session = 'ga') => host.tool('project_task', args, session).then(JSON.parse)
+  // A manager turn admitted on v1 has a ledger entry but no v2 routing receipt.
+  delete room.projectInbox
   const assignment = { action: 'assign', title: 'Inspect request source', ownerId: 'b', plan: 'Investigate then return evidence', acceptance: 'Source is identified' }
   await assert.rejects(project({ ...assignment, ownerId: 'outside' }), /group/)
   await assert.rejects(project({ ...assignment, roomId: 'r1' }, 'b'), /manager chat/)
   const [first, repeat] = await Promise.all([project(assignment), project(assignment)])
   assert.deepEqual(first, repeat)
   const id = first.taskId
-  assert.equal(first.status, 'assigned')
+  assert.equal(first.status, 'dispatching')
   assert.equal((await project({ action: 'list' })).cards.length, 1)
   await assert.rejects(project({ ...assignment, title: 'Conflicting replay' }), /different details/)
   const saved = await project({ action: 'read', taskId: id })
   assert.deepEqual(saved.requirements[0].images, [receipt])
   const args = { to: 'Writer', taskId: id, card_round: 1, message: 'Confirm start only', reply_to: 'user', request_id: 'work-1' }
-  await assert.rejects(host.tool('message_bot', { ...args, card_round: 2 }, 'a'), /current round/)
-  await assert.rejects(host.tool('message_bot', { ...args, to: 'Tester' }, 'a'), /assigned owner/)
-  const sent = await host.tool('message_bot', args, 'a')
-  assert.equal(await host.tool('message_bot', { ...args, request_id: 'duplicate' }, 'a'), sent)
+  await assert.rejects(host.tool('message_bot', { ...args, card_round: 2 }, 'ga'), /current round/)
+  await assert.rejects(host.tool('message_bot', { ...args, to: 'Tester' }, 'ga'), /assigned owner/)
+  const sent = await host.tool('message_bot', args, 'ga')
+  assert.equal(await host.tool('message_bot', { ...args, request_id: 'duplicate' }, 'ga'), sent)
   assert.equal(host.agentOf('b').calls.length, 1)
   assert.ok(Object.values(rt.state.requests).every(record => !record.receipt?.includes('Inspect the unmarked request source')))
-  assert.equal((await project({ action: 'read', taskId: id })).status, 'delivered')
+  assert.equal((await project({ action: 'read', taskId: id })).status, 'dispatching')
   const work = host.begin('b')
   assert.equal(work.source.taskId, id)
   assert.deepEqual(work.content.find(block => block.type === 'image').attachment, receipt)
@@ -2789,16 +2929,16 @@ test('DS Bot assigns a group intake, delivers its original image once, and recor
   assert.match(packet.text, /Source is identified/)
   assert.equal((await project({ action: 'start', taskId: id, round: 1 }, 'b')).status, 'active')
   assert.equal((await project({ action: 'submit', taskId: id, round: 1, result: 'Verified the source in the record' }, 'b')).status, 'review')
-  assert.equal(JSON.parse(readFileSync(join(rt.home, 'state.json'))).rooms.r1.projectCards[id].rounds[0].dispatchId, work.source.exchangeId)
-  host.finish('a', 'Waiting for confirmation')
+  assert.equal(savedTeam(rt.home).rooms.r1.projectCards[id].rounds[0].dispatchId, work.source.exchangeId)
+  host.finish('ga', 'Waiting for confirmation')
   await host.tool('message_bot', { to: 'Chief', taskId: id, message: 'Worktree verified. Started.', reply_to: 'user', request_id: 'start-1' }, 'b')
-  assert.equal(host.begin('a').source.taskId, id)
-  assert.match(text(host.agentOf('a').calls.at(-1)), /Worktree verified/)
+  assert.equal(host.begin('ga').source.taskId, id)
+  assert.match(text(host.agentOf('ga').calls.at(-1)), /Worktree verified/)
   const handoff = await project({ action: 'handoff', taskId: id, round: 1, ownerId: 'c', plan: 'Independently verify the source' })
   assert.equal(handoff.round, 2)
   await assert.rejects(project({ action: 'submit', taskId: id, round: 1, result: 'Late result' }, 'b'), /current card round/)
-  await assert.rejects(host.tool('message_bot', { ...args, to: 'Tester', card_round: 2 }, 'a'), /different request/)
-  await host.tool('message_bot', { ...args, to: 'Tester', card_round: 2, request_id: 'work-2' }, 'a')
+  await assert.rejects(host.tool('message_bot', { ...args, to: 'Tester', card_round: 2 }, 'ga'), /different request/)
+  await host.tool('message_bot', { ...args, to: 'Tester', card_round: 2, request_id: 'work-2' }, 'ga')
   const review = host.begin('c')
   assert.match(text(review), /Previous delivery: Verified the source in the record/)
   assert.deepEqual(review.content.find(block => block.type === 'image').attachment, receipt)
@@ -2807,12 +2947,298 @@ test('DS Bot assigns a group intake, delivers its original image once, and recor
   assert.equal(view.projectCards[0].ownerId, 'c')
   assert.equal(view.projectCards[0].round, 2)
   assert.equal(view.projectCards[0].rounds, undefined, 'whole assignment histories stay out of the roster payload')
+  assert.equal(view.projectCards[0].startedAt, undefined, 'the next owner has not started yet')
+  assert.equal(view.projectCards[0].submittedAt, undefined)
+  assert.equal(view.projectCards[0].result, undefined)
+  const detail = (await host.call('project-task-detail', { roomId: 'r1', taskId: id })).value
+  assert.deepEqual(detail.requirements[0].images, [receipt])
+  assert.equal(detail.acceptance, assignment.acceptance)
+  assert.equal(detail.rounds.length, 2)
+  assert.ok(detail.rounds[0].submittedAt >= detail.rounds[0].startedAt)
+  assert.equal(detail.rounds[0].result, 'Verified the source in the record')
+  assert.equal((await host.call('project-task-detail', { roomId: 'missing', taskId: id })).error.code, 'GROUP_CONTEXT_REQUIRED')
+  assert.equal((await host.call('project-task-detail', { roomId: 'r1', taskId: 'missing' })).error.code, 'bot/not-found')
 })
 
-test('three bound image intakes reach the private manager while unrelated group work is still running', async t => {
+test('a user-appointed assistant handles one intake, dispatch and review while the admin stays available', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  const notice = room.notice + '\n[taskAssistant:Tester]'
+  await assert.rejects(rt.updateRoom(room.id, { projectAssistantId: 'c' }, 'a'), /Only the user/)
+  await assert.rejects(rt.updateRoom(room.id, { projectAssistantId: 'a' }), { code: 'TASK_ASSISTANT_INVALID' })
+  await rt.updateRoom(room.id, { notice })
+  assert.equal(room.projectAssistantId, undefined)
+  await rt.updateRoom(room.id, { projectAssistantId: 'c' })
+  assert.equal(room.projectAssistantId, 'c')
+  const sent = host.round('from-user', host.say('Change the empty label into a dash.'))
+  await until(() => sent() !== undefined)
+  const intake = host.begin('ga')
+  assert.match(text(intake), /project_task delegate/)
+  const project = (bot, args) => host.tool('project_task', args, bot).then(JSON.parse)
+  const handoff = { action: 'delegate', plan: 'Change the empty label.', acceptance: 'Display a dash.' }
+  await assert.rejects(project('b', { ...handoff, roomId: room.id }), { code: 'TASK_ROLE_REQUIRED' })
+  await project('ga', handoff)
+  const [accepted] = Object.values(room.projectCards)
+  assert.equal(accepted.classificationReason, handoff.plan)
+  const delegated = host.begin('gc')
+  assert.equal(delegated.source.intakeId, intake.source.intakeId)
+  assert.match(text(delegated), /Change the empty label into a dash/)
+  const plan = { action: 'plan', version: 1, title: 'Empty label', acceptance: handoff.acceptance,
+    nodes: [{ ownerId: 'b', title: 'Fix label', instructions: 'Implement and test', deliverable: 'Verified display', acceptance: handoff.acceptance }] }
+  await assert.rejects(project('ga', plan), { code: 'TASK_ROLE_REQUIRED' })
+  const { taskId } = await project('gc', plan)
+  assert.equal(taskId, accepted.id)
+  await project('ga', handoff)
+  assert.equal(host.agentOf('gc').calls.length, 1)
+  const key = { taskId, version: 1, node: 1 }
+  await project('gc', { action: 'dispatch', ...key })
+  const send = { taskId, to: 'Writer', card_round: 1, reply_to: 'user', request_id: 'one', message: 'Check the label' }
+  await assert.rejects(host.tool('message_bot', send, 'ga'), { code: 'TASK_ROLE_REQUIRED' })
+  await host.tool('message_bot', send, 'gc')
+  host.finish('gc', 'Dispatched')
+  host.begin('b')
+  await project('b', { action: 'start', taskId, round: 1 })
+  const submit = { action: 'submit', taskId, round: 1, result: 'Empty label verified.' }
+  await project('b', submit)
+  await project('b', submit)
+  assert.equal(host.agentOf('gc').calls.length, 2)
+  const noticeOfSubmission = host.begin('gc')
+  assert.equal(noticeOfSubmission.source.taskId, taskId)
+  assert.ok(text(noticeOfSubmission).includes(JSON.stringify({ taskId, version: 1, node: 1, round: 1 })))
+  for (const action of ['approve', 'request_acceptance']) {
+    await assert.rejects(project('gc', { action, ...key, artifact: 'Verified display' }), /round.*project_task read/)
+  }
+  assert.equal((await project('gc', { action: 'read', taskId })).status, 'review')
+  const approval = { action: 'approve', ...key, round: 1, artifact: 'Verified display' }
+  const result = await project('gc', approval)
+  assert.equal(result.status, 'done')
+  await project('gc', approval)
+  assert.equal(host.agentOf('ga').calls.length, 2)
+  assert.match(text(host.begin('ga')), /last node is approved/)
+  const feedback = { action: 'report', message: 'The empty label now displays a dash.' }
+  await project('ga', feedback)
+  await project('ga', feedback)
+  assert.equal(host.agentOf('r1').calls.length, 1)
+  const broadcast = host.agentOf('r1').calls[0]
+  assert.equal(broadcast.source.quiet, true)
+  assert.equal(broadcast.source.taskId, taskId)
+  await rt.updateRoom(room.id, { remove: ['c'] })
+  assert.equal(room.projectAssistantId, 'c')
+  await assert.rejects(project('ga', { action: 'plan' }), { code: 'TASK_ASSISTANT_INVALID' })
+})
+
+test('a project manager answers the original group input once before planning, without waking the workers', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  const group = host.round('early', host.say('Make unmarked values display as a dash.'))
+  await until(() => group() !== undefined)
+  const input = host.begin('ga')
+  const owners = JSON.parse(text(input).match(/^Eligible node owners \(id, name, role\): (.+)$/m)[1])
+  assert.deepEqual(owners.map(owner => owner.id), room.members.filter(id => id !== 'a'))
+  const first = { action: 'reply', message: 'I will check how the unmarked value is rendered and where the dash belongs.' }
+  const project = (args, session = 'ga') => host.tool('project_task', args, session)
+  await assert.rejects(project({ ...first, roomId: room.id }, 'b'), { code: 'TASK_ROLE_REQUIRED' })
+  await assert.rejects(project({ ...first, taskId: cardA }), /manager chat/)
+  await Promise.all([project(first), project(first)])
+  await project({ ...first, message: 'A rephrased retry.' })
+  const rows = (await host.call('group-rows', { roomId: room.id, from: group().from, anchor: group().anchor })).value.rows
+  assert.deepEqual(rows.map(row => [row.botId, row.text]), [['a', '[' + input.source.intakeId + '] ' + first.message]])
+  assert.equal(room.projectInbox[0].status, 'planning')
+  assert.deepEqual(Object.keys(room.projectCards ?? {}), [])
+  for (const id of ['r1', 'a', 'gb', 'b']) assert.equal(host.agentOf(id).calls.length, 0)
+  // A rejected plan cannot retract the public answer or start a worker.
+  const node = { ownerId: 'a', title: 'Check display', instructions: 'Inspect values', deliverable: 'Result', acceptance: 'Shows a dash' }
+  const plan = { action: 'plan', version: 1, title: 'Empty display', acceptance: 'Shows a dash', nodes: [node] }
+  await assert.rejects(project(plan), /other than the dispatching manager/)
+  const saved = JSON.parse(await project({ ...plan, nodes: [{ ...node, ownerId: 'b' }] }))
+  assert.equal(saved.status, 'dispatching')
+  host.finish('ga', 'Private planning notes')
+  const next = host.round('continued', { ...host.say('继续'), source: { kind: 'user', taskId: saved.taskId, continueTask: true } })
+  await until(() => next() !== undefined)
+  assert.equal(host.begin('ga').source.taskId, saved.taskId)
+  await project({ action: 'reply', message: 'I will continue checking the display on the saved task.' })
+  const follow = (await host.call('group-rows', { roomId: room.id, from: next().from, anchor: next().anchor })).value
+  assert.equal(follow.rows.length, 1)
+  assert.match(follow.rows[0].text, /continue checking the display/)
+})
+
+test('a first answer to a drained intake reaches the group session without starting work or duplicating on retry', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  const intakeId = 'intake-11111111-1111-4111-8111-111111111111'
+  const original = rt.logRoom(room, { who: 'User', intakeId, text: 'Who checks the result?', session: true })
+  await forwardProjectIntake(rt, room, intakeId, original.seq)
+  host.begin('ga')
+  const args = { action: 'chat', reason: 'A question about roles.', message: 'The project manager checks the result.' }
+  await host.tool('project_task', args, 'ga')
+  const [post] = host.agentOf('r1').calls
+  assert.equal(post.source.quiet, true)
+  assert.equal(post.source.intakeId, intakeId)
+  const delivery = host.round('quiet', post)
+  await until(() => delivery() !== undefined)
+  await host.tool('project_task', args, 'ga')
+  assert.equal(host.agentOf('r1').calls.length, 1)
+  assert.equal(rt.groupSearch(room.id, args.message).results.length, 1)
+  for (const id of ['a', 'gb', 'gc']) assert.equal(host.agentOf(id).calls.length, 0)
+})
+
+test('a manager can explain why a group question was answered as chat without attaching it to an unrelated card', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Change the request source label', intakes: [], rounds: [] } }
+  const request = '给我群里的 Bot 职能说明'
+  const reason = 'The user asked for information that can be answered directly.'
+  const first = host.round('roles', host.say(request))
+  await until(() => first() !== undefined)
+  host.begin('ga')
+  const answer = 'The manager coordinates work and the engineer develops it.'
+  await host.tool('project_task', { action: 'chat', reason, message: answer }, 'ga')
+  assert.match((await host.call('group-rows', { roomId: room.id, from: first().from, anchor: first().anchor })).value.rows[0].text, /engineer develops it/)
+  host.finish('ga', 'The manager coordinates work and the engineer develops it.')
+
+  const follow = host.round('why', host.say('为什么这个没有建 task 呢？'))
+  await until(() => follow() !== undefined)
+  const question = host.begin('ga')
+  assert.match(text(question), /给我群里的 Bot 职能说明/)
+  assert.ok(text(question).includes(reason))
+  assert.equal(question.source.taskId, undefined)
+  assert.doesNotMatch(text(question), /Change the request source label/)
+
+  // A queued later post and an internal notice are not part of the exchange
+  // the user could see when they asked. No adjacent files become task inputs.
+  rt.logRoom(room, { who: 'User', text: 'Future message', images: [{ id: 'other' }] })
+  const context = JSON.parse(await host.tool('project_task', { action: 'context' }, 'ga'))
+  assert.ok(context.some(line => line.text === request && line.status === 'chat' && line.reason === reason))
+  assert.ok(context.every(line => line.seq < question.source.intakeSeq && !line.images && !line.files))
+  const matches = JSON.parse(await host.tool('project_task', { action: 'context', query: '职能说明' }, 'ga'))
+  assert.deepEqual(matches.map(line => line.text), [request])
+  await assert.rejects(host.tool('project_task', { action: 'context', roomId: room.id }, 'b'), /manager chat/)
+  await host.tool('project_task', { action: 'chat', reason: 'Explained the classification of the roles question.' }, 'ga')
+  assert.deepEqual(room.projectCards[cardA].intakes, [])
+  assert.deepEqual(Object.keys(room.projectCards), [cardA])
+  host.finish('ga', 'The roles question could be answered in chat.')
+
+  const original = room.projectInbox.find(item => item.reason === reason)
+  const quoted = host.round('quoted roles', host.say(`> [${original.id}] User:\n> ${request}\n\n请解释当时的判断`))
+  await until(() => quoted() !== undefined)
+  const reply = host.begin('ga')
+  assert.notEqual(reply.source.intakeId, original.id)
+  assert.equal(original.status, 'chat')
+  assert.equal(original.reason, reason)
+  const earlier = JSON.parse(await host.tool('project_task', { action: 'context', query: '职能说明' }, 'ga'))
+  assert.ok(earlier.some(line => line.text === request && line.reason === reason))
+})
+
+test('a bare manager mention asks for the preceding user question without opening or changing a task', async t => {
+  const host = await start(t, taskNotice, undefined, undefined, { a: { name: '小圈' } })
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Unrelated blocked card', intakes: [], rounds: [], clarification: 'Which checkout?' } }
+  const question = '介绍下群里 bot 的能力。这句话为什么没有建立 task？'
+  // The host may receive both user messages before running the group relay.
+  host.emit('r1', 'user/message', host.say(question))
+  const first = host.round('question and call', host.say('@小圈'))
+  await until(() => first() !== undefined)
+  const [input, nudge] = host.agentOf('ga').calls
+  assert.equal(room.projectInbox.length, 1)
+  assert.equal(room.projectInbox[0].id, input.source.intakeId)
+  assert.equal(room.projectInbox[0].status, 'pending')
+  assert.equal(rt.ledger.record('group-r1', nudge.source.intakeSeq).reminderFor, input.source.intakeSeq)
+  assert.ok(text(host.begin('ga')).includes(question))
+  assert.doesNotMatch(text(nudge), /Unrelated blocked card|Which checkout/)
+  const project = args => host.tool('project_task', args, 'ga')
+  await assert.rejects(project({ action: 'clarify', reason: 'What do you need?' }), /group answer/)
+  await assert.rejects(project({ action: 'attach', taskId: cardA }), /group answer/)
+  await assert.rejects(project({ action: 'plan' }), /group answer/)
+  await project({ action: 'reply', message: '职能说明可以直接在群里回答。' })
+  assert.ok(rt.groupSearch(room.id, '职能说明可以直接在群里回答').results.length)
+  host.finish('ga', 'Answered in the group.')
+
+  const again = host.round('second call', host.say('@小圈 '))
+  await until(() => again() !== undefined)
+  const repeated = host.begin('ga')
+  assert.equal(rt.ledger.record('group-r1', repeated.source.intakeSeq).reminderFor, input.source.intakeSeq)
+  assert.equal(JSON.parse(await project({ action: 'context' })).filter(line => line.speaker === 'User').length, 1)
+  await project({ action: 'chat', message: '可以当场说明，无需派工。', reason: 'Answer the reminder.' })
+  await forwardProjectIntake(rt, room, repeated.source.intakeId, repeated.source.intakeSeq)
+  assert.equal(host.agentOf('ga').calls.length, 3, 'replaying the same reminder does not deliver another request')
+  assert.equal(room.projectInbox.length, 1)
+  assert.equal(room.projectInbox[0].status, 'pending')
+  assert.equal(room.projectCards[cardA].clarification, 'Which checkout?')
+  assert.equal(host.agentOf('b').calls.length, 0)
+  host.finish('ga', 'Answered again.')
+
+  const next = host.round('new request', host.say('@小圈 帮我改一下显示名称'))
+  await until(() => next() !== undefined)
+  assert.equal(room.projectInbox.length, 2)
+  const nextInput = host.begin('ga')
+  assert.equal(room.projectInbox.find(item => item.id === nextInput.source.intakeId).title, '@小圈 帮我改一下显示名称')
+})
+
+test('a manager mention with no previous question is a greeting, while an attachment is a new intake', async t => {
   const attachments = fakeAttachments()
   const host = await start(t, taskNotice, { attachments })
-  host.round('busy', host.say(`[${cardA}] Unrelated group work`))
+  const room = rt.roomOf('r1')
+  const ping = host.round('bare', host.say('@Chief'))
+  await until(() => ping() !== undefined)
+  assert.match(text(host.begin('ga')), /no preceding user request/i)
+  await host.tool('project_task', { action: 'reply', message: 'I’m here.' }, 'ga')
+  assert.deepEqual(room.projectInbox ?? [], [])
+  host.finish('ga', 'Here.')
+  const post = host.say('@Chief')
+  const attachment = await attachments.saveImage({ name: 'example.png', mediaType: 'image/png', width: 1, height: 1, data: new Uint8Array([1]) })
+  post.content.push({ type: 'image', attachment })
+  const request = host.round('attachment', post)
+  await until(() => request() !== undefined)
+  const input = host.begin('ga')
+  assert.equal(room.projectInbox.length, 1)
+  assert.equal(room.projectInbox[0].id, input.source.intakeId)
+  assert.deepEqual(input.content.find(block => block.type === 'image').attachment, attachment)
+})
+
+test('a reminder after upgrading skips an older bare mention and preserves the original chat decision', async t => {
+  const host = await start(t, taskNotice)
+  const room = rt.roomOf('r1')
+  const ask = host.round('roles', host.say('Which bot handles reports?'))
+  await until(() => ask() !== undefined)
+  const source = host.begin('ga').source
+  await host.tool('project_task', { action: 'chat', reason: 'A question about team roles.', message: 'The report engineer.' }, 'ga')
+  host.finish('ga', 'Answered.')
+  const priorId = 'intake-' + cardA
+  const legacy = rt.logRoom(room, { who: 'User', intakeId: priorId, text: '@Chief', session: true })
+  room.projectInbox.push({ id: priorId, title: '@Chief', status: 'clarify', seq: legacy.seq, receivedAt: legacy.time, reason: 'Which task?' })
+  for (let i = 0; i < 9; i++) rt.logRoom(room, { who: 'Writer', botId: 'b', text: 'Another task update' })
+  const before = structuredClone(room.projectInbox)
+  const call = host.round('nudge', host.say('@Chief'))
+  await until(() => call() !== undefined)
+  const nudge = host.begin('ga')
+  assert.equal(rt.ledger.record('group-r1', nudge.source.intakeSeq).reminderFor, source.intakeSeq)
+  assert.match(text(nudge), /Which bot handles reports\?/)
+  const context = JSON.parse(await host.tool('project_task', { action: 'context' }, 'ga'))
+  assert.equal(context.at(-1).seq, source.intakeSeq)
+  assert.equal(context.at(-1).reason, 'A question about team roles.')
+  await host.tool('project_task', { action: 'reply', message: 'The report engineer handles reports.' }, 'ga')
+  assert.deepEqual(room.projectInbox, before)
+})
+
+test('a card-addressed question and a bare mention in one relay reach the admin in the same group round', async t => {
+  const host = await start(t, { ...taskNotice, projectCards: Object.fromEntries([cardA, cardB].map(id => [id, { id, title: id, rounds: [], intakes: [] }])) })
+  host.emit('r1', 'user/message', host.say(`Why is this waiting?`, cardA))
+  const call = host.round('call on card', host.say('@Chief'))
+  await until(() => host.agentOf('ga').calls.length === 1)
+  const input = host.begin('ga')
+  assert.equal(input.source.taskId, cardA)
+  assert.match(text(input), /Why is this waiting\?/)
+  host.finish('ga', 'The review is pending.')
+  await until(() => call() !== undefined)
+  const [asked, ping] = rt.ledger.records('group-r1').filter(row => row.who === 'User')
+  assert.equal(ping.reminderFor, asked.seq)
+  assert.deepEqual(rt.roomOf('r1').projectInbox ?? [], [])
+})
+
+test('three bound image intakes reach the group manager while unrelated group work is still running', async t => {
+  const attachments = fakeAttachments()
+  const host = await start(t, { ...taskNotice, projectCards: Object.fromEntries([cardA, cardB].map(id => [id, { id, title: id, rounds: [], intakes: [] }])) }, { attachments })
+  const busyRound = host.round('busy', host.say(`Unrelated group work`, cardA))
   await until(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
   const images = await Promise.all([1, 2, 3].map(i => attachments.saveImage({
@@ -2826,54 +3252,45 @@ test('three bound image intakes reach the private manager while unrelated group 
     return read(...args)
   }
   t.after(() => { rt.imagesForGroup = read })
-  const began = performance.now()
-  const receipts = []
-  const remove = rt.onRoomLine((_room, line) => {
-    if (line.who === 'DS Bot' && /Forwarded group message/.test(line.text)) receipts.push(Math.round(performance.now() - began))
-  })
-  t.after(remove)
   for (let i = 0; i < images.length; i++) {
     const post = host.say(`selection-${i + 1}`)
     post.content.push({ type: 'image', attachment: images[i] })
     host.round('intake-' + i, post)
   }
-  // Bound the old serial path as well, so regressions report timings and clean up.
-  let released = false
-  const timeout = setTimeout(() => { released = true; host.finish('ga', 'Done') }, 400)
+  // All intakes must finish forwarding before the unrelated turn ends.
   try {
-    await until(() => receipts.length === 3)
-    t.diagnostic(`group receipts (ms): ${receipts.join(', ')}; group image readings: ${reads}`)
-    assert.equal(released, false, 'intake waited behind an unrelated group round')
+    await until(() => host.agentOf('ga').calls.length === images.length + 1)
+    assert.equal(busyRound(), undefined, 'the unrelated group round must still be running')
     assert.equal(reads, 0)
-    const messages = host.agentOf('a').calls
+    const messages = host.agentOf('ga').calls.filter(m => m.source.intakeId)
     assert.equal(new Set(messages.map(message => message.source.intakeId)).size, 3)
+    assert.deepEqual(rt.ledger.records('group-r1').filter(row => row.intakeId).map(row => row.who), ['User', 'User', 'User'])
     for (const [i, img] of images.entries()) {
       const matching = messages.filter(message => text(message).includes('selection-' + (i + 1)))
       assert.equal(matching.length, 1)
       assert.deepEqual(matching[0].content.filter(b => b.type === 'image').map(b => b.attachment), [img])
     }
   } finally {
-    clearTimeout(timeout)
-    if (!released) host.finish('ga', 'Done')
+    host.finish('ga', 'Done')
   }
 })
 
-test('card A gets its quoted image while card B waits and a fresh intake reaches the manager privately', async t => {
-  const host = await start(t, taskNotice)
-  const runs = [host.round('A', host.say(`[${cardA}] Accept the A candidate`))]
+test('card A gets its quoted image while card B waits and a fresh intake reaches the group manager', async t => {
+  const host = await start(t, { ...taskNotice, projectCards: Object.fromEntries([cardA, cardB].map(id => [id, { id, title: id, rounds: [], intakes: [] }])) })
+  const runs = [host.round('A', host.say(`Accept the A candidate`, cardA))]
   await until(() => host.agentOf('ga').calls.length === 1)
   const opening = host.begin('ga')
   assert.equal(opening.source.taskId, cardA)
   host.emit('ga', 'tool/call', { callId: 'accept-a', name: 'verify' })
-  runs.push(host.round('B', host.say(`[${cardB}] Change pagination B`)))
-  runs.push(host.round('intake', host.say('@Writer New independent export request')))
-  await until(() => rt.roomOf('r1').taskQueue?.length === 1 && host.agentOf('a').calls.length === 1)
+  runs.push(host.round('B', host.say(`Change pagination B`, cardB)))
+  runs.push(host.round('intake', host.say('New independent export request')))
+  await until(() => rt.roomOf('r1').taskQueue?.length === 1 && host.agentOf('ga').calls.length === 2)
   assert.deepEqual(host.agentOf('gb').calls, [])
   const attachment = { id: 'A-image', name: 'page.png', mimeType: 'image/png' }
-  const addendum = host.say(`> [${cardA}] Accept the A candidate\n\nUse the corrected screenshot.`)
+  const addendum = host.say(`> Accept the A candidate\n\nUse the corrected screenshot.`, cardA)
   addendum.content.push({ type: 'image', attachment })
   runs.push(host.round('A2', addendum))
-  await until(() => host.agentOf('ga').calls.length === 2)
+  await until(() => host.agentOf('ga').calls.length === 3)
   const more = host.agentOf('ga').inbox.nextStep.at(-1)
   assert.equal(more.source.taskId, cardA)
   assert.equal(more.source.exchangeId, opening.source.exchangeId)
@@ -2884,18 +3301,18 @@ test('card A gets its quoted image while card B waits and a fresh intake reaches
   assert.deepEqual(host.agentOf('gb').calls, [])
   host.emit('ga', 'tool/result', { callId: 'accept-a' })
   host.finish('ga', 'A accepted')
-  await until(() => host.agentOf('ga').calls.length === 3)
+  await until(() => host.agentOf('ga').calls.length === 4)
   const b = host.begin('ga')
   assert.equal(b.source.taskId, cardB)
   assert.match(text(b), /pagination B/)
   assert.doesNotMatch(text(b), /A accepted|Accept the A|corrected screenshot|export request/)
   host.finish('ga', 'B received')
-  const intake = host.begin('a')
+  const intake = host.begin('ga', host.agentOf('ga').calls.find(m => m.source.intakeId))
   assert.ok(intake.source.intakeId)
   assert.equal(intake.source.taskId, undefined)
   assert.doesNotMatch(text(intake), /pagination B|A accepted/)
   assert.match(text(intake), /export request/)
-  host.finish('a', 'Which page needs exporting?')
+  host.finish('ga', 'Which page needs exporting?')
   await until(() => runs.every(result => result() !== undefined))
   const log = rt.ledger.records('group-r1')
   assert.ok(log.some(row => row.taskId === cardA && row.text === `[${cardA}] A accepted`))
@@ -2908,9 +3325,7 @@ test('card A gets its quoted image while card B waits and a fresh intake reaches
 
 test('project dispatch validates the card before sending and never merges unread different cards', async t => {
   const host = await start(t, taskNotice)
-  await assert.rejects(host.tool('message_bot', { to: 'Writer', message: 'unbound' }, 'a'), /needs.*taskId/)
-  await assert.rejects(host.tool('post_to_group', { group: 'Ops', message: 'unbound' }, 'b'), /needs.*taskId/)
-  await assert.rejects(host.tool('message_bot', { to: 'Writer', taskId: cardA, message: `[${cardB}] conflicting` }, 'a'), /differ/)
+  await assert.rejects(host.tool('message_bot', { to: 'Writer', card_round: 1, message: 'unbound' }, 'a'), /needs.*taskId/)
   assert.deepEqual(host.agentOf('b').calls, [])
   for (const taskId of [cardA, cardB]) {
     await host.tool('message_bot', { to: 'Writer', taskId, message: 'Develop', reply_to: 'user' }, 'a')
@@ -2939,20 +3354,650 @@ test('a saved task queue resumes without mixing pending cards on startup', async
 })
 
 test('a card supplement can pass an unrelated buffered user message', async t => {
-  const host = await start(t, taskNotice)
-  const running = host.round('A', host.say(`[${cardA}] Inspect`))
+  const host = await start(t, { ...taskNotice, projectCards: Object.fromEntries([cardA, cardB].map(id => [id, { id, title: id, rounds: [], intakes: [] }])) })
+  const running = host.round('A', host.say(`Inspect`, cardA))
   await until(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
   const inbox = host.agentOf('r1').inbox
   inbox.nextTurn.push({ ...host.say('Different requirement'), id: 'unassigned' })
-  inbox.nextStep.push({ ...host.say(`> [${cardA}] Inspect\n\nCorrected acceptance steps`), id: 'supplement' })
+  inbox.nextStep.push({ ...host.say(`> Inspect\n\nCorrected acceptance steps`, cardA), id: 'supplement' })
   rt.nudgeRoom('r1')
-  await until(() => host.agentOf('ga').calls.length === 2)
-  assert.match(text(host.agentOf('ga').calls[1]), /Corrected acceptance steps/)
-  assert.doesNotMatch(text(host.agentOf('ga').calls[1]), /Different requirement/)
+  const supplement = () => host.agentOf('ga').inbox.nextStep.find(m => m.source.taskId === cardA)
+  await until(supplement)
+  assert.match(text(supplement()), /Corrected acceptance steps/)
+  assert.doesNotMatch(text(supplement()), /Different requirement/)
   host.finish('ga', 'verified')
-  await until(() => host.agentOf('a').calls.length === 1)
-  assert.ok(host.begin('a').source.intakeId)
-  host.finish('a', 'Needs a new card')
+  await until(() => host.agentOf('ga').calls.length === 3)
+  const receipt = host.agentOf('ga').inbox.nextTurn.find(m => m.source.intakeId)
+  assert.ok(receipt)
+  host.begin('ga', receipt)
+  host.finish('ga', 'Needs a new card')
   await until(() => running() !== undefined)
+})
+
+test('a picture intake releases two independent node rounds only after approval of their shared input', async t => {
+  const attachments = fakeAttachments()
+  const picture = await attachments.saveImage({ mediaType: 'image/png', width: 1, height: 1, data: new Uint8Array([1]) })
+  const host = await start(t, { ...taskNotice, members: ['a','b','c','d'] }, { attachments }, undefined, { d: {} })
+  const request = host.say('Use a dash when the source is empty')
+  request.content.push({ type: 'image', attachment: picture })
+  const ended = host.round('picture', request)
+  await until(() => ended() !== undefined)
+  const manager = host.begin('ga'), intakeId = manager.source.intakeId
+  const project = (args, session = 'ga') => host.tool('project_task', args, session).then(JSON.parse)
+  const list = () => project({ action: 'list' })
+  await until(() => rt.roomOf('r1').projectInbox[0]?.status === 'planning')
+  assert.equal((await list()).inbox[0].status, 'planning')
+  const nodes = ['b','d','c'].map((ownerId, i) => ({
+    title: ['Develop','Review','Test'][i], ownerId, instructions: 'Inspect the source', deliverable: 'Evidence', acceptance: 'Compare the image', dependsOn: i ? [1] : [],
+  }))
+  const spec = { action: 'plan', version: 1, title: 'Empty source', acceptance: 'Shows a dash', nodes }
+  await assert.rejects(project({ ...spec, nodes: [{...nodes[0],dependsOn:[2]}, nodes[1]] }), /earlier node/)
+  assert.equal((await project({action:'clarify', reason:'Which source?'})).status, 'clarify')
+  assert.equal((await list()).cards.length, 1)
+  const writer = new DatabaseSync(join(rt.home, 'state', 'rooms', 'id-r1', 'room.sqlite'))
+  try {
+    writer.exec('BEGIN IMMEDIATE')
+    await assert.rejects(project(spec), /locked|busy/i)
+    assert.equal((await list()).cards.length, 1)
+    assert.equal((await list()).cards[0].status, 'clarify')
+    assert.equal(Object.keys(savedTeam(rt.home).rooms.r1.projectCards).length, 1)
+  } finally { writer.close() }
+  const [card, replay] = await Promise.all([project(spec), project(spec)])
+  const taskId = card.taskId
+  assert.equal(replay.taskId, taskId)
+  assert.equal(card.round, 0)
+  assert.equal((await list()).inbox.length, 0)
+  const detail = () => project({action:'read',taskId})
+  assert.deepEqual((await detail()).requirements[0].images, [picture])
+  const dispatch = node => project({action:'dispatch',taskId,version:1,node})
+  const approve = (node, round, artifact) => project({action:'approve',taskId,version:1,node,round,artifact})
+  await assert.rejects(dispatch(2), /predecessor/)
+  assert.equal((await dispatch(1)).dispatchRound,1)
+  assert.equal((await dispatch(1)).dispatchRound,1)
+  const send = (to,round) => host.tool('message_bot',{to,taskId,card_round:round,reply_to:'user',request_id:taskId+'-'+round,message:'Execute the saved node'},'ga')
+  await send('Writer',1)
+  host.begin('b')
+  const startRound = (round, session) => project({action:'start',round,taskId}, session)
+  const submit = (round, session) => project({action:'submit',round,taskId,result:'Verified delivery'}, session)
+  await startRound(1,'b')
+  await submit(1,'b')
+  await assert.rejects(dispatch(3), /predecessor/)
+  await approve(1,1,'candidate-v1')
+  await assert.rejects(approve(1,1,'other'), /different approved artifact/)
+  const [review,tester] = await Promise.all([dispatch(2),dispatch(3)])
+  assert.notEqual(review.dispatchRound,tester.dispatchRound)
+  await send('Reviewer',review.dispatchRound)
+  await send('Tester',tester.dispatchRound)
+  assert.match(text(host.begin('d')), /Approved input from node 1, round 1: candidate-v1/)
+  assert.match(text(host.begin('c')), /Approved input from node 1, round 1: candidate-v1/)
+  const starts = await Promise.all([startRound(review.dispatchRound,'d'),startRound(tester.dispatchRound,'c')])
+  assert.deepEqual(starts.map(s => s.execution), [
+    { round:review.dispatchRound, version:1, node:2, status:'active' },
+    { round:tester.dispatchRound, version:1, node:3, status:'active' },
+  ])
+  const running = await detail()
+  assert.deepEqual(running.plans[0].nodes.map(n=>n.status),['verified','active','active'])
+  assert.deepEqual(new Set(running.owners),new Set(['d','c']))
+  assert.equal(savedTeam(rt.home).rooms.r1.projectInbox.find(r=>r.id===intakeId).status, 'accepted')
+  await assert.rejects(submit(review.dispatchRound,'c'),/owner/)
+  const next = { ...spec, taskId, version:2, reason:'Add mobile verification', nodes:[{...nodes[0],reuseRound:1},nodes[1],{...nodes[2],contextGap:'Need mobile environment'}] }
+  await project(next)
+  await submit(tester.dispatchRound,'c')
+  await assert.rejects(approve(3,tester.dispatchRound,'old-test'),/current plan/)
+  await assert.rejects(dispatch(2),/current plan version/)
+  await assert.rejects(project({action:'dispatch', taskId, version:2,node:3}),/context gap/)
+  const revised = await detail()
+  assert.equal(revised.plans.length,2)
+  assert.deepEqual(revised.plans[1].nodes.map(n=>n.status),['verified','ready','blocked'])
+  assert.deepEqual((await project({action:'dispatch',taskId,version:2,node:2})).dispatchRound,4)
+  host.finish('ga', 'Plan revision saved')
+  const extra = host.round('supplement', host.say('Also preserve existing sources'))
+  await until(() => extra() !== undefined)
+  const supplement = host.begin('ga').source.intakeId
+  await project({action:'attach', taskId})
+  await project({action:'attach', taskId})
+  const afterAttach = savedTeam(rt.home).rooms.r1
+  assert.deepEqual(afterAttach.projectCards[taskId].intakes, [intakeId, supplement])
+  assert.equal(afterAttach.projectInbox.find(r => r.id === supplement).status, 'attached')
+  host.finish('ga', 'Supplement attached')
+  const question = host.round('question', host.say('What does a dash mean?'))
+  await until(() => question() !== undefined)
+  host.begin('ga')
+  await project({action:'chat', reason:'A question about the display'})
+  assert.equal((await list()).inbox.length, 0)
+  assert.equal((await list()).cards.length, 1)
+})
+
+test('the Main Bot prepares Git assignments and reserves disjoint files across cards', async t => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'project-branches-')))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const git = (dir, ...args) => execFileSync('git', ['-c','core.hooksPath=/dev/null', '-c','user.name=Fixture',
+    '-c','user.email=test@example.invalid','-C',dir,...args], { encoding: 'utf8', stdio: ['ignore','pipe','pipe'] }).trim()
+  git(repo, 'init', '-b', 'main')
+  git(repo, 'commit', '--allow-empty', '-m', 'Initial')
+  git(repo, 'branch', 'old')
+  const host = await start(t, { ...taskNotice, workDir: repo }, {}, {}, { b: { workDir: repo }, c: { workDir: repo } })
+  const project = (args, actor = 'ga') => host.tool('project_task', { roomId: 'r1', ...args }, actor).then(JSON.parse)
+  const first = await project({ action: 'branches' })
+  assert.equal(first.count, 2)
+  const described = await project({ action: 'describe_branch', workRef: 'old', reason: 'Previous release' })
+  assert.equal(described.branches.find(b => b.branch === 'old').purpose, 'Previous release')
+  assert.equal(described.branches.find(b => b.branch === 'old').workDir, undefined)
+  const prepare = { action: 'prepare_worktree', workRef: 'fix/source', baseRef: 'main', reason: 'Fix source labels' }
+  await assert.rejects(project(prepare, 'c'), /Main Bot/)
+  await assert.rejects(project({ ...prepare, workRef: '../escape' }), /literal local Git branch/)
+  const busy = new DatabaseSync(join(rt.home, 'state', 'rooms', 'id-r1', 'room.sqlite'))
+  try {
+    busy.exec('BEGIN IMMEDIATE')
+    await assert.rejects(project(prepare), /locked|busy/i)
+  } finally { busy.close() }
+  assert.equal(git(repo, 'branch', '--list', prepare.workRef).includes(prepare.workRef), true)
+  assert.equal(savedTeam(rt.home).rooms.r1.projectBranches.some(b => b.branch === prepare.workRef), false)
+  const reports = await Promise.all([project(prepare), project(prepare)])
+  const feature = reports[0].branches.find(b => b.branch === 'fix/source')
+  assert.equal(feature.relation, 'same_tip')
+  assert.equal(feature.workDir, reports[1].branches.find(b => b.branch === feature.branch).workDir)
+  assert.ok(feature.refAt > 0)
+  assert.equal(git(feature.workDir, 'symbolic-ref', '--short', 'HEAD'), feature.branch)
+  const intake = async title => {
+    const done = host.round(title, host.say(title))
+    await until(() => done() !== undefined)
+    host.begin('ga')
+  }
+  await intake('Split work by path')
+  const node = (ownerId, paths, mode = 'current') => ({ ownerId, title: 'Edit files', instructions: 'Use your assigned paths',
+    acceptance: 'Files verified', deliverable: 'Commit', workspaceReason: mode === 'current' ? 'Files are disjoint.' : 'Independent delivery.', workspaceMode: mode, workRef: mode === 'current' ? 'main' : feature.branch, writePaths: paths })
+  const plan = { action: 'plan', title: 'Split work by path', version: 1, acceptance: 'Deliver scoped changes' }
+  const unspecified = node('b', ['src'])
+  delete unspecified.workspaceMode
+  await assert.rejects(project({ ...plan, nodes: [unspecified] }), /Choose workspaceMode/)
+  await assert.rejects(project({ ...plan, nodes: [node('b', ['../oops'])] }), /relative files/)
+  await assert.rejects(project({ ...plan, nodes: [node('b', ['src']), node('c', ['src/a'])] }), /overlapping write paths/)
+  await assert.rejects(project({ ...plan, nodes: [node('b', ['src/a']), node('c', ['src/b'], 'worktree')] }), /same task worktree/)
+  const nodes = [node('b', ['src/a'], 'worktree'), node('c', ['src/b'], 'worktree'), node('b', ['src/c'], 'worktree'), node('c', [], 'worktree')]
+  const setPolicy = policy => host.call('set-project-workspace-policy', { roomId: 'r1', policy })
+  assert.equal((await setPolicy('other')).ok, false)
+  const unexplained = { ...nodes[0] }
+  delete unexplained.workspaceReason
+  await assert.rejects(project({ ...plan, nodes: [unexplained] }), /workspaceReason/)
+  assert.equal((await setPolicy('worktree')).ok, true)
+  await assert.rejects(project({ ...plan, nodes: [node('b', ['src/a'])] }), /requires workspaceMode=worktree/)
+  assert.equal((await setPolicy('auto')).ok, true)
+  const { taskId } = await project({ ...plan, nodes })
+  assert.equal((await setPolicy('current')).ok, true)
+  await assert.rejects(project({ ...prepare, workRef: 'not-created' }), /uses the current branch/)
+  assert.equal(git(repo, 'branch', '--list', 'not-created'), '')
+  assert.equal((await project({ action: 'list' })).workspacePolicy, 'current')
+  assert.equal(savedTeam(rt.home).rooms.r1.projectWorkspacePolicy, 'current')
+  const choices = (await host.call('project-task-detail', { roomId: 'r1', taskId, workspaceOnly: true })).value
+  assert.equal(choices.policy, 'auto')
+  assert.equal(choices.reason, 'Independent delivery.')
+  assert.equal(choices.directory, feature.workDir)
+  assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].plans[0].workspacePolicy, 'auto')
+  assert.equal((await project({ ...plan, nodes })).taskId, taskId)
+  const dispatch = (id, n) => project({ action: 'dispatch', version: 1, taskId: id, node: n })
+  const rounds = await Promise.all([dispatch(taskId, 1), dispatch(taskId, 2)])
+  assert.notEqual(rounds[0].dispatchRound, rounds[1].dispatchRound)
+  renameSync(feature.workDir, feature.workDir + '.moved')
+  try { await assert.rejects(dispatch(taskId, 3), /working tree is missing/) }
+  finally { renameSync(feature.workDir + '.moved', feature.workDir) }
+  const isolated = await dispatch(taskId, 3)
+  const saved = savedTeam(rt.home).rooms.r1
+  assert.equal(saved.projectBranches.find(b => b.branch === feature.branch).purpose, prepare.reason)
+  assert.deepEqual(saved.projectCards[taskId].plans[0].nodes.map(n => n.workDir), Array(4).fill(feature.workDir))
+  const send = (id, round, to) => host.tool('message_bot', { taskId: id, card_round: round, to, reply_to: 'user',
+    request_id: id + '-' + round, message: 'Carry out the assigned node.' }, 'ga')
+  await send(taskId, isolated.dispatchRound, 'Writer')
+  assert.match(text(host.begin('b')), /Edit only these files or subtrees/)
+  await assert.rejects(project({ action: 'start', taskId, round: isolated.dispatchRound }, 'b'), /assigned repository and branch/)
+  assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[isolated.dispatchRound - 1].startedAt, undefined)
+  host.finish('b', 'Wrong checkout, waiting for the manager')
+  host.agentOf('b').session.header = { cwd: feature.workDir }
+  host.agentOf('c').session.header = { cwd: feature.workDir }
+  await send(taskId, rounds[0].dispatchRound, 'Writer')
+  host.begin('b')
+  await project({ action: 'start', taskId, round: rounds[0].dispatchRound }, 'b')
+  await send(taskId, rounds[1].dispatchRound, 'Tester')
+  host.begin('c')
+  await project({ action: 'start', taskId, round: rounds[1].dispatchRound }, 'c')
+  const active = await project({ action: 'read', taskId })
+  assert.deepEqual(active.plans[0].nodes.slice(0, 2).map(n => n.status), ['active', 'active'])
+  const secondDelivery = { action: 'submit', taskId, round: rounds[1].dispatchRound, result: 'Second file ready' }
+  await assert.rejects(project(secondDelivery, 'c'), /full commit ID/)
+  const base = git(repo, 'rev-parse', 'main')
+  await assert.rejects(project({ ...secondDelivery, commit: base }, 'c'), /after the start/)
+  mkdirSync(join(feature.workDir, 'src'))
+  writeFileSync(join(feature.workDir, 'src/b'), 'second file')
+  git(feature.workDir, 'add', 'src/b')
+  git(feature.workDir, 'commit', '-m', 'Change second file')
+  const secondCommit = git(feature.workDir, 'rev-parse', 'HEAD')
+  await assert.rejects(project({ ...secondDelivery, commit: secondCommit }, 'c'), /not on local main or master/)
+  assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[rounds[1].dispatchRound - 1].submittedAt, undefined)
+  git(repo, 'merge', '--ff-only', feature.branch)
+  await project({ ...secondDelivery, commit: secondCommit }, 'c')
+  const receipt = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[rounds[1].dispatchRound - 1].mainReview
+  assert.deepEqual(receipt, { repository: repo, branch: 'main', commit: secondCommit, tip: secondCommit })
+  await project({ ...secondDelivery, commit: secondCommit }, 'c')
+  await assert.rejects(project({ ...secondDelivery, commit: base }, 'c'), /different verified delivery/)
+  host.finish('c', 'Second file ready')
+  const readOnly = await dispatch(taskId, 4)
+  await send(taskId, readOnly.dispatchRound, 'Tester')
+  host.agentOf('c').session.header = { cwd: feature.workDir }
+  host.begin('c')
+  await project({ action: 'start', taskId, round: readOnly.dispatchRound }, 'c')
+  await project({ action: 'submit', taskId, round: readOnly.dispatchRound, result: 'Checked in assigned worktree' }, 'c')
+  host.finish('c', 'Read completed')
+  host.finish('ga', 'Initial plan assigned')
+  await intake('Change another label')
+  await setPolicy('worktree')
+  const next = await project({ ...plan, title: 'Change another label', nodes: [node('c', ['src/a'], 'worktree')] })
+  await assert.rejects(dispatch(next.taskId, 1), /overlapping files/)
+  const firstDelivery = { action: 'submit', taskId, round: rounds[0].dispatchRound, result: 'Owned file ready' }
+  await assert.rejects(project({ ...firstDelivery, commit: secondCommit }, 'b'), /assigned files/)
+  writeFileSync(join(feature.workDir, 'src/a'), 'first file')
+  git(feature.workDir, 'add', 'src/a')
+  git(feature.workDir, 'commit', '-m', 'Change first file')
+  const firstCommit = git(feature.workDir, 'rev-parse', 'HEAD')
+  git(repo, 'merge', '--ff-only', feature.branch)
+  await project({ ...firstDelivery, commit: firstCommit }, 'b')
+  assert.equal((await dispatch(next.taskId, 1)).dispatchRound, 1)
+  git(feature.workDir, 'commit', '--allow-empty', '-m', 'Fix')
+  assert.equal((await project({ action: 'branches' })).branches.find(b => b.branch === feature.branch).relation, 'unmerged')
+  git(repo, 'merge', '--no-ff', '--no-edit', feature.branch)
+  const report = await project({ action: 'branches' })
+  assert.equal(report.branches.find(b => b.branch === feature.branch).relation, 'contained')
+  assert.ok(report.branches.find(b => b.branch === feature.branch).tasks.some(n => n.taskId === next.taskId && n.ownerId === 'c'))
+  const api = (await host.call('project-branches', { roomId: 'r1', repository: repo })).value
+  assert.equal(api.count, 3)
+  assert.equal(api.branches.find(b => b.branch === feature.branch).lastActivityAt, report.branches.find(b => b.branch === feature.branch).lastActivityAt)
+  git(repo, 'branch', '-d', 'old')
+  const refreshed = await project({ action: 'branches' })
+  assert.equal(refreshed.count, 2)
+  assert.equal(refreshed.branches.find(b => b.branch === 'old').removed, true)
+})
+
+test('interrupted picture task hands its checkpoint to one successor; a delayed receipt stays with the retired round', async t => {
+  const folder = mkdtempSync(join(tmpdir(), 'project-node-recovery-'))
+  t.after(() => rmSync(folder, { recursive: true, force: true }))
+  const git = (...args) => execFileSync('git', ['-C', folder, ...args], { encoding:'utf8',stdio:['ignore','pipe','pipe'] }).trim()
+  git('init', '-b', 'main')
+  writeFileSync(join(folder,'candidate.txt'),'source verified')
+  git('add','candidate.txt')
+  git('-c','user.name=Test Fixture','-c','user.email=fixture@example.invalid','commit','-m','Candidate')
+  const head = git('rev-parse','HEAD')
+  git('tag','candidate-v1')
+  const attachments = fakeAttachments()
+  const image = await attachments.saveImage({ mediaType:'image/png', width:1, height:1, data:new Uint8Array([1]) })
+  const host = await start(t, taskNotice, {attachments}, undefined, { b:{workDir:folder}, c:{workDir:folder} })
+  const req = host.say('Check empty and existing request sources')
+  req.content.push({type:'image',attachment:image})
+  const ended = host.round('intake',req)
+  await until(() => ended() !== undefined)
+  host.begin('ga')
+  const project = (args, actor='ga') => host.tool('project_task', args, actor).then(JSON.parse)
+  const {taskId} = await project({action:'plan',version:1,title:'Check source',acceptance:'Both cases pass',nodes:[
+    {title:'Check source',ownerId:'b',workDir:folder,workRef:'candidate-v1',instructions:'Run both checks',deliverable:'Test report',acceptance:'Both pass'},
+  ]})
+  const key={taskId,version:1,node:1}
+  const target={...key,round:1,ownerId:'c'}
+  await project({...key,action:'dispatch'})
+  const send=(to,round)=>host.tool('message_bot',{taskId,to,card_round:round,reply_to:'user',request_id:'dispatch-'+round,message:'Execute the node.'},'ga')
+  await send('Writer',1)
+  const original=host.begin('b')
+  await project({...key,action:'start',round:1},'b')
+  await project({...key,action:'checkpoint',round:1,artifact:'candidate-v1',completed:'Empty source passed',remaining:'Check an existing source'},'b')
+  host.emit('b','turn/end',{turn:1,reason:{kind:'aborted',reason:{kind:'user'}}})
+  const stored=()=>savedTeam(rt.home).rooms.r1.projectCards[taskId]
+  await until(()=>stored().rounds[0].planNode.block?.cause==='interrupted')
+  await project({...target,action:'wait',reason:'Environment under repair',waitingFor:'Lab is online'})
+  const inspect=()=>project({...target,action:'inspect_recovery'})
+  host.agentOf('b').status='running'
+  const busy=await inspect()
+  assert.equal(busy.writerStopped,false)
+  const recover={...target,action:'takeover',reason:'Lab restored; alternate tester available',eligibility:'Same lab access',worktreeReview:'Changes reviewed with the original owner',artifact:'candidate-v1',expectedCommit:head}
+  await assert.rejects(project({...recover,inspection:busy.inspection}),/stopped execution|execution or candidate/)
+  host.agentOf('b').status='idle'
+  const initial=await inspect()
+  writeFileSync(join(folder,'notes.txt'),'Keep this handoff note')
+  await assert.rejects(project({...recover,inspection:initial.inspection}),/worktrees/)
+  const dirty = await inspect()
+  writeFileSync(join(folder, 'notes.txt'), 'The same dirty file now has different handoff notes')
+  await assert.rejects(project({...recover, inspection:dirty.inspection}), /worktrees/)
+  const inspected=await inspect()
+  assert.match(inspected.sourceTree.changes,/notes.txt/)
+  await assert.rejects(project({...recover,inspection:inspected.inspection,expectedCommit:'bad'}),/commit/)
+  const decision={...recover,inspection:inspected.inspection}
+  const [first,replay]=await Promise.all([project(decision),project(decision)])
+  assert.equal(first.dispatchRound,2)
+  assert.equal(replay.dispatchRound,2)
+  await assert.rejects(project({...decision,artifact:'another artifact'}),/different recovery/)
+  await assert.rejects(send('Writer',1),/current round/)
+  await send('Tester',2)
+  const packet=host.begin('c')
+  assert.deepEqual(packet.content.find(b=>b.type==='image').attachment,image)
+  assert.match(text(packet),/Remaining checks: Check an existing source/)
+  assert.match(text(packet),/Completed checks: Empty source passed/)
+  assert.match(text(packet),new RegExp(head))
+  assert.doesNotMatch(text(packet), /\nworkDir:|\nworkRef:/)
+  await project({...key,action:'start',round:2},'c')
+  // Deliver the old executor's exact original exchange, after the new owner started.
+  assert.equal(host.begin('b').source.exchangeId,original.source.exchangeId)
+  const late=await project({...key,action:'submit',round:1,result:'Old delayed report'},'b')
+  assert.equal(late.advanced,false)
+  await assert.rejects(project({...key,action:'submit',round:2,result:'Wrong exchange'},'b'),/owner/)
+  await assert.rejects(project({...key,action:'approve',round:1,artifact:'stale'}),/current plan/)
+  assert.equal(stored().rounds[0].planNode.lateResult,'Old delayed report')
+  assert.equal(stored().rounds[1].result,undefined)
+  await project({...key,action:'submit',round:2,result:'Existing source passed'},'c')
+  await project({...key,action:'approve',round:2,artifact:'checked-report'})
+  const card=stored()
+  assert.deepEqual(card.rounds[0].planNode.block.decisions.map(d=>d.action),['wait','takeover'])
+  assert.equal(card.rounds[1].planNode.previousRound,1)
+  assert.equal(card.rounds[1].planNode.artifact,'checked-report')
+})
+
+test('same-owner recovery keeps its checkpoint through another interruption and enforces the designated tester', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'node-resume-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const host = await start(t, taskNotice, {}, undefined, { b: { workDir: dir } })
+  const received = host.round('intake', host.say('Only Writer may verify this report'))
+  await until(() => received() !== undefined)
+  host.begin('ga')
+  const project = (args, actor = 'ga') => host.tool('project_task', args, actor).then(JSON.parse)
+  const { taskId } = await project({ action: 'plan', title: 'Check report', version: 1, acceptance: 'Both steps', nodes: [
+    { title: 'Check report', ownerId: 'b', fixedOwner: true, instructions: 'Check two items', deliverable: 'Report', acceptance: 'Both pass' },
+  ] })
+  const key = { taskId, version: 1, node: 1 }
+  await project({ ...key, action: 'dispatch' })
+  await host.tool('message_bot', { to: 'Writer', taskId, card_round: 1, reply_to: 'user', request_id: 'first', message: 'Check' }, 'ga')
+  host.begin('b')
+  await project({ ...key, round: 1, action: 'start' }, 'b')
+  await project({ ...key, round: 1, action: 'checkpoint', artifact: 'report-v1', completed: 'Item one passed', remaining: 'Check item two' }, 'b')
+  await project({ ...key, round: 1, action: 'block', reason: 'Test service unavailable', waitingFor: 'Service online', evidence: 'Service health returned 503' }, 'b')
+  host.emit('b', 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
+  await assert.rejects(project({ ...key, round: 1, action: 'inspect_recovery', ownerId: 'c' }), /designated owner/)
+  const inspect = round => project({ ...key, round, ownerId: 'b', action: 'inspect_recovery' })
+  host.agentOf('b').status = 'idle'
+  const first = await inspect(1)
+  assert.equal(first.writerStopped, true)
+  const resumed = await project({ ...key, round: 1, ownerId: 'b', action: 'resume', artifact: 'report-v1',
+    eligibility: 'Designated tester', reason: 'Service is online', worktreeReview: 'Verified report directory', inspection: first.inspection })
+  assert.equal(resumed.dispatchRound, 2)
+  await host.tool('message_bot', { to: 'Writer', taskId, card_round: 2, reply_to: 'user', request_id: 'second', message: 'Continue' }, 'ga')
+  host.begin('b')
+  await project({ ...key, round: 2, action: 'start' }, 'b')
+  await project({ ...key, round: 2, action: 'block', reason: 'Test service stopped again', waitingFor: 'Recovery', evidence: 'Health probe timed out' }, 'b')
+  const next = await inspect(2)
+  assert.equal(next.completed, 'Item one passed')
+  assert.equal(next.remaining, 'Check item two')
+  assert.equal(next.checkpointArtifact, 'report-v1')
+})
+
+test('an intake has one phase through pickup, scoped clarification, dispatch and optional final acceptance', async t => {
+  const host = await start(t, taskNotice)
+  const project = (args, session = 'ga') => host.tool('project_task', args, session).then(JSON.parse)
+  const room = () => rt.roomOf('r1')
+  const opened = host.round('request', host.say('Review the task lifecycle'))
+  await until(() => opened() !== undefined)
+  assert.equal(room().projectInbox[0].status, 'pending')
+  host.begin('ga')
+  await until(() => room().projectInbox[0].status === 'planning')
+  assert.ok(room().projectInbox[0].planningAt >= room().projectInbox[0].receivedAt)
+  const spec = { action: 'plan', version: 1, title: 'Lifecycle', humanAcceptanceRequired: true, acceptance: 'Verified', nodes: [
+    { title: 'Prepare', ownerId: 'b', instructions: 'Inspect', deliverable: 'Receipt', acceptance: 'Checked' },
+  ] }
+  await assert.rejects(project({ ...spec, nodes: [{ ...spec.nodes[0], ownerId: 'a' }] }), /other than/)
+  assert.equal(room().projectInbox[0].status, 'planning')
+  const card = await project(spec), taskId = card.taskId
+  const detail = () => project({ action: 'read', taskId })
+  assert.equal(card.status, 'dispatching')
+  assert.equal((await project({ action: 'dispatch', taskId, version: 1, node: 1 })).status, 'dispatching')
+  await host.tool('message_bot', { to: 'Writer', taskId, card_round: 1, request_id: 'lifecycle', message: 'Inspect', reply_to: 'user' }, 'ga')
+  host.begin('b')
+  assert.equal((await detail()).status, 'dispatching')
+  assert.equal((await project({ action: 'start', taskId, round: 1 }, 'b')).status, 'active')
+  await host.tool('ask_user', { question: 'Which edition?', options: [{ label: 'First' }] }, 'b')
+  assert.equal((await detail()).status, 'clarify')
+  const question = rt.state.questions.b
+  await rt.answerQuestion('b', question.id, { selected: ['First'] })
+  host.begin('b')
+  assert.equal((await detail()).status, 'active')
+  await host.tool('ask_user', { question: 'Which site?', options: [{ label: 'Other' }] }, 'b')
+  host.emit('b', 'user/message', { ...host.say('Site North'), id: 'typed-site' })
+  assert.equal((await detail()).status, 'active')
+  assert.equal(room().projectReplyScopes['typed-site'], taskId)
+  assert.equal((await project({ action: 'submit', taskId, round: 1, result: 'First edition verified' }, 'b')).status, 'review')
+  assert.equal((await project({ action: 'clarify', taskId, reason: 'Which final environment?' })).status, 'clarify')
+  const response = host.round('clarification', host.say('Staging', taskId))
+  await until(() => response() !== undefined)
+  assert.equal((await detail()).status, 'review')
+  const approval = { taskId, version: 1, node: 1, round: 1, artifact: 'checked-v1' }
+  assert.equal((await project({ ...approval, action: 'request_acceptance' })).status, 'human_review')
+  await assert.rejects(project({ ...approval, action: 'approve' }), /human decision/)
+  const reviewId = (await detail()).humanReview.id
+  const decide = (payload) => host.call('project-acceptance', { roomId: 'r1', taskId, reviewId, ...payload })
+  assert.equal((await decide({ decision: 'approve', reviewId: 'stale' })).ok, false)
+  assert.equal((await decide({ decision: 'approve' })).ok, true)
+  assert.equal((await decide({ decision: 'approve' })).ok, true)
+  assert.equal((await decide({ decision: 'return', feedback: 'obsolete' })).ok, false)
+  assert.equal((await detail()).status, 'done')
+  const db = new DatabaseSync(join(rt.home, 'state', 'rooms', 'id-r1', 'room.sqlite'), { readOnly: true })
+  try {
+    assert.equal(db.prepare('SELECT status FROM tasks WHERE task_id=?').get(taskId).status, 'done')
+    const intake = db.prepare('SELECT received_at, planning_at FROM project_inbox').get()
+    assert.equal(intake.planning_at, room().projectInbox[0].planningAt)
+  } finally { db.close() }
+})
+
+test('returned acceptance goes to the manager and an old request cannot approve the revision', async t => {
+  const node = { no: 1, ownerId: 'b', title: 'Build', instructions: 'Build', acceptance: 'Checked', deliverable: 'Product', dependsOn: [] }
+  const planned = { id: cardA, title: 'Card', acceptance: 'Checked', intakes: [], plans: [{ version: 1, by: 'a', at: 1, nodes: [node] }],
+    rounds: [{ ownerId: 'b', startedAt: 1, result: 'candidate', submittedAt: 2, planNode: { version: 1, node: 1, inputs: [] } }] }
+  const host = await start(t, { ...taskNotice, projectCards: { [cardA]: planned, [cardB]: { ...structuredClone(planned), id: cardB } } })
+  rt.ledger.append('group-r1', { who: 'User', seq: 1, time: 1, taskId: cardA, text: 'Build and submit the product for final acceptance.' })
+  const project = args => host.tool('project_task', { taskId: cardA, ...args }, 'ga').then(JSON.parse)
+  const read = () => project({ action: 'read' })
+  const approve = { version: 1, node: 1, round: 1, artifact: 'candidate' }
+  assert.equal((await project({ action: 'approve', ...approve, taskId: cardB })).status, 'done')
+  await project({ action: 'request_acceptance', ...approve })
+  const reviewId = (await read()).humanReview.id
+  const decision = { roomId: 'r1', taskId: cardA, reviewId, decision: 'return', feedback: 'Cover the empty case' }
+  assert.equal((await host.call('project-acceptance', decision)).ok, true)
+  assert.equal((await host.call('project-acceptance', decision)).ok, true)
+  assert.equal(host.agentOf('ga').calls.filter(m => m.source.taskId === cardA).length, 1)
+  assert.equal((await read()).status, 'planning')
+  await assert.rejects(project({ action: 'approve', ...approve }), /returned work/)
+  const { no, ...revisionNode } = node
+  assert.equal(no, 1)
+  assert.equal((await project({ action: 'plan', version: 2, nodes: [revisionNode], reason: 'Handle feedback' })).status, 'dispatching')
+  assert.equal((await host.call('project-acceptance', { ...decision, decision: 'approve' })).ok, false)
+  await project({ action: 'dispatch', version: 2, node: 1 })
+  await host.tool('message_bot', { to: 'Writer', taskId: cardA, card_round: 2, request_id: 'fix-review', message: 'Cover the empty case', reply_to: 'user' }, 'ga')
+  host.begin('b')
+  await host.tool('project_task', { action: 'start', taskId: cardA, round: 2 }, 'b')
+  await host.tool('project_task', { action: 'submit', taskId: cardA, round: 2, result: 'Empty case passes' }, 'b')
+  const revised = { version: 2, node: 1, round: 2, artifact: 'fixed candidate' }
+  assert.equal((await project({ action: 'approve', ...revised })).status, 'human_review')
+  const request = await project({ action: 'request_acceptance', ...revised })
+  assert.notEqual(request.acceptanceRequest.id, reviewId)
+  assert.equal((await host.call('project-acceptance', { ...decision, decision: 'approve', reviewId: request.acceptanceRequest.id })).ok, true)
+  assert.equal((await read()).status, 'done')
+})
+
+test('a task checkout selection binds future dispatches and preserves already dispatched work', async t => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'task-checkout-')))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const git = (...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c',
+    'user.email=test@example.invalid', '-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  git('init', '-b', 'main')
+  git('commit', '--allow-empty', '-m', 'Base')
+  git('branch', 'topic')
+  const host = await start(t, { ...taskNotice, workDir: repo }, {}, {}, { b: { workDir: repo }, c: { workDir: repo } })
+  const project = (args, actor = 'ga') => host.tool('project_task', { roomId: 'r1', ...args }, actor).then(JSON.parse)
+  await project({ action: 'branches' })
+  const intake = host.round('start', host.say('Implement a feature in three steps'))
+  await until(() => intake() !== undefined)
+  host.begin('ga')
+  const nodes = ['one', 'two', 'three'].map((name, i) => ({ ownerId: i === 1 ? 'c' : 'b', title: name, deliverable: 'Commit',
+    instructions: 'Edit ' + name, acceptance: 'Tests pass', workspaceMode: 'current', workspaceReason: 'Use the project checkout',
+    workRef: 'main', writePaths: [name] }))
+  const { taskId } = await project({ action: 'plan', version: 1, title: 'Feature', acceptance: 'Verified', workspaceMode: 'current', workRef: 'main', workspaceReason: 'Use the project checkout',
+    nodes: nodes.map(({ workspaceMode, workRef, workspaceReason, ...step }) => step) })
+  const target = { roomId: 'r1', taskId }
+  const pick = (previous, selection) => host.call('select-task-workspace', { ...target, previous, selection })
+  const view = () => host.call('project-task-detail', { ...target, workspaceChoices: true }).then(r => r.value)
+  const dispatch = node => project({ action: 'dispatch', taskId, version: 1, node })
+  await dispatch(1)
+  const before = await view()
+  const main = before.choices.find(row => row.workRef === 'main')
+  const topic = before.choices.find(row => row.workRef === 'topic')
+  assert.equal(topic.workDir, null)
+  assert.equal(before.effective.workRef, 'main')
+  assert.match((await pick(null, topic)).error.message, /Finish the dispatched work/)
+  await host.tool('message_bot', { taskId, card_round: 1, to: 'Writer', reply_to: 'user', request_id: 'first-tree', message: 'Do step one.' }, 'ga')
+  host.begin('b')
+  await project({ action: 'start', taskId, round: 1 }, 'b')
+  writeFileSync(join(repo, 'one'), 'first')
+  git('add', 'one')
+  git('commit', '-m', 'Complete step one')
+  await project({ action: 'submit', taskId, round: 1, result: 'First step ready', commit: git('rev-parse', 'HEAD') }, 'b')
+  const selected = await pick(null, topic)
+  assert.equal(selected.ok, true, selected.error?.message)
+  const tree = selected.value
+  assert.deepEqual((await pick(null, topic)).value, tree)
+  assert.equal(git('symbolic-ref', '--short', 'HEAD'), 'main')
+  assert.equal(git('-C', tree.workDir, 'symbolic-ref', '--short', 'HEAD'), 'topic')
+  assert.equal((await pick(null, main)).ok, false)
+  assert.equal((await view()).selected.workDir, tree.workDir)
+  const second = await dispatch(2)
+  assert.equal((await pick(tree, main)).ok, false)
+  const decisions = (await host.call('project-task-detail', { ...target, workspaceOnly: true })).value
+  assert.equal(decisions.policy, 'auto')
+  assert.equal(decisions.userSelected, true)
+  assert.equal(decisions.directory, tree.workDir)
+  const read = await project({ action: 'read', taskId })
+  assert.deepEqual(read.plans[0].nodes.map(n => n.workRef), ['main', 'topic', 'topic'])
+  assert.deepEqual(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[second.dispatchRound - 1].workspace, tree)
+  await host.tool('message_bot', { taskId, card_round: second.dispatchRound, to: 'Tester', reply_to: 'user',
+    request_id: 'selected-tree', message: 'Continue the assigned work.' }, 'ga')
+  assert.ok(text(host.begin('c')).includes('workDir: ' + tree.workDir))
+  host.agentOf('c').session.header = { cwd: tree.workDir }
+  await project({ action: 'start', taskId, round: second.dispatchRound }, 'c')
+  writeFileSync(join(tree.workDir, 'two'), 'second')
+  git('-C', tree.workDir, 'add', 'two')
+  git('-C', tree.workDir, 'commit', '-m', 'Complete step two')
+  git('merge', '--no-edit', 'topic')
+  await project({ action: 'submit', taskId, round: second.dispatchRound, result: 'Second step ready', commit: git('rev-parse', 'topic') }, 'c')
+  const clear = await pick(tree, null)
+  assert.equal(clear.ok, true)
+  assert.equal((await view()).selected, null)
+  git('worktree', 'remove', tree.workDir)
+  assert.equal((await pick(null, tree)).ok, false)
+  assert.equal((await host.call('set-project-workspace-policy', { roomId: 'r1', policy: 'current' })).ok, true)
+  assert.deepEqual((await view()).choices.map(row => row.workRef), ['main'])
+  assert.equal((await pick(null, topic)).ok, false)
+})
+
+test('a legacy task uses one dispatched checkout for pending steps, even if the plan omitted its branch', async t => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'legacy-task-tree-')))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const git = (...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture',
+    '-c', 'user.email=fixture@example.invalid', '-C', repo, ...args], { stdio: 'pipe' })
+  const workDir = join(repo, '.worktrees', 'topic')
+  git('init', '-b', 'main')
+  git('commit', '--allow-empty', '-m', 'Base')
+  git('worktree', 'add', '-b', 'topic', workDir)
+  const taskId = '40acd6d2-a4b4-4751-90ca-38bde788c871'
+  const step = (no, dir, branch) => ({ no, ownerId: 'b', title: 'Step ' + no, instructions: 'Check', dependsOn: [],
+    acceptance: 'Pass', deliverable: 'Result', workDir: dir, ...(branch && { workRef: branch }) })
+  const card = { id: taskId, title: 'Legacy card', acceptance: 'Verified', intakes: [], plans: [{ version: 1, by: 'a', at: 1,
+    nodes: [step(1, workDir), step(2, workDir), step(3, repo, 'main')] }],
+    rounds: [{ assignedAt: 2, ownerId: 'b', plan: 'Check', dispatchId: 'legacy-first', planNode: { version: 1, node: 1, inputs: [], workDir } }] }
+  const host = await start(t, { ...taskNotice, workDir: repo, projectCards: { [taskId]: card } })
+  const target = { roomId: 'r1', taskId }
+  const view = () => host.call('project-task-detail', { ...target, workspaceChoices: true }).then(r => r.value)
+  const restored = await view()
+  assert.equal(restored.effective.workRef, 'topic')
+  assert.equal(restored.effective.workDir, workDir)
+  assert.equal(restored.available, true)
+  assert.equal(restored.assigned, undefined)
+  const detail = JSON.parse(await host.tool('project_task', { ...target, action: 'read' }, 'ga'))
+  assert.equal(detail.taskWorkspace.workRef, 'topic')
+  assert.equal(detail.plans[0].nodes[2].workDir, workDir)
+  renameSync(workDir, workDir + '.moved')
+  try {
+    const unavailable = await view()
+    assert.equal(unavailable.effective.workDir, workDir)
+    assert.equal(unavailable.available, false)
+    await assert.rejects(host.tool('project_task', { ...target, action: 'dispatch', version: 1, node: 3 }, 'ga'), /task worktree is unavailable/)
+  } finally { renameSync(workDir + '.moved', workDir) }
+  await host.tool('project_task', { ...target, action: 'dispatch', version: 1, node: 3 }, 'ga')
+  const saved = savedTeam(rt.home).rooms.r1.projectCards[taskId]
+  assert.deepEqual(saved.plannedWorkspace, restored.effective)
+  assert.deepEqual(saved.rounds[1].workspace, restored.effective)
+  assert.equal(saved.plans[0].nodes[2].workRef, 'main')
+})
+
+test('accepted work, plan controls and group task diagnostics share the durable card', async t => {
+  const host = await start(t, { taskManagementEnabled: true }, undefined, undefined, { d: {} })
+  const project = (args, session = 'ga') => host.tool('project_task', args, session).then(JSON.parse)
+  await assert.rejects(project({ action: 'list' }, 'b'), { code: 'GROUP_CONTEXT_REQUIRED' })
+  await assert.rejects(project({ action: 'list', roomId: 'r1' }, 'd'), { code: 'NOT_GROUP_MEMBER' })
+  await assert.rejects(project({ action: 'list', roomId: 'other' }), { code: 'GROUP_CONTEXT_MISMATCH' })
+  const sent = host.round('work', host.say('Inspect the site without changing it'))
+  await until(() => sent() !== undefined)
+  host.begin('ga')
+  await project({ action: 'reply', message: 'I will check the site.', acceptWork: true, classificationReason: 'Read-only investigation' })
+  const [card] = Object.values(rt.roomOf('r1').projectCards)
+  assert.equal(card.classificationReason, 'Read-only investigation')
+  const key = { roomId: 'r1', taskId: card.id }
+  const edit = { ...key, node: 1, version: 1, field: 'fixedOwner', value: true }
+  const plan = await project({ action: 'plan', version: 1, title: 'Inspect site', acceptance: 'Record evidence',
+    nodes: [{ ownerId: 'b', title: 'Inspect', instructions: 'Read the page', deliverable: 'Notes', acceptance: 'Evidence' }] })
+  assert.equal(plan.taskId, card.id)
+  assert.equal((await host.call('set-task-node-constraint', edit)).ok, true)
+  assert.equal((await host.call('set-task-node-constraint', edit)).ok, false)
+  assert.equal((await host.call('set-task-human-acceptance', { ...key, required: true })).ok, true)
+  const durable = savedTeam(rt.home).rooms.r1.projectCards[card.id]
+  assert.equal(durable.plans.at(-1).nodes[0].fixedOwner, 1)
+  assert.equal(durable.humanAcceptanceRequired, true)
+  await project({ action: 'dispatch', taskId: card.id, version: 2, node: 1 })
+  assert.equal((await host.call('set-task-node-constraint', { ...edit, version: 2, value: false })).ok, false)
+  await assert.rejects(project({ action: 'dispatch', ...key }, 'gb'), { code: 'TASK_ROLE_REQUIRED' })
+  await rt.updateRoom('r1', { projectAssistantId: 'c' })
+  await rt.updateRoom('r1', { remove: ['c'] })
+  await assert.rejects(project({ action: 'dispatch', ...key }), { code: 'TASK_ASSISTANT_INVALID' })
+  await rt.updateRoom('r1', { taskManagementEnabled: false })
+  await assert.rejects(project({ action: 'dispatch', ...key }), { code: 'TASK_MANAGEMENT_DISABLED' })
+  assert.equal((await project({ action: 'read', ...key })).taskId, card.id)
+})
+
+test('an explicit group skip is distinguishable from a literal PASS message and records the called member', async t => {
+  const host = await start(t, { taskManagementEnabled: true })
+  for (const [index, skip] of [true, false].entries()) {
+    const round = host.round('turn-' + index, host.say('@Writer Check this'))
+    await settle(() => host.agentOf('gb').calls.length === index + 1)
+    host.begin('gb')
+    if (skip) await host.tool('skip_group_turn', {}, 'gb')
+    host.finish('gb', skip ? '' : '[PASS]')
+    await settle(() => round() !== undefined)
+    assert.deepEqual(round().replies.map(row => row.kind ?? row.text), [skip ? 'skipped' : '[PASS]'])
+    assert.deepEqual(rt.ledger.records('group-r1').findLast(row => row.event === 'round').calledIds, ['b'])
+    assert.equal(Object.keys(rt.roomOf('r1').projectCards ?? {}).length, 0)
+  }
+})
+
+test('legacy assistant migration respects explicit settings and never reinterprets later notices', async t => {
+  const legacy = { taskManagementEnabled: undefined, notice: 'Project goals\n[taskAssistant:Tester]' }
+  const host = await start(t, legacy)
+  const room = rt.roomOf('r1')
+  assert.equal(room.projectAssistantId, 'c')
+  assert.equal(room.notice, legacy.notice)
+  await rt.updateRoom(room.id, { notice: '', taskManagementEnabled: false })
+  await rt.updateRoom(room.id, { notice: '[taskId]\n[taskAssistant:Writer]' })
+  const stored = savedTeam(host.home).rooms.r1
+  assert.equal(stored.projectAssistantId, 'c')
+  assert.equal(stored.taskManagementEnabled, false)
+  assert.equal(Object.keys(stored.projectCards ?? {}).length, 0)
 })

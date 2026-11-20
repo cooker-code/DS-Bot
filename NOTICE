@@ -142,7 +142,8 @@ jindw and contributors) from npm. esbuild is a build tool only. The plugin's
 client.js bundles qrcode-generator from npm (MIT, Copyright (c) 2009 Kazuhiko
 Arase). The WeCom connector uses ws from npm (MIT, Copyright (c) 2011 Einar
 Otto Stangvik, (c) 2013 Arnout Kazemier and contributors, (c) 2016 Luigi
-Pinca and contributors).
+Pinca and contributors). The skill folder importer uses yaml from npm
+(https://github.com/eemeli/yaml, ISC License, Copyright Eemeli Aro).
 
 ==============================================================================
 Projects that gave us ideas (no code copied)

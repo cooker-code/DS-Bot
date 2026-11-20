@@ -12,6 +12,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSyn
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readSplitTeam } from '../src/host/team-storage/split.js'
 import { modelsFor } from '../src/client/agent-routes.js'
 
 const [name, port, ...rest] = process.argv.slice(2)
@@ -27,7 +28,6 @@ const QUIET_MS = 2500
 const STEP_TIMEOUT_MS = 120_000
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const mockLog = () => {
   try {
     return readFileSync(join(HOME, 'mock.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))
@@ -59,7 +59,7 @@ async function api(endpoint, payload = {}) {
   return result.value
 }
 
-const state = () => readJson(join(HOME, 'bot', 'state.json'))
+const state = () => readSplitTeam(join(HOME, 'bot', 'state'))
 const botNamed = wanted => Object.values(state().bots).find(bot => bot.name === wanted)
 const roomNamed = wanted => Object.values(state().rooms).find(room => room.name === wanted)
 
@@ -249,6 +249,11 @@ await step('Chief creates a group', () => send(chief().id, '建群 研发群: Wr
   return expect(names.includes('Writer') && names.includes('Coder'), `members ${names}`)
 })
 
+await step('switch to ordinary group discussions', async () => {
+  const group = roomNamed('研发群')
+  if (group.taskManagementEnabled !== true) throw new Error('Task management must default to on')
+  await api('update-room', { id: group.id, taskManagementEnabled: false })
+})
 await step('user talks in the group', () => send(roomNamed('研发群').id, '大家好'), () => {
   const log = roomNamed('研发群').log ?? []
   return expect(log.some(line => line.who === 'User' && line.text === '大家好'), 'no user line')
@@ -413,14 +418,57 @@ await step('set prefs', () => api('set-prefs', { theme: 'dark', accent: '#336699
 
 const devRoomId = roomNamed('研发群')?.id
 await step('DS Bot dispatches a project card with the original image', async () => {
-  await api('update-room', { id: devRoomId, notice: '[taskId]' })
+  await api('update-room', { id: devRoomId, taskManagementEnabled: true })
   const image = await api('stage-image', { mediaType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGOwSdmCFTEMLQkAGLdVAYL+T7QAAAAASUVORK5CYII=' })
-  await api('send', { sessionId: devRoomId, text: 'native-project-image-smoke', images: [image.id] })
-}, async () => {
+  const sentAt = Date.now()
+  await api('send', { sessionId: devRoomId, text: '请确认开发收到派工后能看到这张原图。native-project-image-smoke', images: [image.id] })
+  return sentAt
+}, async (sentAt, calls) => {
   const view = await api('state')
   const cards = view.rooms.find(room => room.id === devRoomId).projectCards ?? []
-  return expect(cards.length === 1, 'expected one project card')
+  const taskProblem = expect(cards.length === 1, 'expected one project card')
     ?? expect(cards[0].ownerId === botNamed('Coder').id && cards[0].round === 1 && cards[0].status === 'review', 'the owner did not receive, start and submit the image task')
+  if (taskProblem) return taskProblem
+  const card = await api('project-task-detail', { roomId: devRoomId, taskId: cards[0].taskId })
+  const original = card.requirements[0]
+  const { rows } = await api('group-rows', { roomId: devRoomId, from: original.seq })
+  const answers = rows.filter(row => row.botId === chief().id && row.text?.includes('核对派工后能否看到附件'))
+  const firstTool = calls.flatMap(call => call.out ?? []).find(block => block.name === 'project_task')
+  if (answers.length !== 1 || firstTool?.input.action !== 'reply') return 'expected one public answer as the first manager action'
+  const firstAt = answers[0].time
+  const receivedAt = (await api('group-search', { roomId: devRoomId, query: 'native-project-image-smoke' })).results.find(hit => hit.seq === original.seq)?.time
+  if (!(sentAt <= receivedAt && receivedAt <= firstAt && firstAt <= card.plans[0].at && firstAt <= card.rounds[0].startedAt))
+    return 'the first group answer must precede the saved plan and worker start'
+  console.log(`     image request timing (ms): send→group ${receivedAt - sentAt}, group→answer ${firstAt - receivedAt}, send→answer ${firstAt - sentAt}, group→plan ${card.plans[0].at - receivedAt}, group→worker start ${card.rounds[0].startedAt - receivedAt}`)
+})
+await step('a bare admin mention answers the previous group question without another intake or card', async () => {
+  await api('send', { sessionId: devRoomId, text: '群里的 Bot 各自负责什么？' })
+  await settle()
+  const room = state().rooms[devRoomId]
+  await api('send', { sessionId: devRoomId, text: '@' + chief().name })
+  return { inbox: room.projectInbox, cards: Object.keys(room.projectCards ?? {}) }
+}, async (before, calls) => {
+  const room = state().rooms[devRoomId]
+  const actions = calls.flatMap(call => call.out ?? []).filter(block => block.name === 'project_task').map(block => block.input.action)
+  const { results } = await api('group-search', { roomId: devRoomId, query: '接着回答分工问题' })
+  return expect(actions.join() === 'chat,reply', 'the admin must classify the question and reply to the reminder')
+    ?? expect(results.some(row => row.botId === chief().id), 'the reminder answer did not reach the group')
+    ?? expect(JSON.stringify(before.inbox) === JSON.stringify(room.projectInbox), 'the reminder changed the project inbox')
+    ?? expect(JSON.stringify(before.cards) === JSON.stringify(Object.keys(room.projectCards ?? {})), 'the reminder changed the saved cards')
+})
+await step('admin hands an image requirement to the assistant and reports its verified result', async () => {
+  const assistant = Object.values(state().bots).find(b => b.name.startsWith('Coder') && b.name !== 'Coder')
+  await api('update-room', { id: devRoomId, add: [assistant.id], projectAssistantId: assistant.id })
+  const image = await api('stage-image', { mediaType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGOwSdmCFTEMLQkAGLdVAYL+T7QAAAAASUVORK5CYII=' })
+  await api('send', { sessionId: devRoomId, text: '请核实原图送达。native-project-image-smoke', images: [image.id] })
+  return assistant.id
+}, async assistant => {
+  const room = state().rooms[devRoomId]
+  const card = Object.values(room.projectCards ?? {}).find(c => c.title === 'Assistant image check')
+  const report = await api('group-search', { roomId: room.id, query: 'The assistant verified the original image' })
+  return expect(room.admin === chief().id && room.projectAssistantId === assistant, 'the split roles were not persisted')
+    ?? expect(card?.plans[0].by === assistant && card.rounds[0]?.ownerId === botNamed('Coder').id && card.rounds[0]?.planNode.acceptedBy === assistant, 'the assistant did not plan, dispatch and review the worker')
+    ?? expect(report.results.filter(row => row.botId === chief().id).length === 1, 'missing final group report from the admin')
 })
 await step('delete the group', () => api('delete-room', { id: devRoomId }), () => expect(Object.keys(state().rooms).length === 0, 'group still there')
   ?? expect(memoryFile('groups', devRoomId) === '', 'the group memory is still in place')
@@ -453,6 +501,7 @@ await step('Chief sees its attached MCP and skill', () => send(chief().id, '查�
 })
 
 const capabilityRoom = await api('create-room', { name: 'Capability smoke', members: [chief().id, botNamed('Coder').id], admin: chief().id })
+await api('update-room', { id: capabilityRoom.id, taskManagementEnabled: false })
 await step('Chief first group turn sees its attached MCP and skill', () => send(capabilityRoom.id, '查能力 smoke'), (_value, calls) => {
   const report = reportOf(calls, 'Chief')
   return expect(report?.endsWith(sees), `Chief reported ${report} in the group`)

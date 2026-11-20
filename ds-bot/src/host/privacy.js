@@ -34,7 +34,7 @@ export function install(rt) {
   // Every Session a private Bot speaks from: its own chat, the parts it opened while it
   // was busy (a background part reads and writes in that Bot's name), its earlier parts
   // and its groups. A deleted Bot's archive lists them itself.
-  const sessionsOf = bot => [...new Set([bot.id, ...(bot.sessionIds ?? [rt.chatOf(bot.id), ...(bot.segments ?? []).map(segment => segment.sessionId), ...openSessions(bot), ...rt.groupSessionsOf(bot.id)])])]
+  const sessionsOf = bot => [...new Set([bot.id, ...(bot.sessionIds ?? [rt.chatOf(bot.id), ...(bot.segments ?? []).map(segment => segment.sessionId), ...openSessions(bot), ...Object.keys(bot.removedSessions ?? {}), ...rt.groupSessionsOf(bot.id)])])]
   const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
 
   // A path as it is and as the file system resolves it, folded for comparing. realBeyond
@@ -71,6 +71,11 @@ export function install(rt) {
   ].filter(Boolean).map(spellings))).flat()
   const sharedFiles = async () => (await Promise.all([
     rt.statePath,
+    join(rt.home, 'state'),
+    join(rt.home, 'skill-folders'),
+    join(rt.home, 'skill-text'),
+    join(rt.home, 'team.sqlite'),
+    join(rt.home, 'state.json'),
     join(rt.home, 'chat-index.sqlite'),
     join(rt.home, 'chat-index.sqlite-wal'),
     join(rt.home, 'chat-index.sqlite-shm'),

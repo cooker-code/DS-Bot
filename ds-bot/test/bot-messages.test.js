@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { Session } from '@deepseek-ai/dsh-session'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeAttachments, fakeContext } from './fake-ctx.js'
 import { install as installTurns } from '../src/host/turns.js'
@@ -707,7 +708,7 @@ const callsOf = (agents, id) => agents.get(id)?.calls ?? []
 // ones, and a read while one renames the file over makes that save fail on Windows.
 const worksIn = async ({ call, home }) => {
   await call('set-prefs', {})
-  return JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).works ?? {}
+  return savedTeam(home).works ?? {}
 }
 
 // Chief asks Writer, which hands part of it on to Tester.
@@ -1587,11 +1588,9 @@ test('a long message between Bots is kept whole in the book of the pair, not in 
   const [entry] = await exchanges()
   assert.equal(entry.text.length, 2000)
   assert.equal(entry.length, long.length)
-  const file = join(home, 'state.json')
   await delay(100)
-  const saved = readFileSync(file, 'utf8')
+  const saved = JSON.stringify(savedTeam(home))
   assert.ok(!saved.includes('长'.repeat(100)), 'state.json does not hold the message')
-  assert.ok(!saved.includes('\n'), 'state.json is written without indentation')
   const book = readFileSync(join(home, 'ledger', 'pair-a-b.jsonl'), 'utf8').trim().split('\n').map(row => JSON.parse(row))
   assert.deepEqual(book.map(record => [record.event ?? record.role, record.id]), [['request', entry.id], ['delivered', entry.id]])
   assert.equal(book[0].text, long)

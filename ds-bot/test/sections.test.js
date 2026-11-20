@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -155,7 +156,7 @@ test('a rejected section update leaves its name, color, and collapsed state unch
   assert.deepEqual((await call('state', {})).value.sections, [section])
 
   assert.equal((await call('set-flags', { id: 'writer', pinned: true })).ok, true)
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = savedTeam(home)
   assert.deepEqual(saved.sections, [section])
 })
 

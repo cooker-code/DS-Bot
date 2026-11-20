@@ -1,0 +1,191 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { runInNewContext } from 'node:vm'
+import { fileURLToPath } from 'node:url'
+import { build } from 'esbuild'
+import { projectCardSummary } from '../src/host/project-tasks.js'
+
+const { outputFiles } = await build({
+  entryPoints: [fileURLToPath(new URL('../src/client/task-board.js', import.meta.url))],
+  bundle: true, format: 'cjs', write: false, external: ['react', 'react-dom'],
+})
+const react = {
+  createElement: (type, props, ...children) => ({ type, props, children }),
+  useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+  useRef: current => ({ current }), useEffect() {}, useId: () => 'task-help',
+}
+const module = { exports: {} }
+runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => react })
+const { TaskBoard } = module.exports
+function find(node, predicate) {
+  if (!node || typeof node !== 'object') return
+  if (predicate(node)) return node
+  for (const child of node.children.flat(Infinity)) {
+    const found = find(child, predicate)
+    if (found) return found
+  }
+}
+function renderCard(card) {
+  const view = TaskBoard({ room: { projectCards: [projectCardSummary(card)] }, roster: {}, actions: {}, onOpen() {} })
+  const component = find(view, n => n.props?.card)
+  return component.type(component.props)
+}
+function row(card) {
+  const rendered = renderCard(card)
+  const labels = find(rendered, n => n.props?.className === 'bt-project-statuses')
+  const times = find(rendered, n => n.props?.className === 'bt-project-times')
+  assert.ok(find(rendered, n => n.props?.className === 'bt-project-arrow'))
+  return { labels: Array.from(labels.children.filter(Boolean), n => n.children[0]), times: times && Array.from(times.children, n => n.children[0]) }
+}
+
+test('the project board counts saved cards, keeping unassigned intakes and member entries visible and editable', () => {
+  const room = { notice: '[taskId]', pendingIntakes: [{ id: 'q', title: 'Question', status: 'clarify' }] }
+  const render = () => TaskBoard({ room, roster: {}, actions: {} })
+  const count = view => find(view, n => n.props?.className === 'bt-tasks-count').children[0]
+  assert.equal(count(render()), 0)
+  assert.ok(find(render(), n => n.props?.['data-status'] === 'clarify'))
+  assert.ok(find(render(), n => n.type === 'button' && n.children[0] === 'Edit'))
+  assert.equal(find(render(), n => n.props?.className?.includes('bt-tasks-empty')), undefined)
+  room.projectCards = [{ taskId: 'card', title: 'Saved task', status: 'blocked' }]
+  room.tasks = { t1: { botId: 'worker', status: 'active', goal: 'Member work', startedAt: 1 } }
+  assert.equal(count(render()), 1)
+  assert.ok(find(render(), n => n.props?.task?.goal === 'Member work'))
+  room.projectCards.push({ taskId: 'done', status: 'done' })
+  assert.equal(count(render()), 2)
+  assert.equal(count(TaskBoard({ room: { taskManagementEnabled: false, tasks: room.tasks }, roster: {}, actions: {} })), 1)
+})
+
+test('status filtering updates the task list, card count and member history when the room changes', () => {
+  const room = { notice: '[taskId]', projectCards: [
+    { taskId: 'a', title: 'First', status: 'done' }, { taskId: 'b', title: 'Second', status: 'active' },
+  ], pendingIntakes: [{ id: 'q', title: 'Question', status: 'pending' }], tasks: {
+    member: { status: 'active', goal: 'Member work' }, past: { status: 'cancelled', goal: 'Past work' },
+  } }
+  const render = (...statuses) => TaskBoard({ room, roster: {}, actions: {}, statuses: new Set(statuses) })
+  const count = view => find(view, n => n.props?.className === 'bt-tasks-count').children[0]
+  const history = view => find(view, n => n.props?.className === 'bt-more')
+  const empty = view => find(view, n => n.props?.className?.includes('bt-tasks-empty'))
+  const active = render('active', 'pending')
+  assert.equal(count(active), 1)
+  assert.ok(find(active, n => n.props?.card?.taskId === 'b'))
+  assert.ok(find(active, n => n.props?.task?.goal === 'Member work'))
+  assert.ok(find(active, n => n.props?.['data-status'] === 'pending'))
+  assert.equal(find(active, n => n.props?.card?.taskId === 'a'), undefined)
+  assert.equal(history(active), undefined)
+  room.projectCards[1].status = 'done'
+  assert.equal(count(render('active', 'pending')), 0)
+  assert.equal(count(render('done')), 2)
+  assert.equal(history(render('cancelled')).children[0], 'History (1)')
+  assert.equal(empty(render('cancelled')), undefined)
+  assert.equal(count(render()), 0)
+  assert.equal(empty(render()).children[0], 'No results')
+})
+
+test('the caption shows the branch before the timing fields, including in edit mode and without a branch', () => {
+  for (const branch of ['main', 'fix/recall-origin-dash', undefined]) {
+    const card = { taskId: 'task', title: 'Check the source', status: 'blocked', startedAt: 10, stoppedAt: 120010, workspace: branch && { branch } }
+    const board = TaskBoard({ room: { projectCards: [card] }, roster: {}, actions: {}, onOpen() {} })
+    const component = find(board, n => n.props?.card === card)
+    for (const onOpen of [component.props.onOpen, undefined]) {
+      const row = component.type({ ...component.props, onOpen })
+      assert.equal(find(row, n => n.props?.className === 'bt-task-name').children[0], card.title)
+      const cells = find(row, n => n.props?.className === 'bt-project-meta').children.filter(Boolean)
+      assert.equal(cells.at(-1).props.className, 'bt-project-times')
+      assert.equal(cells.at(-1).children[1].children[0], 'Elapsed 2 min')
+      const ref = cells.find(n => n.props.className === 'bt-project-branch')
+      if (branch) assert.equal(cells[0], ref)
+      assert.equal(ref?.children[0], branch)
+      assert.equal(ref?.props.title, branch)
+    }
+  }
+})
+
+test('a blocked card has one status and no clock until its round actually started', () => {
+  const at = Date.now()
+  const round = { ownerId: 'dev', assignedAt: at - 5000, sentAt: at - 4000,
+    planNode: { version: 1, node: 1, block: { at, decisions: [{ action: 'wait', at: at + 600000 }] } } }
+  const card = { id: 'card', rounds: [round], plans: [{ version: 1, at: at - 8000, nodes: [{ no: 1, ownerId: 'dev', dependsOn: [] }] }] }
+  assert.deepEqual(row(card), { labels: ['Blocked'], times: undefined })
+  round.startedAt = at - 120000
+  const started = row(card)
+  assert.deepEqual(started.labels, ['Blocked'])
+  assert.match(started.times[0], /^Started /)
+  assert.equal(started.times[1], 'Elapsed 2 min')
+  card.plans[0].nodes.push({ no: 2, ownerId: 'backup', dependsOn: [] })
+  card.rounds.push({ ownerId: 'backup', assignedAt: at, planNode: { version: 1, node: 2,
+    block: { at: at + 60000, decisions: [] } } })
+  assert.equal(row(card).times[1], 'Elapsed 2 min')
+})
+
+test('assigned, delivered and replacement rounds hide timing; old submitted rounds retain their status', () => {
+  const first = { ownerId: 'dev', assignedAt: 10 }
+  const card = { id: 'old', rounds: [first] }
+  assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
+  first.sentAt = 11
+  assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
+  Object.assign(first, { result: 'Done', submittedAt: 25 })
+  assert.deepEqual(row(card), { labels: ['Awaiting review'], times: undefined })
+  first.startedAt = 12
+  assert.equal(row(card).times.length, 2)
+  card.rounds.push({ ownerId: 'backup', assignedAt: 30 })
+  assert.deepEqual(row(card), { labels: ['In progress'], times: undefined })
+})
+
+test('an accepted plan retains its status before dispatch, even if the plan is blocked', () => {
+  const node = { no: 1, ownerId: 'dev', dependsOn: [] }
+  const card = { id: 'new', rounds: [], plans: [{ version: 1, at: 10, nodes: [node] }] }
+  assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
+  node.contextGap = 'Missing repository'
+  assert.deepEqual(row(card), { labels: ['Blocked'], times: undefined })
+})
+
+test('parallel rounds keep their clocks and completed cards hide Bot icons and freeze at the last submission', () => {
+  const at = Date.now() - 7200000
+  const nodes = [1, 2].map(no => ({ no, ownerId: 'worker' + no, dependsOn: [] }))
+  const rounds = nodes.map(n => ({ ownerId: n.ownerId, startedAt: at + (n.no - 1) * 60000, planNode: { version: 1, node: n.no } }))
+  const card = { id: 'parallel', rounds, plans: [{ version: 1, at: 10, nodes }] }
+  const icons = () => find(renderCard(card), n => n.props?.className === 'bt-project-owner')
+  assert.equal(icons().children.flat().length, 2)
+  assert.match(row(card).times[0], /^Started /)
+  Object.assign(rounds[1], { result: 'Second output', submittedAt: at + 120000 })
+  rounds[1].planNode.acceptedAt = at + 180000
+  assert.deepEqual(row(card).labels, ['In progress'])
+  Object.assign(rounds[0], { result: 'First output', submittedAt: at + 240000 })
+  assert.deepEqual(row(card).labels, ['Awaiting review'])
+  rounds[0].planNode.acceptedAt = at + 3600000
+  assert.deepEqual(row(card).labels, ['Done'])
+  assert.equal(icons(), undefined)
+  assert.equal(projectCardSummary(card).startedAt, at)
+  assert.equal(row(card).times[1], 'Elapsed 4 min')
+})
+
+test('the question mark reveals the board statuses on hover or focus and dismisses on Escape or exit', () => {
+  const view = TaskBoard({ room: {}, roster: {}, actions: {} })
+  const help = find(view, n => n.type?.name === 'TaskStatusHelp')
+  let side = null
+  const initial = react.useState
+  react.useState = () => [side, value => { side = value }]
+  try {
+    const render = () => help.type()
+    const trigger = () => find(render(), n => n.type === 'button')
+    const tip = () => find(render(), n => n.props?.role === 'tooltip')
+    const event = { currentTarget: { getBoundingClientRect: () => ({ top: 420, bottom: 444 }),
+      closest: () => ({ getBoundingClientRect: () => ({ top: 100, bottom: 500 }) }) } }
+    assert.equal(trigger().children[0], '?')
+    assert.equal(tip(), undefined)
+    trigger().props.onMouseEnter(event)
+    assert.equal(tip().props['data-side'], 'above')
+    assert.equal(trigger().props['aria-describedby'], tip().props.id)
+    const names = Array.from(find(tip(), n => n.type === 'dl').children[0], n => n.children[0].children[0])
+    assert.deepEqual(names, ['Awaiting intake', 'Needs clarification', 'Planning', 'Dispatching', 'In progress', 'Awaiting review',
+      'Human acceptance', 'Blocked', 'Failed', 'Done', 'Cancelled'])
+    render().props.onMouseLeave()
+    assert.equal(tip(), undefined)
+    trigger().props.onFocus(event)
+    assert.ok(tip())
+    render().props.onKeyDown({ key: 'Escape', stopPropagation() {}, currentTarget: { querySelector: () => ({ focus() {} }) } })
+    assert.equal(tip(), undefined)
+  } finally {
+    react.useState = initial
+  }
+})

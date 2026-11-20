@@ -81,7 +81,7 @@ const hostProps = (content, { sessionId = 'room', data = {} } = {}) => {
     },
   }
 }
-const render = (exports, props) => { at = 0; return expand(exports.UserMessageCell(props), ['UserText', 'ProjectedContent', 'HostContent']) }
+const render = (exports, props) => { at = 0; return expand(exports.UserMessageCell(props), ['UserText', 'ProjectedContent', 'HostContent', 'QuotePreview']) }
 const fresh = () => { hooks = [] }
 
 test('the bubble mounts on a DSH with the old text projection or with a user-text registry', () => {
@@ -107,6 +107,34 @@ test('on a current DSH a long message folds, and the host draws only the part sh
   drawn.length = 0
   render(current, props)
   assert.equal(drawn.find(item => item.name === 'conversation.chat.user.content').input.content.text, text)
+})
+
+test('a reply shows the speaker and quoted lines before the new text and keeps the wire text for copying', () => {
+  for (const api of [current, older]) {
+    fresh()
+    const text = '> 小圈:\n> 第一句\n> 第二句\n\n为什么没有建 task？'
+    const { props, drawn } = hostProps([{ type: 'text', text }])
+    const tree = render(api, props)
+    assert.equal(words(find(tree, node => node.type === 'blockquote')), '小圈:\n第一句\n第二句')
+    if (drawn.length) assert.equal(drawn[0].input.content.text, '为什么没有建 task？')
+    else assert.equal(words(find(tree, node => node.props?.className === 'bt-ubody')), 'projected:为什么没有建 task？')
+    assert.equal(find(tree, node => node.type?.name === 'CopyButton')[0].props.text, text)
+  }
+})
+
+test('a routed quote hides the card marker while quoting the reply keeps its card', () => {
+  const id = '71b2d169-69e1-4ae0-9a06-3a4bd09527ae'
+  for (const quotation of [`> [${id}] Writer:\n> Check the source`, `> Writer:\n> Check the source\n> [${id}]`]) {
+    fresh()
+    const { props } = hostProps([{ type: 'text', text: quotation + '\n\nDid this need tracking?' }])
+    props.useRoster = select => select({ ...roster, roomsById: { room: { members: [], notice: '[taskId]' } } })
+    let next
+    props.actions.quote = (sessionId, quoted) => { next = quoted }
+    const tree = render(current, props)
+    assert.equal(words(find(tree, node => node.type === 'blockquote')), 'Writer:\nCheck the source')
+    find(tree, node => node.type === 'button' && node.props.title === 'Reply')[0].props.onClick()
+    assert.ok(next.endsWith('Did this need tracking?\n[' + id + ']'))
+  }
 })
 
 test('a short message is drawn whole with no fold control', () => {
@@ -223,4 +251,16 @@ test('an older DSH still draws the text through its projection, folded', () => {
   assert.match(words(tree), /projected:第 1 行/)
   assert.doesNotMatch(words(tree), /第 11 行/)
   assert.equal(find(tree, node => node.props?.['data-folded'] === true).length, 1)
+})
+
+test('an image and its caption share one surface on both supported host renderers', () => {
+  const image = { type: 'image', attachment: { attachmentId: 'screen', mediaType: 'image/png' } }
+  const caption = { type: 'text', text: '1. Replace the label in the screenshot.' }
+  for (const runtime of [current, older]) {
+    for (const [content, count] of [[[image, caption], 1], [[image], 0], [[caption], 0]]) {
+      fresh()
+      const tree = render(runtime, hostProps(content).props)
+      assert.equal(find(tree, node => node.props.className?.split(' ').includes('bt-ucombined')).length, count)
+    }
+  }
 })

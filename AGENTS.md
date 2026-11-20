@@ -22,6 +22,13 @@ Bot 团队的工作方式如下。
 4. **`client.js` 由构建生成。** 修改 `ds-bot/src/client/` 下的源文件后，运行 `npm run build`，将源文件和生成文件一并提交。禁止手动编辑 `client.js`。
 5. **禁止改动用户自己的 DSH 数据。** 测试环境将数据保存在 `.dsh-test-<name>/` 中。禁止将测试指向 `~/.dsh` 或用户正在运行的 DSH 实例。
 
+## 设置、API 和 SQLite
+
+- 每次改动前先看项目技能 [ds-bot-doc](.agents/skills/ds-bot-doc/SKILL.md)，判断是否影响业务操作、API、鉴权、运行时副作用或数据存储。能够通过已授权 API、命令行或 SQLite 完成的设置、查询和核查，直接走程序化入口。Computer Use 仅用于交付目标确实包含界面行为的场景。
+- 设置优先调用持有团队写锁的宿主 API。SQLite 适合按需只读核查和已授权的离线维护。先识别目标实例、库和 `state.lock`，保留 SQLite 事务日志及所有权。测试继续使用隔离实例。
+- 本机日用 Desktop 已配置脚本入口时，在子 shell 加载 `~/.local/state/ds-bot/operator.env`，然后用技能的 `request.py state` 核对目标团队和 `readOnly`。该文件只记录地址和官方启动输出的路径。macOS 在正常启动 Desktop 时可用 `open --stdout <本人可读的启动输出> -a "DeepSeek Harness"` 保留它签发的 `dsh web:` 公告，交给 `--web-log` 使用。重新启动后按新进程的公告更新入口。
+- 新增、修改或移除 API 时，同一改动更新技能中的业务入口、请求与返回字段含义、服务函数、存储位置、副作用和回读示例。仓库 CI 运行技能中的接口名覆盖检查；字段或行为变化还要逐项核对服务与例子。现有 API 无法表达某项设置时，先核对鉴权、宿主版本和锁，确认业务入口缺失后，在插件服务和通道补齐，复用原有权限与校验，并用隔离实例验证。
+
 ## 开发命令
 
 以下是 `ds-bot/` 目录下的常用命令，按需选用。单元测试和静态检查工具从 `dev/harness/` 加载 `@deepseek-ai/*` 软件包。`npm run harness` 会按 `dev/harness/package.json` 指定的 DSH 版本从 npm 安装这些包。也可以通过 `DSH_HARNESS` 指定其他 DSH 安装目录或 DeepSeek Harness 源码检出目录。运行测试环境需要一份源码，版本以 README 为准，默认路径为 `../deepseek-harness`，也可通过 `DSH_HARNESS` 指定。
@@ -37,6 +44,17 @@ CONTEXT_WINDOW=100000 CHECK_RATIO=0.45 dev/bench.sh smoke 3096 8796 reset && nod
 dev/bench.sh smoke 3096 8796 stop
 ```
 
+### 更新本机 DSH 插件
+
+每次修改 DS Bot 插件代码（含上游移植），完成构建和针对性验证后，将本次工作区版本同步到本机已安装 DS Bot 的日用 DSH profile。先核对安装方式：链接安装核对实际指向和构建产物；本地包安装用当前源码运行 `npm pack`，通过 `dsh plugin --profile <name> add <本地包路径>` 更新。部署本地测试版本时按下节发版，并核对实际安装内容。交付时分别说明哪些 profile 已更新、是否已在运行实例中加载；需要重启才能生效时说明，避免中断正在进行的会话。运行测试仍使用隔离的测试 profile。仅改文档或仓库技能时无需重装。
+
+### 本地二次开发发版
+
+- 每次将新版本部署到本机 DSH 进行测试，就触发一次二开发版。打包或更新链接安装前先确定版本号。单独运行构建、单元测试或隔离冒烟测试不触发发版。
+- 前三段沿用上游版本，第四段是本地发布序号，从 1 开始。以当前上游 `0.3.8` 为例，首版为 `0.3.8.1`。后续每次取该上游版本已使用的最大序号加 1，`0.3.8.9` 的下一版为 `0.3.8.10`，序号无上限。npm 包要求兼容语义化版本，包清单和锁文件中的本包版本使用对应的 `0.3.8-local.1`，发布记录和拉取请求使用四段版本号。
+- 每次发版在根目录 [local-changelog.md](local-changelog.md) 顶部新增一条记录，写明四段版本号、发布日期和相对上一版的实际变更。版本号、发布记录和对应代码一并进入该版本的拉取请求（PR）。
+- 本地部署测试通过后，每个版本向二开仓库 `origin` 的 `master` 分支提交一个 PR，启用自动合并，并核实最终已合入 `master`。目标分支缺失或平台未允许自动合并时，报告具体阻塞，保留本次版本和记录。
+
 ### 本地验证
 
 - **只改文档或翻译**时，核对改动涉及的内容、链接和命令即可，跳过应用构建、代码静态检查和单元测试。若改写了可执行示例，验证该示例。
@@ -46,6 +64,10 @@ dev/bench.sh smoke 3096 8796 stop
 交付时说明实际验证的范围。提交拉取请求后，持续集成（CI）会自动运行全量单元测试、生成文件一致性检查和静态检查。
 
 ## 合并上游 DS Bot 仓库更新
+
+盘点或移植 upstream 更新时，使用 [sync-upstream](.agents/skills/sync-upstream/SKILL.md)。逐项维护根目录的 [upstream-changelog.md](upstream-changelog.md)，按来源去重并记时间。每批都核对上游 `docs/plans/` 正文和索引，说明新增功能、设计变更及尚在计划中的行为。
+
+修复问题或调整设计前，按相关功能、症状或模块查这份记录。若命中暂缓项或部分采用的余项，先提醒用户对应的上游 PR、处理逻辑和当时的本地差异。暂缓项保持现状，后续采用时再更新原条目。
 
 本仓库只维护插件。以下已删除模块不再跟随上游更新：
 
@@ -59,9 +81,11 @@ dev/bench.sh smoke 3096 8796 stop
 
 完整流程见 [CONTRIBUTING.md 的 How we work 一节](CONTRIBUTING.md#how-we-work)。智能体必须遵守以下规则。
 
-- 从最新的 `dev` 创建工作分支，按 `fix/<issue>-<name>`、`feat/<issue>-<name>`、`docs/<name>` 或 `chore/<name>` 命名。禁止以 `dev/` 作为分支名前缀。日常开发的拉取请求以 `dev` 为目标分支。只有版本发布和紧急修复才合入 `main`。
+- 首次修改代码、文档或配置前，在实际工作目录核对当前分支。禁止在 `main`、`master` 上直接开发或提交。当前在这两个分支时，先切到 `dev` 或独立工作分支。`dev` 允许直接开发和本地提交。保留已有改动；共享目录或含无关改动时，为新任务建立独立工作树。紧急修复从 `main` 切出 `fix/hot-<name>`。
+- 项目群中，主 Bot 在派发写入任务前核对并绑定任务分支及工作目录。执行 Bot 在首次写入前核对实际目录和分支与分配一致，并遵守上一条。群已建好合规工作树时直接复用；若分配到了 `main`、`master` 或错误目录，交由主 Bot 更正任务分配后继续。
+- 日常任务需要独立工作分支时，从最新的 `dev` 切出，按 `fix/<issue>-<name>`、`feat/<issue>-<name>`、`docs/<name>` 或 `chore/<name>` 命名。禁止以 `dev/` 作为分支名前缀。日常开发的拉取请求以 `dev` 为目标分支。上游版本发布和紧急修复以 `main` 为目标。本地二开发版按上节规则向 `origin/master` 提交 PR。
 - 使用 `scripts/merge-dev.sh` 更新工作分支。脚本会合并 `origin/dev`。如果 `ds-bot/client.js` 有冲突，脚本会采用 dev 分支的版本，再重新构建。禁止对已推送的分支执行变基（rebase），也禁止强制推送。
-- 填写拉取请求模板，用 `Fixes #<number>` 关联 Issue。修复缺陷时，写明修复了哪个问题。在 Changelog 栏填写用户可见的变化，禁止编辑 `CHANGELOG.md`。
+- 填写拉取请求模板，用 `Fixes #<number>` 关联 Issue。修复缺陷时，写明修复了哪个问题。在 Changelog 栏填写用户可见的变化，常规贡献由维护者在发版时汇总到 `CHANGELOG.md`。本地同步上游时，按 sync-upstream 技能更新该文件的本地插件章节。
 - 带有 `maintainer` 标签的 Issue 或拉取请求留给维护者处理。禁止接手已分配给他人的 Issue。
 - 修改行为前，先阅读 `docs/plans/` 中对应的设计和 `docs/vision.md`。涉及界面时，还须阅读 `docs/design/ui-standard.md`。更改已确定的设计须经维护者同意。新增大型功能时，须在同一个拉取请求中附上设计说明。
 - 关闭 Issue 必须有依据。已修复的问题应给出对应的拉取请求或提交，重复问题应指向已有 Issue，决定不修复时应说明原因。
@@ -93,7 +117,8 @@ DS-Bot/
 ├── AGENTS.md             # 本指南，约定编程智能体的开发范围、工作流程和验证方式
 ├── CONTRIBUTING.md       # 英文贡献指南，说明如何开发、测试及提交拉取请求
 ├── CONTRIBUTING.zh.md    # 中文贡献指南
-├── CHANGELOG.md          # 按版本记录功能、修复及其他重要变化
+├── local-changelog.md    # 本地二次开发的逐版部署测试记录
+├── CHANGELOG.md          # 上游按版本记录的功能、修复及其他重要变化
 ├── SECURITY_MODEL.md     # 安全模型，说明各运行环境的信任边界和权限
 ├── LICENSE               # 本项目采用的 Apache 2.0 许可证全文
 ├── NOTICE                # 项目版权声明，以及第三方代码和素材的来源与权利人

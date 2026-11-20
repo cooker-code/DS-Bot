@@ -3,10 +3,10 @@ import { isMainOf } from './sources.js'
 import { HEADER, currentPart, runStatsOf, stripHeader, usageOf } from './text.js'
 import { AlertIcon, PlusIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
 import { botState, BotMark, BotAvatar } from './mark.js'
-import { call } from './api.js'
 import { GlobeIcon, Favicon, PanelMenu, menuItemFor } from './browser-pane.js'
 import { drawerMenuKeys } from './side-model.js'
 import { useEscape } from './overlay-hooks.js'
+import { GroupContext, MemberContext, useGroupContext } from './group-context.js'
 import { BotSettingsForm, InlineText } from './bot-settings.js'
 import { GroupSettingsForm, GroupTodos, ROOM_MODES, roomSubtitle, shownMode } from './group-settings.js'
 import { ModelMenu, modelOf } from './model-menu.js'
@@ -17,10 +17,12 @@ import { useGlide, useMorph } from './motion.js'
 import { MemberApprovals, MemberState, StopMemberWork, StopRoomWork, useMemberWork, workState } from './member-status.js'
 import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
+import { ProjectTaskDetail } from './project-task-detail.js'
 import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
 import { ComputerView } from './computer.js'
-import { t } from './i18n.js'
+import { MarkdownText } from './dsh-primitives.js'
+import { dateLocale, mdLabels, t } from './i18n.js'
 
 function transcriptOf(list, id, name, hiddenTurns = []) {
   const outline = list.projectionsBySession?.[id]?.values?.turnOutline ?? list.byId[id]?.projectionValues?.turnOutline
@@ -143,17 +145,20 @@ function About({ text, title = 'About', label, placeholder, onSave }) {
   const body = useRef(null)
   useMorph(body, open)
   const field = onSave !== undefined && (editing || shown === '')
-  // A click that ends a text selection is a copy, not an edit.
-  const edit = () => { if (!window.getSelection?.()?.toString()) setEditing(true) }
+  const editText = (event) => {
+    if (event.target.closest('a, button, input, summary, [role="button"]') || window.getSelection()?.toString()) return
+    setEditing(true)
+  }
   return h('div', null,
-    h('div', { className: 'bt-section-title' }, t(title)),
+    h('div', { className: 'bt-about-heading bt-section-title' }, t(title),
+      onSave && !field ? h('button', { type: 'button', className: 'bt-mini', onClick: () => setEditing(true) }, t('Edit')) : null),
     field
       ? h(InlineText, { label, value: shown, multiline: true, placeholder, autoFocus: editing, className: 'bt-input bt-input-area', onSave: save, onDone: () => setEditing(false) })
       : h('div', {
-          ref: body, className: 'bt-about', 'data-open': open || undefined,
-          ...(onSave ? { role: 'button', tabIndex: 0, title: t('Edit'), 'data-editable': '', onClick: edit, onKeyDown: (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setEditing(true) } } } : {}),
-        }, shown),
-    long && !field ? h('button', { type: 'button', className: 'bt-more', onClick: () => setOpen(value => !value) }, open ? t('Show less') : t('Show more')) : null)
+          ref: body, className: 'bt-about', 'data-open': open || !long || undefined,
+          ...(onSave ? { 'data-editable': '', onClick: editText } : {}),
+        }, h(MarkdownText, { text: shown, labels: mdLabels(), variant: 'compact' })),
+    long && !field ? h('button', { type: 'button', className: 'bt-more', 'aria-expanded': open, onClick: () => setOpen(value => !value) }, open ? t('Show less') : t('Show more')) : null)
 }
 
 // A group's face in its details: its first members side by side, each on a disc that
@@ -172,7 +177,7 @@ const markOf = entry => (entry?.state === 'ask' ? 'alert' : entry?.state === 'wo
 
 // One member: its mark, name and what it is doing on one surface that opens its chat;
 // Stop beside it while it works here, and the approvals it waits on below.
-function MemberRow({ member, entry, room, roster, actions }) {
+function MemberRow({ member, entry, room, roster, actions, stats }) {
   return h('div', { role: 'listitem', className: 'bt-member' },
     h('div', { className: 'bt-member-row' },
       h('button', { type: 'button', className: 'bt-member-open', title: t("Open {name}'s chat", { name: member.name }), onClick: () => actions.openSession(member.id) },
@@ -181,29 +186,36 @@ function MemberRow({ member, entry, room, roster, actions }) {
           h('span', { className: 'bt-member-line' },
             h('span', { className: 'bt-member-name' }, member.name),
             room.admin === member.id ? h('span', { className: 'bt-tag' }, t('Admin')) : null),
-          h(MemberState, { entry, bot: member, room, roster }))),
+          h(MemberState, { entry, bot: member, room, roster }), h(MemberContext, { room, member, stats }))),
       h(StopMemberWork, { entry, bot: member, room, actions })),
     h(MemberApprovals, { entry, bot: member, actions }))
 }
 
 // A group's overview: what members read, who is in it, who answers, and what it
 // remembers. Changes are made in its settings.
-function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) {
+function GroupOverview({ room, roster, actions, run, usage, useWork, openSettings, openTask, returnId, taskFilter: [statuses, onStatusesChange] }) {
   const members = room.members.map(id => roster.byId[id]).filter(Boolean)
+  const readings = useGroupContext(room, actions)
+  const stats = Object.fromEntries(members.map(member => {
+    const reading = readings?.[member.id]
+    return [member.id, reading?.id === room.memberSessions?.[member.id]?.at(-1)?.id ? reading : undefined]
+  }))
   const { entries } = useMemberWork(room, useWork)
   return [
     room.notice
       ? h(About, { key: 'notice', title: 'Notice', text: room.notice })
       : h('button', { key: 'notice', type: 'button', className: 'bt-more', onClick: openSettings }, t('Add a notice in group settings')),
     h(GroupTodos, { key: 'todos', room, actions }),
+    h('button', { key: 'archive', type: 'button', className: 'bt-more', onClick: () => actions.openArchive(room.id, 'library') }, t('Archived discussions')),
+    h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
     h('div', { key: 'members' },
       h('div', { className: 'bt-members-head' },
         h('div', { className: 'bt-section-title' }, t('Members · {count}', { count: members.length })),
         h(StopRoomWork, { room, entries, actions })),
       h('div', { className: 'bt-members', role: 'list' }, members.map(member => h(MemberRow, {
-        key: member.id, member, entry: entries.find(item => item.id === member.id), room, roster, actions,
+        key: member.id, member, stats: stats[member.id], entry: entries.find(item => item.id === member.id), room, roster, actions,
       })))),
-    h('div', { key: 'tasks' }, h(TaskBoard, { room, roster, actions })),
+    h('div', { key: 'tasks' }, h(TaskBoard, { key: room.id, room, roster, actions, onOpen: openTask, returnId, statuses, onStatusesChange })),
     h('div', { key: 'goal' }, h('div', { className: 'bt-section-title' }, t('Goal')),
       h('div', { className: 'bt-kv' },
         room.goal
@@ -231,56 +243,108 @@ function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) 
   ]
 }
 
-// A Bot's chat sessions: the current one first, then the parts opened while the Bot
-// was busy (each still live, marked when its turn runs), then the earlier ones, newest
-// first. Every Bot's chat has parts, whether it answers with a DS Bot model or a local
-// CLI. A running part opened from here is read-only until its turn ends: two sessions
-// running at once means two model calls.
-function BotSessions({ bot, part, run, useSessions, actions, running }) {
-  const runningOf = id => running?.[id] === true
-  const open = (bot.openParts ?? []).map(entry => ({ id: entry.sessionId, open: true, running: runningOf(entry.sessionId) }))
-  // Two sessions running at once means two model calls: shown only while a background
-  // part really runs, above the list rather than as a quiet footnote.
-  const backgroundRunning = open.some(entry => entry.running)
+// DSH list rows carry the last activity time. Archived rows can be absent from
+// the shell list, so use the part's saved time until the row is available.
+function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus, actions, running, readOnly }) {
+  const [selection, setSelection] = useState(null)
+  const [confirmation, setConfirmation] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
+  const editButton = useRef(null), deleteButton = useRef(null)
+  const open = bot.openParts ?? []
+  const earlier = [...(bot.parts ?? []), ...open.flatMap(thread => thread.parts ?? [])]
+  const groups = rooms.filter(room => room.memberSessions?.[bot.id]?.length)
   const entries = [
-    { id: part, current: true, running: runningOf(part) },
-    ...open,
-    ...(bot.parts ?? []).filter(id => id !== part).slice().reverse().map(id => ({ id, earlier: true })),
+    { id: part, current: true, startedAt: bot.sessionStartedAt ?? (part === bot.id ? bot.createdAt : undefined), at: bot.lastAt || bot.sessionStartedAt || bot.createdAt },
+    ...open.map(thread => ({ id: thread.sessionId, open: true, startedAt: thread.startedAt, at: thread.startedAt })),
+    ...earlier.filter(id => id !== part).reverse().map(id => ({ id, at: bot.partTimes?.[id] })),
+    ...groups.flatMap(room => room.memberSessions[bot.id].map(entry => ({ ...entry, roomId: room.id, roomName: room.name }))),
   ]
+  const ids = JSON.stringify(entries.map(entry => entry.id))
+  const activeIds = useSessionStatus(map => JSON.stringify(entries.filter(({ id }) => map.get(id)?.running ?? running?.[id]).map(({ id }) => id)))
+  const activeSessions = new Set(JSON.parse(activeIds))
+  const [times, setTimes] = useState({})
+  useEffect(() => {
+    if (!actions.sessionTimes) return
+    let current = true
+    actions.sessionTimes(bot.id, JSON.parse(ids)).then(value => { if (current) setTimes(value) }, () => {})
+    return () => { current = false }
+  }, [actions, bot.id, ids, activeIds])
   const rows = useSessions(list => entries.map(entry => list.byId?.[entry.id]), rowsEqual)
-  const total = entries.length
-  const openPart = (entry) => {
-    if (entry.current) return undefined
-    if (entry.open && actions.openPart !== undefined) return () => run(actions.openPart(bot.id, entry.id, entry.running))
-    return () => run(call('bot-open-part', { botId: bot.id, sessionId: entry.id }))
+  const sessions = entries.map((entry, index) => {
+    const row = rows[index]
+    const created = times[entry.id]?.createdAt ?? row?.createdAt ?? entry.startedAt
+    const active = row?.updatedAt ?? times[entry.id]?.updatedAt ?? (entry.id === part ? bot.lastAt : undefined)
+    return { ...entry, created, active, sortTime: active ?? entry.at ?? created ?? 0, running: activeSessions.has(entry.id) }
+  })
+  const privateParts = sessions.filter(entry => !entry.roomId)
+    .sort((a, b) => (a.created ?? a.at ?? 0) - (b.created ?? b.at ?? 0))
+  const privateNumbers = new Map(privateParts.map((entry, index) => [entry.id, index + 1]))
+  const ordered = sessions.sort((a, b) => b.sortTime - a.sortTime)
+  const format = at => at ? new Date(at).toLocaleString(dateLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  const timing = entry => h('span', { className: 'bt-session-times' },
+    h('span', null, t('Created {time}', { time: format(entry.created) })),
+    h('span', null, t('Last active {time}', { time: format(entry.active) })))
+  const state = entry => h('span', { key: 'meta', className: 'bt-agent-session-meta' },
+    entry.current && h('span', null, t('Current')),
+    entry.running && h('span', { className: 'bt-agent-session-run', role: 'status' }, t('Running')))
+  const selected = privateParts.filter(entry => !entry.running && selection?.includes(entry.id)).map(entry => entry.id)
+  const editing = selection !== null
+  const act = async (operation) => {
+    if (pending.current) return false
+    pending.current = true
+    setBusy(true)
+    try { return await run(operation()) } finally { pending.current = false; setBusy(false) }
   }
+  const remove = async () => {
+    if (!confirmation || pending.current) return
+    const ok = await act(() => actions.deleteParts(bot.id, confirmation))
+    setConfirmation(null)
+    if (ok) setSelection(null)
+    requestAnimationFrame(() => (ok ? editButton : deleteButton).current?.focus())
+  }
+  const cancel = () => { setConfirmation(null); requestAnimationFrame(() => deleteButton.current?.focus()) }
+  const prompt = confirmation && t('Delete the selected sessions ({count})? DSH will archive their history and stop their scheduled tasks.', { count: confirmation.length })
   return h('div', { className: 'bt-drawer-model' },
     h('div', { className: 'bt-agent-sessions-head' },
       h('div', { className: 'bt-section-title' }, t('Sessions')),
-      h('button', { type: 'button', className: 'bt-agent-sessions-new', onClick: () => run(actions.newPart !== undefined ? actions.newPart(bot.id) : call('bot-new-part', { botId: bot.id })) }, h(PlusIcon), t('New session'))),
-    backgroundRunning
-      ? h('div', { className: 'bt-agent-sessions-warn', role: 'status' },
-          h(AlertIcon),
-          h('span', null, t('A running session keeps using model calls in the background.')))
-      : null,
-    h('div', { className: 'bt-agent-sessions' }, entries.map((entry, index) => {
-      const row = rows[index]
-      const when = row?.updatedAt ?? row?.createdAt
-      const label = row?.title && row.title.trim() !== '' ? row.title : t('Session {number}', { number: total - index })
-      const title = entry.current ? t('Current session') : entry.open && entry.running ? t('Open this running session') : entry.open ? t('Open this session') : t('Open this earlier session')
-      return h('button', {
-        key: entry.id, type: 'button', disabled: entry.current,
-        className: `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`,
-        title, onClick: openPart(entry),
-      },
-        h('span', { className: 'bt-agent-session-name' }, label),
-        h('span', { className: 'bt-agent-session-meta' },
-          entry.running ? h('span', { className: 'bt-agent-session-run', role: 'status' }, t('Running'))
-            : entry.current ? t('Current')
-              : when ? new Date(when).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''))
+      !readOnly && h('div', { className: 'bt-task-toolbar' },
+        editing ? h('button', { type: 'button', ref: deleteButton, className: 'bt-mini bt-task-delete',
+          disabled: !selected.length || !!confirmation || busy, onClick: () => setConfirmation(selected) }, t('Delete ({count})', { count: selected.length })) : null,
+        h('button', { type: 'button', ref: editButton, className: 'bt-mini', disabled: !!confirmation || busy,
+          onClick: () => setSelection(editing ? null : []) }, t(editing ? 'Cancel' : 'Edit')),
+        !editing && h('button', { type: 'button', className: 'bt-agent-sessions-new', disabled: busy || undefined,
+          onClick: () => act(() => actions.newPart(bot.id)) }, h(PlusIcon), t('New session')))),
+    confirmation && h('div', { className: 'bt-task-confirm', role: 'alertdialog', 'aria-label': prompt,
+      onKeyDown: e => { if (e.key === 'Escape') { e.stopPropagation(); if (!busy) cancel() } } },
+      h('p', null, prompt),
+      h('div', { className: 'bt-task-toolbar' },
+        h('button', { type: 'button', className: 'bt-mini', autoFocus: true, disabled: busy, onClick: cancel }, t('Cancel')),
+        h('button', { type: 'button', className: 'bt-mini bt-task-delete', disabled: busy, onClick: remove }, t('Confirm')))),
+    ordered.some(entry => entry.open && entry.running)
+      ? h('div', { className: 'bt-agent-sessions-warn', role: 'status' }, h(AlertIcon),
+        h('span', null, t('A running session keeps using model calls in the background.'))) : null,
+    h('div', { className: 'bt-agent-sessions' }, ordered.map(entry => {
+      const label = `${entry.roomName ?? bot.name}-${entry.number ?? privateNumbers.get(entry.id)}`
+      const title = entry.current ? t('Current session') : entry.running ? t('Open this running session') : entry.open ? t('Open this session') : t('Open this earlier session')
+      const row = [
+        h('span', { key: 'name', className: 'bt-agent-session-name' }, label, timing(entry)),
+        state(entry),
+      ]
+      const className = `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`
+      if (entry.roomId) return h('button', { type: 'button', key: entry.id, className: 'bt-agent-session',
+        disabled: editing || busy, onClick: () => actions.openSession(entry.roomId) }, row)
+      if (editing) return h('label', { key: entry.id, className },
+        h('input', { type: 'checkbox', checked: selected.includes(entry.id), disabled: entry.running || !!confirmation || busy,
+          'aria-label': t('Select {name}', { name: label }), onChange: e => {
+            const checked = e.target.checked
+            setSelection(prev => checked ? [...prev, entry.id] : prev.filter(id => id !== entry.id))
+          } }), row)
+      return h('button', { key: entry.id, type: 'button', className, title, disabled: entry.current || busy || readOnly,
+        onClick: () => act(() => actions.openPart(bot.id, entry.id, entry.running)) }, row)
     })))
 }
-const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.title === b[index]?.title && row?.updatedAt === b[index]?.updatedAt)
+const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt)
 
 export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId]
@@ -289,21 +353,23 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
   const [tab, setTab] = useState('details')
   const room = roster.roomsById[sessionId]
   // The info pane swaps its overview for the Bot or group settings view in place.
-  const [view, setView] = useState(startTab === 'settings' && (owner || room) ? 'settings' : 'overview')
+  const [view, setView] = useState(room && startTab?.startsWith('task/') ? { taskId: startTab.slice(5) } : startTab === 'settings' && (owner || room) ? 'settings' : 'overview')
   const [editing, setEditing] = useState(Boolean(startRenaming && (roster.byId[sessionId] || roster.roomsById[sessionId])))
   const [draftName, setDraftName] = useState(roster.byId[sessionId]?.name ?? (roster.roomsById[sessionId]?.named ? roster.roomsById[sessionId].name : ''))
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
+  const returnTask = useRef(null)
+  const taskFilter = useState(null)
   const glide = useGlide(tab)
   // The settings view comes in from the right and the overview back from the left; a
   // new tab clears from a blur. The first view arrives with the panel.
   const last = useRef({ view, tab, move: undefined })
-  if (last.current.view !== view) last.current = { view, tab, move: view === 'settings' ? 'in' : 'out' }
+  if (last.current.view !== view) last.current = { view, tab, move: view === 'overview' ? 'out' : 'in' }
   else if (last.current.tab !== tab) last.current = { view, tab, move: 'tab' }
   const move = last.current.move
   const side = move === 'tab' ? undefined : move
   const close = () => actions.closeOverlay()
-  useEscape(close)
+  useEscape(view?.taskId ? () => setView('overview') : close)
   const bot = owner
   const running = useSessionStatus(map => map.get(part)?.running === true)
   const doing = useActivity(map => map[bot?.id ?? sessionId])
@@ -319,6 +385,10 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
     })
   }
   const errorLine = error ? h('div', { className: 'bt-error', role: 'alert', style: { padding: 0 } }, error) : null
+  if (room && view?.taskId) {
+    const card = room.projectCards?.find(item => item.taskId === view.taskId)
+    return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, roster, readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
+  }
   if ((bot || room) && view === 'settings') {
     return [
       h('div', { key: 'head', className: 'bt-subhead', 'data-move': move },
@@ -337,6 +407,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
     canBrowse: bot !== undefined && roster.browser === true && actions.openBrowser !== undefined,
     canTerminal: actions.canOpenTerminal?.() === true,
     canFiles: actions.canOpenFiles?.() === true,
+    canSidebarBrowser: actions.canOpenSidebarBrowser?.() === true,
   }).map(key => menuItemFor(key, actions, sessionId))
   const top = h('div', { className: 'bt-drawer-top', 'data-move': side },
     bot || room ? h('button', { type: 'button', className: 'bt-round', 'aria-label': bot ? t('Edit Bot') : t('Group settings'), title: bot ? t('Edit Bot') : t('Group settings'), 'data-info-row': 'settings', onClick: () => setView('settings') }, h(GearIcon)) : null,
@@ -381,7 +452,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
       tabs.map(key => h('button', { key, type: 'button', role: 'tab', className: 'bt-tab', 'aria-selected': tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))) : null,
     h('div', { key: `body:${tab}`, className: 'bt-drawer-body', 'data-move': move },
       errorLine,
-      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, usage, useWork, openSettings: () => setView('settings') }) : null,
+      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, run, usage, useWork, taskFilter, returnId: returnTask.current, openTask: taskId => { returnTask.current = taskId; setView({ taskId }) }, openSettings: () => setView('settings') }) : null,
       bot && tab === 'computer' ? h(ComputerView, { bot, actions, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [
         h(RunStats, { key: 'stats', bot, part, running, actions }),
@@ -390,7 +461,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h(ModelMenu, { bot, roster, actions, run, wide: true, inline: true }),
           modelOf(bot, roster) ? null : h('div', { className: 'bt-note' }, t('Pick a model and {name} can start.', { name: bot.name })),
         ),
-        h(BotSessions, { key: 'sessions', bot, part, run, useSessions, actions, running: roster.partsRunning }),
+        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, rooms: roster.rooms, run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
         h(PermissionRow, { key: 'permission', bot, roster, actions, run }),
         h(BotConnectors, { key: 'connectors', bot, roster, actions, run }),
         h('div', { key: 'folder', className: 'bt-drawer-model' },

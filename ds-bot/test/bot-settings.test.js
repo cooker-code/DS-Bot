@@ -99,6 +99,24 @@ test('Escape drops the typed text, still reports the edit done, and the saved va
   assert.deepEqual(log, [['done']])
 })
 
+test('the preview receives each unsaved draft and goes back to the saved text on Escape', () => {
+  let preview
+  const log = editing({
+    label: 'Group notice', value: 'Original', multiline: true,
+    renderField: (input, text) => { preview = text; return input },
+  }, (api) => {
+    for (const next of ['## Friday', '**Release**', '']) {
+      api.type(next)
+      assert.equal(api.props().value, next)
+      assert.equal(preview, next)
+    }
+    api.key('Escape')
+    assert.equal(api.props().value, 'Original')
+    assert.equal(preview, 'Original')
+  })
+  assert.deepEqual(log, [['done']])
+})
+
 test('an unchanged or untouched field saves nothing but still reports done', () => {
   assert.deepEqual(editing({ label: 'Label', value: 'Writer' }, (api) => { api.type('Writer'); api.blur() }), [['done']])
   assert.deepEqual(editing({ label: 'Label', value: 'Writer' }, (api) => { api.blur() }), [['done']])

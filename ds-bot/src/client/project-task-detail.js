@@ -1,0 +1,160 @@
+import { TASK_STATUS } from './task-board.js'
+import { TaskReply } from './task-reply.js'
+import { createElement as h, Fragment, useEffect, useId, useRef, useState } from 'react'
+import { call } from './api.js'
+import { MarkdownText } from './dsh-primitives.js'
+import { ChevronLeftIcon, CloseIcon } from './icons.js'
+import { TaskWorkspace } from './task-workspace.js'
+import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
+import { mdLabels, t } from './i18n.js'
+
+function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+  const id = useId()
+  const editButton = useRef(null)
+  const picker = useRef(null)
+  const [draft, setDraft] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const finish = () => {
+    setDraft(null)
+    setError('')
+    requestAnimationFrame(() => editButton.current?.focus())
+  }
+  const save = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const added = []
+      for (const file of draft.files) added.push(await stageTaskImage(file))
+      await onSave(draft.original, draft.text, added, draft.removed)
+      finish()
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const addFiles = files => {
+    if (!files.length || readOnly || busy) return
+    if (files.some(file => !taskImageTypes.split(',').includes(file.type))) return setError(t('Choose a PNG, JPEG, WebP, or GIF image'))
+    if (files.some(file => file.size > 25 * 1024 * 1024)) return setError(t('Choose an image smaller than 25 MB'))
+    setError('')
+    setDraft(current => ({ ...current, files: [...new Set([...current.files, ...files])] }))
+  }
+  const originals = new Set(sourceImages.map(image => image.attachmentId ?? image.id))
+  const visible = [...sourceImages, ...images.filter(image => !originals.has(image.attachmentId) && !draft?.removed.includes(image.attachmentId))]
+  const gallery = [...visible.map((image, index) => h(TaskImage, { key: image.attachmentId ?? image.id, roomId, taskId, image,
+    label: image.name || label + ' · ' + (index + 1), disabled: busy || readOnly,
+    onRemove: draft && !originals.has(image.attachmentId ?? image.id) ? () => setDraft({ ...draft, removed: [...draft.removed, image.attachmentId] }) : undefined })),
+  ...(draft?.files ?? []).map((file, index) => h(TaskImage, { key: 'file-' + index, file, label: file.name,
+    disabled: busy || readOnly, onRemove: () => setDraft({ ...draft, files: draft.files.filter(other => other !== file) }) }))]
+  const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length)
+  return h('section', { 'aria-labelledby': id, onKeyDown: event => {
+    if (draft && event.key === 'Escape' && !event.nativeEvent.isComposing) {
+      event.stopPropagation()
+      if (!busy) finish()
+    }
+  } },
+    h('div', { className: 'bt-project-field-head' },
+      h('h3', { id, className: 'bt-section-title' }, label),
+      !readOnly && !draft ? h('button', { ref: editButton, type: 'button', className: 'bt-mini',
+        onClick: () => setDraft({ original: value, text: value, removed: [], files: [] }) }, t('Edit')) : null),
+    draft ? h('textarea', { className: 'bt-input bt-input-area', autoFocus: true, 'aria-labelledby': id, value: draft.text,
+      readOnly: busy || readOnly, maxLength, onChange: event => setDraft({ ...draft, text: event.target.value }),
+      onPaste: event => {
+        const files = Array.from(event.clipboardData.files)
+        if (files.length) { event.preventDefault(); addFiles(files) }
+      } })
+      : value ? h('div', { className: 'bt-project-markdown' }, h(MarkdownText, { text: value, labels: mdLabels(), variant: 'compact' }))
+        : visible.length ? null : '—',
+    gallery,
+    draft ? h(Fragment, null,
+      h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
+        addFiles(Array.from(event.target.files))
+        event.target.value = ''
+      } }),
+      h('div', { className: 'bt-task-actions' },
+        h('button', { type: 'button', className: 'bt-soft-sm', disabled: busy || readOnly || !changed || (required && !draft.text.trim()),
+          onClick: save }, busy ? t('Saving…') : t('Save')),
+        h('button', { type: 'button', className: 'bt-mini', disabled: busy || readOnly, onClick: () => picker.current?.click() }, t('Add image')),
+        h('button', { type: 'button', className: 'bt-mini', disabled: busy, onClick: finish }, t('Cancel'))),
+      error ? h('p', { className: 'bt-error', role: 'alert' }, error) : null) : null)
+}
+
+export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip, onBack, close }) {
+  const [savingAcceptance, setSavingAcceptance] = useState(false)
+  const [replying, setReplying] = useState(false)
+  const [detail, setDetail] = useState()
+  const [error, setError] = useState('')
+  const [attempt, retry] = useState(0)
+  const activeRead = useRef(null)
+  const taskId = card?.taskId
+  useEffect(() => {
+    if (!taskId) return
+    const abort = new AbortController()
+    activeRead.current = abort
+    setError('')
+    call('project-task-detail', { roomId: room.id, taskId }, abort.signal).then(value => {
+      if (!abort.signal.aborted) setDetail(value)
+    }, failure => {
+      if (!abort.signal.aborted) setError(failure.message)
+    })
+    return () => abort.abort()
+  }, [room.id, room.seq, taskId, card?.status, card?.version, card?.round, card?.updatedAt, card?.textUpdatedAt, card?.intakes?.length, attempt])
+  const save = async (field, previous, value, addImages, removeImages) => {
+    try {
+      const saved = await call('update-project-task-text', { roomId: room.id, taskId, field, previous, value, addImages, removeImages })
+      activeRead.current?.abort()
+      setDetail(current => ({ ...current, [field]: saved }))
+    } finally {
+      retry(n => n + 1)
+    }
+  }
+  readOnly ||= room.taskManagementEnabled === false
+  return h(Fragment, null,
+    h('div', { className: 'bt-subhead', 'data-move': move },
+      h('button', { type: 'button', autoFocus: true, className: 'bt-icon-btn', 'aria-label': t('Back to details'), onClick: onBack }, h(ChevronLeftIcon)),
+      h('span', { className: 'bt-subhead-title' }, t('Task details')),
+      hasStrip ? null : h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': t('Close details'), onClick: close }, h(CloseIcon))),
+    h('div', { className: 'bt-drawer-body bt-project-detail', 'data-move': move },
+      !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
+        error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
+        detail ? h(Fragment, null,
+          !readOnly && room.taskManagementEnabled !== false ? replying ? h(TaskReply, { room, initialId: taskId, close: () => setReplying(false) })
+            : h('button', { type: 'button', className: 'bt-soft', onClick: () => setReplying(true) }, t('Continue this task')) : null,
+          h('label', { className: 'bt-set-row' }, h('input', { type: 'checkbox', checked: !!detail.humanAcceptanceRequired,
+            disabled: savingAcceptance || readOnly || !!detail.humanReview || detail.status === 'done' || !detail.supportsHumanAcceptance,
+            onChange: async event => {
+              setSavingAcceptance(true)
+              try {
+                const required = await call('set-task-human-acceptance', { roomId: room.id, taskId, required: event.target.checked })
+                setDetail(current => ({ ...current, humanAcceptanceRequired: required }))
+              } catch (failure) { setError(failure.message) }
+              finally { setSavingAcceptance(false) }
+            } }), t('Require human acceptance')),
+          h('p', null, t(TASK_STATUS[detail.status] ?? detail.status), ' · ',
+            (detail.owners?.length ? detail.owners : detail.ownerId ? [detail.ownerId] : []).map(id => roster?.byId[id]?.name ?? id).join(', ') || t('Unassigned')),
+          detail.clarification ? h('p', null, detail.clarification) : null,
+          detail.classificationReason ? h('p', null, t('Classification reason'), ' · ', detail.classificationReason) : null,
+          detail.plans?.at(-1)?.nodes.map(node => h('div', { className: 'bt-set-row', key: node.no },
+            h('span', null, node.title, ' · ', roster?.byId[node.ownerId]?.name ?? node.ownerId,
+              node.round ? ' · ' + t('Round {number}', { number: node.round }) : '',
+              detail.rounds[node.round - 1]?.planNode?.block?.reason ? ' · ' + detail.rounds[node.round - 1].planNode.block.reason : ''),
+            ...[['fixedOwner', 'Fixed owner'], ['independentReview', 'Independent review']].map(([field, label]) =>
+              h('label', { key: field }, h('input', { type: 'checkbox', checked: Boolean(node[field]),
+                disabled: readOnly || savingAcceptance || !!detail.rounds.length || !!detail.humanReview,
+                onChange: async event => {
+                  setSavingAcceptance(true)
+                  try {
+                    await call('set-task-node-constraint', { roomId: room.id, taskId, version: detail.version, node: node.no, field, value: event.target.checked })
+                    retry(n => n + 1)
+                  } catch (failure) { setError(failure.message) }
+                  finally { setSavingAcceptance(false) }
+                } }), t(label))))),
+          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement,
+            sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
+          h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
+            images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),
+          h(TaskWorkspace, { room, card, readOnly }))
+        : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))
+}

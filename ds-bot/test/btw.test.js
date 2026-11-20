@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { trimToolBoundary } from '../src/host/btw.js'
 import { fakeContext } from './fake-ctx.js'
@@ -25,7 +26,7 @@ const team = (extra = {}) => ({
   },
   rooms: {
     r1: {
-      id: 'r1', named: true, name: 'Launch', members: ['b1'], admin: 'b1', mode: 'everyone', notice: '',
+      id: 'r1', taskManagementEnabled: true, named: true, name: 'Launch', members: ['b1'], admin: 'b1', mode: 'everyone', notice: '',
       sessions: { b1: 'g-now' }, segments: { b1: [{ sessionId: 'g-old', endedAt: 1 }] },
     },
   },
@@ -196,7 +197,7 @@ test('a saved card rides the current part\'s view, whole and read-only', async (
   assert.equal(cards[0].answer, answer)
   const file = cardsFile(env.home)
   assert.equal(file.length, 2)
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal('btwCards' in saved, false)
   const view = await env.call('state', {})
   assert.equal(view.ok, true, view.error?.message)
@@ -291,7 +292,7 @@ test('a restart marks an aside that was still answering as failed', async (t) =>
   assert.equal(file[0].status, 'failed')
   assert.equal(file[0].error, 'DS Bot restarted before this answer finished.')
   assert.equal(file[1].status, 'done')
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal('btwCards' in saved, false)
   assert.equal(saved.revision, 3)
 })
@@ -319,7 +320,7 @@ test('a second host does not fail an aside the writer is still answering', async
   const file = cardsFile(env.home)
   assert.equal(file[0].status, 'answering')
   assert.equal(file[1].status, 'done')
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal('btwCards' in saved, false)
   assert.equal(saved.revision, 3)
   assert.equal(env.rt.state.revision, 3)
@@ -347,7 +348,7 @@ test('deleting a Bot removes its card files', async (t) => {
   assert.equal(env.rt.botOf('b2'), undefined)
   assert.equal(env.rt.btwView().b2, undefined)
   assert.equal(existsSync(join(env.home, 'btw', 'b2')), false)
-  const saved = JSON.parse(readFileSync(join(env.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(env.home)
   assert.equal(saved.bots.b2, undefined)
   assert.equal('btwCards' in saved, false)
   assert.equal(saved.bots.b1.id, 'b1')

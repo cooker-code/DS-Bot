@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto'
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { folderRoot, importSkillFiles } from './skill-folders.js'
 import { encodeUrlComponent } from './secrets.js'
 import { own } from './store.js'
 
@@ -93,6 +96,7 @@ export function install(rt) {
     if (!['mcp', 'skill', 'pack'].includes(kind)) throw new Error('Choose an MCP server, skill, or pack.')
     const items = ensureLibrary()
     const previous = own(items, name)
+    if (previous?.folderId) throw new Error('Delete the imported skill before replacing its folder.')
     if (previous && !ui) editCheck(previous, botId, 'change')
     if (previous && previous.kind !== kind) throw new Error('A capability cannot change its kind. Delete it and save a new one.')
     const now = Date.now()
@@ -153,6 +157,8 @@ export function install(rt) {
     for (const pack of Object.values(items)) if (pack.kind === 'pack') pack.items = (pack.items ?? []).filter(child => child !== item.name)
     for (const bot of Object.values(state.bots)) bot.capabilities = (bot.capabilities ?? []).filter(attached => attached !== item.name)
     await rt.save()
+    if (item.folderId) await rm(folderRoot(rt.home, item.folderId), { recursive: true, force: true })
+    else if (item.kind === 'skill' && !own(items, item.name)) await rm(join(rt.home, 'skill-text', validateCapabilityName(item.name)), { recursive: true, force: true })
     return true
   }
   // Called with the Bot being deleted, after it left the team. The shared list belongs to
@@ -282,7 +288,7 @@ export function install(rt) {
   const resolveUrl = (url, botId) => String(url).replace(SECRET_REFERENCE, (_match, name) => encodeUrlComponent(secretFor(name, botId)))
   const resolveList = (list, botId) => (list ?? []).map(raw => String(raw).replace(SECRET_REFERENCE, (_match, name) => secretFor(name, botId)))
   const configFor = (item, botId) => {
-    if (item.kind === 'skill') return { name: item.name, description: item.description, content: item.content }
+    if (item.kind === 'skill') return { name: item.name, description: item.description, content: item.content, ...(item.folderId ? { directory: join(folderRoot(rt.home, item.folderId), item.name) } : {}) }
     if (item.transport === 'stdio') return { transport: 'stdio', serverName: item.name, command: item.command, args: resolveList(item.args, botId), env: resolveValues(item.env, botId), failOnStartupError: true }
     return { transport: 'streamable-http', serverName: item.name, url: resolveUrl(item.url, botId), headers: resolveValues(item.headers, botId), failOnStartupError: true }
   }
@@ -319,7 +325,7 @@ export function install(rt) {
           name: `ds-bot-capability-skill-${name}`,
           inject: ['skills'],
           apply(c) {
-            c.effect(() => c.skills.register({ name: config.name, description: config.description, source: 'runtime', content: config.content }))
+            c.effect(() => c.skills.register({ name: config.name, description: config.description, source: 'runtime', content: config.content, ...(config.directory ? { resourceBase: { kind: 'directory', path: config.directory }, locator: join(config.directory, 'SKILL.md') } : {}) }))
           },
         }
         : await loadMcpPlugin()
@@ -472,6 +478,25 @@ export function install(rt) {
   }
 
   async function capabilityEndpoint(endpoint, body = {}) {
+    if (endpoint === 'capability-import') {
+      await rt.load()
+      writeCheck()
+      const imported = await importSkillFiles(rt.home, body.files, validateCapabilityName)
+      const items = ensureLibrary()
+      let item
+      try {
+        writeCheck()
+        if (own(items, imported.name)) throw new Error('A capability with this name already exists.')
+        item = itemInput(imported, { ui: true })
+        item.folderId = imported.folderId
+        await rt.save()
+        return item.name
+      } catch (error) {
+        if (item && items[item.name] === item) delete items[item.name]
+        await rm(folderRoot(rt.home, imported.folderId), { recursive: true, force: true })
+        throw error
+      }
+    }
     if (endpoint === 'capability-save') return capabilitySave(body, { ui: true })
     if (endpoint === 'capability-delete') return capabilityDelete(body.name, { ui: true })
     if (endpoint === 'capability-approve') {
@@ -530,6 +555,16 @@ export function install(rt) {
     }
   }, 'ds-bot: capabilities')
   Object.assign(rt, {
+    codexSkillsFor(sessionId) {
+      const bot = rt.botOf(rt.selfOf(sessionId))
+      if (!bot) return []
+      const enabled = expandCapabilityNames(bot.capabilities, library())
+      return Object.values(library()).filter(item => item.kind === 'skill').sort((a, b) => a.name.localeCompare(b.name)).map(item => {
+        if (!enabled.has(item.name)) return { name: item.name }
+        if (item.folderId) return { name: item.name, root: folderRoot(rt.home, item.folderId) }
+        return { name: item.name, root: join(rt.home, 'skill-text', validateCapabilityName(item.name)), description: item.description || item.name, content: item.content }
+      })
+    },
     capabilitySave,
     capabilityDelete,
     dropOrphanCapabilities,

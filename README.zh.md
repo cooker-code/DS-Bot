@@ -77,7 +77,7 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 你电脑上已经在用的编程 Agent CLI（Claude Code、Codex CLI、Cursor CLI、GitHub Copilot、Devin CLI、OpenCode、Gemini CLI、Antigravity、Kimi CLI、Kilo CLI 等）可以直接接入当 bot 用。新建 bot 时选本地 Agent（或在 bot 设置里切换），它就会直接用 CLI 自己的登录、套餐和模型，同时照常参与私聊、群聊、派活和记忆。
 
-不过有几点限制：本地 Agent 走的是 CLI 自己的工具和上下文，ds bot 里的共享能力和连接器不会传给它，切换运行方式也会新开一段对话；只有完全拒绝接入 MCP 服务的 CLI 或自定义 CLI 才拿不到建 bot、派活等团队工具。另外，Cursor CLI 会把最后一次切换的模型存成它自己的全局默认（`~/.cursor`），如果你在 ds bot 里给某个 Cursor bot 选了具体模型，其他用默认模型的 Cursor bot 和你终端里的 Cursor 都会跟着变，不想改全局默认的话保持“CLI 默认”即可（需要先登录 Cursor 才能看到模型列表）。
+不过有几点限制：本地 Agent 走的是 CLI 自己的工具和上下文，Codex 还会加载为这个 bot 勾选的共享技能。共享 MCP 服务和连接器仍由 DS Bot 使用，切换运行方式也会新开一段对话；只有完全拒绝接入 MCP 服务的 CLI 或自定义 CLI 才拿不到建 bot、派活等团队工具。另外，Cursor CLI 会把最后一次切换的模型存成它自己的全局默认（`~/.cursor`），如果你在 ds bot 里给某个 Cursor bot 选了具体模型，其他用默认模型的 Cursor bot 和你终端里的 Cursor 都会跟着变，不想改全局默认的话保持“CLI 默认”即可（需要先登录 Cursor 才能看到模型列表）。
 
 ### 浏览器
 
@@ -101,7 +101,7 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 在 设置 → 连接器 里，可以登录 GitHub、Gmail、QQ 邮箱、163 等邮箱和远程 MCP 服务，也能从 Claude Desktop、Cursor、VS Code 导入已有配置。凭据保存在 ds bot 的密钥里，bot 看不到明文，写的邮件默认也要你确认后才发。
 
-在 设置 → 能力 里，可以管理团队共享的 MCP 服务、技能和能力包，并在每个 bot 的设置里按需开启；bot 自己添加的本地命令需要先经你批准才能运行。
+在 **设置 → 能力 → 导入技能文件夹** 选中包含 `SKILL.md` 的目录，脚本、参考资料和模板会随技能一起保存。再去各个 bot 的设置里勾选。多个本地 Codex bot 可以共用工作目录，各自的勾选和取消从下一轮生效，项目或用户技能目录里的同名副本也受这个开关控制。这里也可以管理共享 MCP 服务和能力包。bot 自己添加的本地命令需要你批准后才能运行。
 
 ### Office 文件
 

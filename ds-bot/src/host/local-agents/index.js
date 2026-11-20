@@ -1,3 +1,4 @@
+import { memberModel, memberSettings } from '../team-storage/member-settings.js'
 // Local agents: ordinary Bots whose model route is a local agent CLI (Devin
 // CLI, Claude Code, Codex, ACP agents). install() scans for the CLIs, registers
 // one DSH LLM adapter for the routes it found, keeps the custom agents and the
@@ -17,6 +18,17 @@ import { ENGINES, customRoute, isLocalAgentRoute, validateCustom } from './engin
 import { cleanEnv, findEngineExecutable, findExecutable, probeSignIn, probeVersion, refreshSearchDirs } from './discover.js'
 
 const SIGNED_IN_TTL_MS = 60_000
+
+// The preset a Session runs on: its group's, else its Bot's, else DSH's default — the one
+// a Bot without a preset of its own is shown with (permissions.js keeps it applied to the
+// Session). A hard-coded workspace-write made a local agent open in a stricter mode than
+// the setting the user saw, so its tool calls went through the CLI's permission prompt
+// instead of the mode they asked for (#1539).
+export function presetOf(rt, sessionId) {
+  const bot = rt.botOf(rt.selfOf(sessionId))
+  const room = rt.roomOf(rt.groupOwners.get(sessionId)?.roomId)
+  return room?.permission ?? bot?.permission ?? rt.permissionCatalog?.()?.defaultPreset ?? 'workspace-write'
+}
 
 const spawnEngine = (kind, route, spec) => (kind === 'acp' ? new AcpEngine(route, spec, { findExecutable })
   : kind === 'codex' ? new CodexEngine(route, spec, { findExecutable })
@@ -92,11 +104,7 @@ export function install(rt) {
       const record = store().sessions[sessionId]
       if (record !== undefined) Object.assign(record, patch)
     },
-    presetFor: (sessionId) => {
-      const bot = rt.botOf(rt.selfOf(sessionId))
-      const room = rt.roomOf(rt.groupOwners.get(sessionId)?.roomId)
-      return room?.permission ?? bot?.permission ?? 'workspace-write'
-    },
+    presetFor: sessionId => presetOf(rt, sessionId),
     cwdFor: async (sessionId) => {
       try {
         const agent = await rt.resolveAgent(sessionId)
@@ -117,7 +125,7 @@ export function install(rt) {
   let registeredRoutes = new Set()
   const llm = () => serviceOf(ctx, 'llm')
   const supported = () => typeof llm()?.registerAdapter === 'function'
-  const usedRefs = () => [...new Set(Object.values(state.bots ?? {}).flatMap(bot => [bot.model, bot.appliedModel]).filter(Boolean))]
+  const usedRefs = () => [...new Set([...Object.values(state.bots ?? {}).flatMap(bot => [bot.model, bot.appliedModel]), ...Object.values(state.rooms ?? {}).flatMap(room => Object.values(memberSettings(room)).map(s => s.model))].filter(Boolean))]
   // A route a Bot runs on stays registered when its CLI goes away: the turn then fails
   // with the repair card, and nothing moves the Bot to another run mode by itself.
   const servedRoutes = () => [...new Set([...found.keys(), ...customRouteId(), ...usedRefs().map(ref => splitRef(ref)?.provider).filter(isLocalAgentRoute)])]
@@ -171,7 +179,9 @@ export function install(rt) {
   }
   const isLocalAgentSession = (sessionId) => {
     const bot = rt.botOf(rt.selfOf(sessionId))
-    return bot !== undefined && localAgentOf(bot) !== undefined
+    const roomId = rt.groupOwners?.get(sessionId)?.roomId
+    const override = bot && roomId !== undefined && memberModel(bot, rt.roomOf(roomId))
+    return override ? isLocalAgentRef(override) : bot !== undefined && localAgentOf(bot) !== undefined
   }
 
   // ---------------------------------------------------------------------------

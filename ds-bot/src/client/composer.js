@@ -1,3 +1,4 @@
+import { TaskReply } from './task-reply.js'
 import { createElement as h, Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChatsIcon, ClockIcon, GoalIcon, MicIcon, PaperclipIcon, PeopleIcon, PlusIcon, WaveIcon } from './icons.js'
@@ -5,6 +6,7 @@ import { canSetGoal } from './goal.js'
 import { BotMark } from './mark.js'
 import { stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
 import { t } from './i18n.js'
+import { insertReplyQuote, quoteMarkdown } from './message-quote.js'
 import { insertComposerNewline, sendsOnEnter } from './enter-key.js'
 import { enterSteers, steerable } from './enter-steer.js'
 
@@ -74,9 +76,14 @@ export function ComposerVoice({ sessionId, inputActions, actions, useUi, useRost
   useEffect(() => {
     if (!quote || !inputActions) return
     actions.clearQuote(quote.token)
-    const excerpt = quote.text.replace(/\s+/g, ' ').trim()
-    const line = `> ${excerpt.length > 200 ? `${excerpt.slice(0, 200)}…` : excerpt}\n\n`
-    inputActions.insertText(line, inputActions.captureInsertion())
+    const excerpt = quote.text.trim()
+    const editor = composerRoot.current?.closest('[data-composer-card]')?.querySelector('[role=textbox][contenteditable=true]')
+    if (inputActions.insertQuote) {
+      insertReplyQuote(inputActions, excerpt, editor)
+      return
+    }
+    const at = inputActions.captureInsertion()
+    inputActions.insertText(quoteMarkdown(excerpt) + '\n\n', { ...at, start: 0, end: 0 })
     const box = document.querySelector('[class*="_centerCol"] [role=textbox][contenteditable=true]')
     if (box instanceof HTMLElement) {
       box.focus()
@@ -121,6 +128,7 @@ export function menuIcons(roster) {
 export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions }) {
   const roster = useRoster(value => value)
   const [open, setOpen] = useState(null)
+  const [replyRoom, setReplyRoom] = useState(null)
   const [shown, leaving] = useLinger(open, 120)
   const button = useRef(null)
   const menu = useRef(null)
@@ -210,12 +218,15 @@ export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, act
       ref: button, type: 'button', className: 'bt-plus', 'aria-label': t('Add'), title: t('Add'),
       'aria-haspopup': 'menu', 'aria-expanded': Boolean(open), onMouseDown: keepComposerFocus, onClick: toggle,
     }, h(PlusIcon)),
+    room && replyRoom === room.id ? h(TaskReply, { key: room.id, room, close: () => setReplyRoom(null) }) : null,
     shown ? createPortal(h('div', {
       ref: menu, className: 'bt-menu bt-menu-up bt-plus-menu', role: 'menu', 'aria-label': t('Add'),
       style: place ?? {}, 'data-leaving': leaving || undefined,
     },
     shown.files ? h('button', { type: 'button', role: 'menuitem', onClick: attach }, h(PaperclipIcon), h('span', { className: 'bt-menu-label' }, t('Add files'))) : null,
     canReference ? h('button', { type: 'button', role: 'menuitem', onMouseDown: keepComposerFocus, onClick: reference }, h(ChatsIcon), h('span', { className: 'bt-menu-label' }, t('Reference a chat'))) : null,
+    room?.projectCards?.length && room.taskManagementEnabled !== false && !roster.readOnly ? h('button', { type: 'button', role: 'menuitem',
+      onClick: () => { setOpen(null); setReplyRoom(room.id) } }, h(GoalIcon), h('span', { className: 'bt-menu-label' }, t('Link task'))) : null,
     canSetGoal(room, roster) ? h('button', { type: 'button', role: 'menuitem', onClick: goal }, h(GoalIcon), h('span', { className: 'bt-menu-label' }, t('Set a goal'))) : null,
     h('button', { type: 'button', role: 'menuitem', onClick: schedule }, h(ClockIcon), h('span', { className: 'bt-menu-label' }, t('Scheduled task')))), document.body) : null)
 }

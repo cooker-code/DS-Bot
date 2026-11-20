@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir, hostname, tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { Session } from '@deepseek-ai/dsh-session'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { SOURCE_KIND } from '../src/host/constants.js'
 import { dshHomeOf } from '../src/host/folders.js'
@@ -80,8 +81,14 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
       get: id => registry.get(id),
       list: () => [...registry.values()],
       resolveByPath: async path => [...registry.values()].find(workspace => workspace.path === path),
-      create: async (path) => {
-        const workspace = { id: 'w-new', path, title: 'DS Bot' }
+      create: async (input, title) => {
+        const path = realpathSync.native(input)
+        const existing = [...registry.values()].find(workspace => workspace.path === path)
+        if (existing) return existing
+        const id = registry.has('w-new') ? `w-new-${registry.size}` : 'w-new'
+        const workspace = { id, path, title: title ?? basename(path), sessionIds: [], async attachSession(sessionId) {
+          if (!this.sessionIds.includes(sessionId)) this.sessionIds.push(sessionId)
+        } }
         registry.set(workspace.id, workspace)
         return workspace
       },
@@ -116,7 +123,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
   // Runs the parts check, registered last; 'next' means the step goes on.
   const preStep = (sessionId, messages = [], step = 1) => ctx.listeners.get('agent/pre-step').at(-1)(
     { agent: agentOf(sessionId), messages, step, signal: AbortSignal.timeout(60_000) }, async () => 'next')
-  const state = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = () => savedTeam(home)
   // Waits until the Bot's own chat runs in `dir` and its move has finished.
   const workingIn = async (botId, dir) => {
     await until(() => agentOf(state().bots[botId].sessionId).session.header.cwd === dir)
@@ -323,7 +330,7 @@ test('a group\'s folder holds for every member there; only the user or a Main Bo
   assert.deepEqual(created, [{ cwd: project }])
   assert.deepEqual(await preStep('gb'), { kind: 'enter', messages: [] })
   await until(() => state().rooms.r1.sessions.b === 's2')
-  assert.deepEqual(created, [{ cwd: project }, { cwd: project }])
+  assert.deepEqual(created, [{ cwd: project }, { workspaceId: 'w-new' }])
   assert.equal(state().bots.b.sessionId, 'b')
 
   // A Main Bot clears it without asking; setting it asks the user once for every member.
@@ -762,6 +769,83 @@ test('a Bot whose working folder is a registered workspace joins it', async (t) 
   assert.deepEqual(created.at(-1), { workspaceId: 'w-new' })
 })
 
+test('members share their group workspace across aliases and retain distinct same-name directories', async t => {
+  const { ctx, project, root, stop } = await start()
+  t.after(stop)
+  const other = join(root, 'other', 'project')
+  mkdirSync(other, { recursive: true })
+  const alias = join(root, 'alias')
+  symlinkSync(project, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  const [a, b, c] = await Promise.all([project, alias, other].map(dir => rt.createSession('Member', { dir, groupMember: true })))
+  const workspaces = ctx.workspaceRegistry.list().filter(w => w.title === 'project')
+  assert.equal(workspaces.length, 2)
+  for (const [id, path] of [[a, project], [b, project], [c, other]]) {
+    const { agent } = await ctx.sessionController.resolveAgent(id)
+    assert.equal(agent.session.header.cwd, path)
+  }
+})
+
+test('workspace registration failure does not create an ungrouped member session', async t => {
+  const { ctx, created, project, stop } = await start()
+  t.after(stop)
+  const room = rt.roomOf('r1')
+  room.workDir = project
+  const create = ctx.workspaceRegistry.create
+  ctx.workspaceRegistry.create = async () => { throw new Error('Registry write failed') }
+  await assert.rejects(rt.memberSession(room, 'a'), /Registry write failed/)
+  assert.deepEqual(created, [])
+  assert.equal(room.sessions.a, undefined)
+  ctx.workspaceRegistry.create = create
+  const id = await rt.memberSession(room, 'a')
+  assert.equal(room.sessions.a, id)
+  assert.deepEqual(created, [{ workspaceId: 'w-new' }])
+})
+
+test('startup attaches matching member history and reports every unrepairable segment', async t => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-group-history-')))
+  const project = join(root, 'project')
+  const original = { gb: project, previous: project, elsewhere: root, gone: join(root, 'gone') }
+  const reads = []
+  const services = { sessionPersistence: { stat: async id => {
+    reads.push(id)
+    return { header: { cwd: original[id] } }
+  } } }
+  const team = structuredClone(TEAM)
+  team.rooms.r1.workDir = project
+  team.rooms.r1.segments = { b: ['previous', 'elsewhere', 'unknown', 'gone'].map(sessionId => ({ sessionId })) }
+  const { ctx, state, stop } = await start({ team, services, root })
+  t.after(stop)
+  const workspace = await ctx.workspaceRegistry.resolveByPath(project)
+  assert.deepEqual(workspace.sessionIds.sort(), ['gb', 'previous'])
+  assert.deepEqual(reads.sort(), ['elsewhere', 'gb', 'gone', 'previous', 'unknown'])
+  assert.deepEqual(state().rooms.r1.segments, team.rooms.r1.segments)
+  const log = await rt.diagnostics.logText()
+  assert.match(log, /Session elsewhere:.*differs from the current target/)
+  assert.match(log, /Session unknown:.*original working folder is unavailable/)
+  assert.match(log, /Session gone:.*ENOENT/)
+})
+
+test('a private chat opened after creation attaches its original session to its own directory', async (t) => {
+  const { ctx, call, agentOf, project, created, state, stop } = await start()
+  t.after(stop)
+  agentOf('b').session.header.cwd = project
+  const members = new Set()
+  const registered = []
+  ctx.workspaceRegistry.create = async path => {
+    registered.push(path)
+    return { attachSession: async id => { members.add(id) } }
+  }
+  const attach = sessionId => call('bot-private-workspace', { botId: 'b', sessionId })
+  assert.equal((await attach('gb')).error.code, 'bot/invalid')
+  assert.equal((await attach('a')).error.code, 'bot/invalid')
+  assert.deepEqual(registered, [])
+  assert.equal((await attach('b')).ok, true)
+  assert.deepEqual(registered, [project])
+  assert.deepEqual([...members], ['b'])
+  assert.equal(state().bots.b.sessionId, 'b')
+  assert.deepEqual(created, [])
+})
+
 // #710: a notice past the limit is refused, not silently cut.
 test('a group notice past the limit is refused, not cut', async (t) => {
   const { call, tool, state, stop } = await start()
@@ -1156,7 +1240,7 @@ test('a folder a member picks in one group holds only there, not in its other gr
   // Its conversation in this group moves on to a fresh part in the new folder.
   assert.deepEqual(await preStep('gb'), { kind: 'enter', messages: [] })
   await until(() => state().rooms.r1.sessions.b === 's2')
-  assert.deepEqual(created.at(-1), { cwd: ascend })
+  assert.deepEqual(created.at(-1), { workspaceId: 'w-new' })
   assert.equal(state().rooms.r2.sessions.b, 'gb2')
   assert.equal(state().bots.b.sessionId, 's1')
 })

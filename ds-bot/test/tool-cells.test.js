@@ -205,6 +205,17 @@ test('a group whose admin passed alone shows the notice', () => {
   assert.deepEqual(events, ['Chief did not answer or call anyone; call a member with @Name'])
 })
 
+test('a group model failure shows the service error inline with its reason and code', () => {
+  const replies = [{ kind: 'failed', botId: 'chief', code: 'TRANSPORT', text: 'fetch failed' },
+    { kind: 'failed', botId: 'writer', code: 'SERVER', status: 503, text: 'Service unavailable' }]
+  const out = show(call('group_relay', 'direct', { content: { replies } }), { sessionId: 'room' })
+  const notices = findAll(out, node => node.props?.role === 'status').map(text)
+  assert.deepEqual(notices, [
+    'Chief · Could not reach the model service (TRANSPORT · fetch failed)',
+    'Writer · The model service failed (SERVER · HTTP 503 · Service unavailable)',
+  ])
+})
+
 // The trigger of a post in a group chat carries the event's time, not the post's.
 test('a group post drawn from its trigger shows the time it came in', () => {
   const time = at(0, 16, 42)
@@ -811,7 +822,7 @@ test('a PTC group relay shows its replies from the sub-call, live and after relo
   stop()
   timers.clear()
   assert.deepEqual(asked, ['room'])
-  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [{ replies: replies.slice(0, 1), speaking: ['chief'] }])
+  assert.deepEqual(JSON.parse(JSON.stringify(sets)), [replies.slice(0, 1)])
 })
 
 // #105: the secret and question cards of a PTC program showed nowhere.

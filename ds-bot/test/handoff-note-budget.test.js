@@ -90,7 +90,8 @@ async function switchPart({ replies, info = {}, fallback, route = {}, oldNote, r
     config: {},
     state: { bots: { b1: bot }, rooms: {}, prefs: {}, exchanges: [], capabilities: { items: {} }, switching: {}, questions: {}, views: {} },
     warn: (template, ...args) => warnings.push(say(template, ...args)),
-    async save() {},
+    async save(options) { options?.mutate?.() },
+    indexSessions() {},
     async load() {},
     readOnly: () => undefined,
     botOf: id => rt.state.bots[id],
@@ -271,13 +272,11 @@ test('handoff note retries transient TRANSPORT failures within the provider retr
   assert.equal(capped.requests.length, 2)
 })
 
-// #1716: "New session" moves on with the deterministic package and never asks the
-// model, so a part whose route keeps failing still gets a fresh one at once.
-test('a manual new part asks the model for nothing', async () => {
+test('a manual new chat starts without a handoff or a model call', async () => {
   const run = await switchPart({ replies: [new Error('the route is down')], manual: true, oldNote: 'OLD NOTE FROM PART 1' })
   assert.equal(run.bot.sessionId, 's2', run.warnings.join(' | '))
   assert.equal(run.requests.length, 0)
-  assert.equal(run.warnings.filter(line => /handoff note/.test(line)).length, 0, run.warnings.join(' | '))
-  assert.match(run.packageText, /because a fresh conversation was started/)
-  assert.match(run.packageText, /without the model, because a fresh conversation was started[^]*OLD NOTE FROM PART 1/)
+  assert.equal(run.packageText, '')
+  assert.deepEqual(run.bot.segments, [])
+  assert.equal(run.bot.openParts[0].segments[0].note, 'OLD NOTE FROM PART 1')
 })

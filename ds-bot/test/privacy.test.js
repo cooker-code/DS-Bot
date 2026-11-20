@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeApproval, fakeContext } from './fake-ctx.js'
 
@@ -102,7 +103,7 @@ async function start({ services = {}, privateBot = true, archives, memberPick = 
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()
-  const state = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const state = () => savedTeam(home)
   const tool = (name, args, sessionId) => rt.teamTools.find(d => d.name === name).execute(args, { agent: agentOf(sessionId), name, callId: 'c1' })
   // The privacy listener alone, which runs first; the last step stands for the tool.
   const guard = ctx.listeners.get('tools/execute')[0]
@@ -255,6 +256,16 @@ test('a private Bot\'s background part stays closed to other Bots', async (t) =>
   assert.deepEqual(await run('session_search', { query: 'x', session_ids: ['p-bg'] }, P), { ran: true })
 })
 
+test('removing a private session keeps its archived transcript protected', async t => {
+  const { run, call, stop } = await start({ openPart: true })
+  t.after(stop)
+  const result = await call('bot-delete-parts', { botId: P, sessionIds: ['p-bg'] })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  const denied = await run('session_trace', { session_id: 'p-bg' }, 'b')
+  assert.equal(denied.ran, false)
+  assert.match(denied.error, CLOSED)
+})
+
 test('other Bots cannot read, write or search what a private Bot keeps', async (t) => {
   const { run, root, dsh, home, diary, team, project, stop } = await start()
   t.after(stop)
@@ -276,6 +287,8 @@ test('other Bots cannot read, write or search what a private Bot keeps', async (
   await refused('read', { file_path: join(home, 'memory', 'bots', P, 'MEMORY.md') })
   await refused('read', { file_path: join(home, 'memory', 'journal.jsonl') })
   await refused('read', { file_path: join(home, 'state.json') })
+  await refused('read', { file_path: join(home, 'team.sqlite') })
+  await refused('read', { file_path: join(home, 'team.sqlite-journal') })
   await refused('read', { file_path: join(home, 'chat-index.sqlite') })
   await refused('read', { file_path: join(home, 'usage.sqlite') })
   await refused('read', { file_path: join(home, 'secrets.json') })
@@ -291,6 +304,7 @@ test('other Bots cannot read, write or search what a private Bot keeps', async (
   await refused('pwsh', { command: `Get-Content '${notes}'`, workdir: project })
   await refused('bash', { command: 'ls', workdir: diary })
   await refused('bash', { command: `cat ${posix(join(home, 'state.json'))}` })
+  await refused('bash', { command: `cat ${posix(join(home, 'team.sqlite'))}` })
   await refused('bash', { command: `cat ${posix(join(home, 'chat-index.sqlite'))}` })
   await refused('working_directory', { cd: diary })
   await refused('working_directory', { cd: root })

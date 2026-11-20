@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -87,7 +88,7 @@ async function start(team = TEAM) {
     rt.cleanWorkDir = async (...args) => { await gate; return check(...args) }
     return () => { rt.cleanWorkDir = check; release() }
   }
-  const saved = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = () => savedTeam(home)
   const stop = async () => {
     await ctx.dispose()
     rmSync(root, { recursive: true, force: true, maxRetries: 5 })

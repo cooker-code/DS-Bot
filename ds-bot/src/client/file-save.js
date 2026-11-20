@@ -10,10 +10,10 @@ import { presentedFileTarget } from './file-target.js'
 
 // The slot's action area on one delivered-file card. `available` is DSH's answer to
 // whether the Host can read the file; `pending` is its own action running.
-export function SaveFileAction({ actionUrl, available = true, pending = false }) {
+export function SaveFileAction({ actionUrl, attachmentTarget, label, available = true, pending = false }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const target = presentedFileTarget(actionUrl)
+  const target = attachmentTarget ?? presentedFileTarget(actionUrl)
   if (target === null) return null
   const save = () => {
     setBusy(true)
@@ -32,6 +32,6 @@ export function SaveFileAction({ actionUrl, available = true, pending = false })
   }
   return h('span', { className: 'bt-file-save' },
     h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || pending || available !== true, onClick: save },
-      busy ? t('Saving…') : t('Save')),
+      busy ? t('Saving…') : label ?? t('Save')),
     error === null ? null : h('span', { className: 'bt-set-hint', role: 'alert' }, error))
 }

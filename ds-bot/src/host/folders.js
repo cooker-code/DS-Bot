@@ -1,3 +1,4 @@
+import { memberSettings } from './team-storage/member-settings.js'
 // Working folders: where a Bot's Sessions run. A group's folder holds for every member
 // there, else a Bot works in its own folder, else in the team workspace. A Session's
 // folder is fixed when it is made, so a change moves the conversation on to a fresh
@@ -28,9 +29,46 @@ export function install(rt) {
   // folder. A group's folder outranks it; without one the Bot's folder is the default.
   const workDirOf = ({ botId, roomId } = {}) => {
     const room = rt.roomOf(roomId)
+    if (botId !== undefined && Object.hasOwn(memberSettings(room), botId) && memberSettings(room)[botId].override) return room.memberDirs?.[botId] ?? undefined
     if (room?.workDir !== undefined) return room.workDir
     if (room !== undefined && botId !== undefined && Object.hasOwn(room.memberDirs ?? {}, botId)) return room.memberDirs[botId] ?? undefined
     return rt.botOf(botId)?.workDir
+  }
+  // Only the immutable creation directory can establish historical membership.
+  // Reading headers also works for archived parts without reopening their agents.
+  rt.repairGroupWorkspaces = async () => {
+    const pending = new Map(rt.groupOwners)
+    for (const [id, owner] of rt.pastOwners) {
+      if (owner.roomId && owner.botId) pending.set(id, owner)
+    }
+    if (!pending.size) return
+    // DSH only projects memberships validated against the persisted header.
+    // This includes archived sessions still correctly grouped in a former folder.
+    for (const workspace of ctx.workspaceRegistry.list()) {
+      for (const id of workspace.sessionIds ?? []) {
+        const owner = pending.get(id)
+        if (owner && (!rt.groupOwners.has(id) || workspace.path === (workDirOf(owner) ?? teamFolder()))) pending.delete(id)
+      }
+    }
+    const persistence = ctx.get?.('sessionPersistence')
+    for (const [id, owner] of pending) {
+      try {
+        const target = workDirOf(owner) ?? teamFolder()
+        if (!target) throw new Error('The target working folder is unknown')
+        let header = ctx.sessions.get?.(id)?.header
+        if (!header) {
+          if (!persistence?.stat) throw new Error('DSH cannot read stored session headers')
+          header = (await persistence.stat(id))?.header
+        }
+        if (!header?.cwd || !isAbsolute(header.cwd)) throw new Error('The original working folder is unavailable')
+        const original = await realpath(header.cwd)
+        if (original !== await realpath(target)) throw new Error('The original working folder differs from the current target')
+        const destination = await ctx.workspaceRegistry.create(original)
+        await destination.attachSession(id)
+      } catch (error) {
+        rt.warn('ds-bot: group %s, Bot %s, Session %s: workspace association left as recorded: %s', owner.roomId, owner.botId, id, error?.message ?? error)
+      }
+    }
   }
   const isFolder = path => stat(path).then(info => info.isDirectory(), () => false)
   const real = path => realpath(path).catch(() => resolve(path))

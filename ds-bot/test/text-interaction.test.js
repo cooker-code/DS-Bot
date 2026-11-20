@@ -180,3 +180,26 @@ test('a folded code preview stays inside its bubble source without marking previ
   const preview = expand(Bubbles({ texts: ['Preview only'], roster, selfId: 'b', actions: {}, useUi: select => select({ reactions: {} }) }))
   assert.equal(sources(preview).length, 0)
 })
+
+test('group replies show the task title and keep the original ID when quoting same-name tasks', () => {
+  const ids = ['71b2d169-69e1-4ae0-9a06-3a4bd09527ae', '21b2d169-69e1-4ae0-9a06-3a4bd09527ae']
+  const room = { notice: '[taskId]', projectCards: ids.map(taskId => ({ taskId, title: '修复未标记' })) }
+  for (const id of ids) {
+    const body = '**已送达**\n\n等待开发确认。'
+    const raw = '[' + id + '] ' + body
+    const tree = expand(Bubbles({ texts: [raw], roster, selfId: 'b', room, actions: {} }))
+    assert.deepEqual(findAll(tree, n => withClass(n, 'bt-message-task'))[0].children, ['修复未标记'])
+    assert.equal(findAll(tree, n => n.type === MarkdownText)[0].props.text, body)
+    const tools = findAll(tree, n => n.type?.name === 'MessageTools')[0]
+    assert.equal(tools.props.quoteText, 'Writer:\n' + body + '\n[' + id + ']')
+    assert.equal(tools.props.text, '修复未标记\n\n' + body)
+  }
+})
+
+test('long Chinese prose gains paragraph breaks while existing Markdown stays intact', () => {
+  const sentence = '管理员已经核对原始截图和任务要求，正在等待负责人确认开工。'
+  const plain = sentence.repeat(7)
+  const draw = text => findAll(expand(Bubbles({ texts: [text], roster, selfId: 'b', actions: {} })), n => n.type === MarkdownText)[0].props.text
+  assert.equal(draw(plain), Array(7).fill(sentence).join('\n\n'))
+  assert.equal(draw('**状态** ' + plain), '**状态** ' + plain)
+})

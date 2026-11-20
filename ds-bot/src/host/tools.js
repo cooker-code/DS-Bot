@@ -1,6 +1,9 @@
+import { assistantId, runsProject } from './project-assistant.js'
 // Team tools: the roster, bot-to-bot messages, group chat settings and posts, and the
 // question and view cards. Group rounds and reading chats are in groups.js.
-import { developmentHandoff, projectRoomForCard } from './project-tasks.js'
+import { taskError } from '../shared/task-settings.js'
+import { projectQuestion } from './project-intake.js'
+import { clarifyIntake, developmentHandoff, projectRoomForCard } from './project-tasks.js'
 import { outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -38,6 +41,7 @@ const GOAL_REFUSAL = 'Bot chats do not run /goal. To give a group a goal, use Se
 // has no Bot; a Bot's tasks deliver to its own chat, which DS Bot moves on with each part.
 const SCHEDULE_TARGET_TOOLS = ['schedule_create', 'schedule_edit']
 const SCHEDULE_TARGET_REFUSAL = 'A Bot’s scheduled tasks run in its own chat. Use target "this_session".'
+const SCHEDULE_UPDATE_FIELDS = new Set(['id', 'action', 'title', 'prompt', 'rrule', 'target', 'active', 'expectedUpdatedAt'])
 const DELEGATION_REFUSAL = 'Bots do not start subagents, teammates or workflows. Do the work yourself, or hand it to another Bot with message_bot.'
 const MODE_PARAM = {
   type: 'string',
@@ -256,7 +260,7 @@ export function install(rt) {
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
-      card_round: { type: 'integer', description: 'After project_task read, the group admin sends the saved DS Bot assignment and attachments from its own chat. Send its round, taskId, reply_to=user, and request_id to the assigned owner. Put only extra instructions in message.' },
+      card_round: { type: 'integer', description: 'After project_task read, the group admin sends the saved DS Bot assignment and attachments from its session in the project group. Send its round, taskId, reply_to=user, and request_id to the assigned owner. Put only extra instructions in message.' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
       reply_to: {
         type: 'string',
@@ -287,17 +291,19 @@ export function install(rt) {
       const room = rt.roomOf(rt.groupOwners.get(exec.agent?.id)?.roomId)
       const source = rt.live.get(exec.agent?.id)?.info
       const cardDispatch = args.card_round !== undefined
-      const projectRoom = projectRoomForCard(rt, args.taskId ?? source?.taskId)
-      if (projectRoom && (!projectRoom.members.includes(sender.id) || !projectRoom.members.includes(target.id) ||
-          (room && room.id !== projectRoom.id) || (source?.intakeId && source.roomId !== projectRoom.id))) {
-        refuse('Send project work only within the group that owns the card.')
-      }
-      const sharedTaskRoom = room ?? projectRoom ?? Object.values(state.rooms).find(r => taskRoom(r) && r.members.includes(sender.id) && r.members.includes(target.id))
-      const key = outgoingScope(source, args.taskId, args.message, taskRoom(sharedTaskRoom), sharedTaskRoom && rt.isAdminOf(sharedTaskRoom, sender.id))
+      const cardId = args.taskId ?? source?.taskId
+      const scopedRoom = rt.roomOf(source?.roomId ?? room?.id)
+      const projectRoom = scopedRoom && Object.hasOwn(scopedRoom.projectCards ?? {}, cardId)
+        ? scopedRoom : projectRoomForCard(rt, cardId)
+      if (projectRoom && (!projectRoom.members.includes(sender.id) || !projectRoom.members.includes(target.id))) throw taskError('NOT_GROUP_MEMBER')
+      if (projectRoom && ((room && room.id !== projectRoom.id) || (source?.roomId && source.roomId !== projectRoom.id))) throw taskError('GROUP_CONTEXT_MISMATCH')
+      if (projectRoom && !taskRoom(projectRoom)) throw taskError('TASK_MANAGEMENT_DISABLED')
+      const sharedTaskRoom = room ?? projectRoom
+      const key = outgoingScope(source, args.taskId, args.message, Boolean(cardDispatch || cardId), sharedTaskRoom && (runsProject(rt, sharedTaskRoom, sender.id) || rt.isAdminOf(sharedTaskRoom, sender.id)))
       if (projectRoom && source?.intakeId && !projectRoom.projectCards[key]?.intakes.includes(source.intakeId)) refuse('Attach this intake to its card before sending.')
       if (key?.startsWith('intake-')) refuse('Identify the persistent card before assigning work.')
       const message = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
-      if (cardDispatch && (!key || room || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a private card handoff with taskId, current card_round, reply_to=user and request_id.')
+      if (cardDispatch && (!key || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a private card handoff with taskId, current card_round, reply_to=user and request_id.')
       const handoff = cardDispatch ? developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom?.projectCards?.[key], target.id, args.card_round) : undefined
       let text = tagged(key, message)
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
@@ -335,10 +341,12 @@ export function install(rt) {
         if (seen !== undefined) return receiptWithHandoff(seen)
       }
       if (handoff) {
-        const ack = 'Check the assignment and, for code changes, the actual worktree. Confirm with project_task start using this taskId and round ' + args.card_round + '. Report mismatches to the manager. When finished, call project_task submit with the result and checks, then notify the manager with this taskId.'
-        text = tagged(key, [message, handoff.text, ack].join('\n\n'))
+        const ack = 'Check the assignment and, for code changes, the actual worktree. Confirm with project_task start using this taskId and round ' + args.card_round + '. Report mismatches to the manager. For a planned node, save completed and remaining checks with project_task checkpoint, and use block to report evidence and the condition needed to continue. When finished, call project_task submit with the result and checks, then notify the manager with this taskId.'
+        const instruction = assistantId(projectRoom) ? ack.replace('then notify the manager with this taskId.', 'the host notifies the task assistant automatically.') : ack
+        text = tagged(key, [message, handoff.text, instruction].join('\n\n'))
       }
-      if (room !== undefined) {
+      const coordinator = projectRoom && !handoff && (rt.isAdminOf(projectRoom, target.id) || target.id === assistantId(projectRoom))
+      if (room !== undefined && !handoff && !coordinator) {
         const refusal = groupRefusal(room, sender, target)
         if (refusal !== undefined) refuse(refusal)
         if (key && scopeOf(source) !== key) {
@@ -363,7 +371,7 @@ export function install(rt) {
         // The part of the sender's own chat this request comes from: its answer goes back
         // to that part's thread.
         const fromPart = callerPart(exec).fromPart
-        const chat = rt.chatOf(target.id)
+        const chat = coordinator ? await rt.memberSession(projectRoom, target.id) : rt.chatOf(target.id)
         const agent = await rt.resolveAgent(chat)
         const status = rt.statusOf(target.id)
         // A request it has not read yet, sent for the same work, takes this one in, so
@@ -385,9 +393,10 @@ export function install(rt) {
         const steer = activeKey === key && ((args.when !== 'queue' && !toUser) || (joins && earlier.steered))
         const exchangeId = handoff?.round.dispatchId ?? (joins ? earlier.message.source.exchangeId : randomUUID())
         if (joins) rt.forgetDelivery?.(exchangeId)
-        else if (!toUser) rt.openWork(exchangeId, { ...scopeFields(key), from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
+        else if (!toUser) rt.openWork(exchangeId, { ...scopeFields(key), from: sender.id, to: target.id, parent: work, ...(room ? { fromRoom: room.id } : {}), ...(fromPart ? { fromPart } : {}) })
         try {
-          await rt.deliver({ ...scopeFields(key), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, images: handoff?.images ?? (joins ? before.images : []), files: [...long.files, ...(handoff?.files ?? []), ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+          if (handoff) developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom.projectCards[key], target.id, args.card_round)
+          await rt.deliver({ ...scopeFields(key), ...(projectRoom ? { roomId: projectRoom.id } : {}), ...(coordinator ? { sessionId: chat } : {}), ...callerRoom(exec), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, images: handoff?.images ?? (joins ? before.images : []), files: [...long.files, ...(handoff?.files ?? []), ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
         } catch (error) {
           // The delivery stays noted for the next start while its Bot exists
           // (resume.js), and the resent request still answers up the tree, so the
@@ -396,10 +405,15 @@ export function install(rt) {
           throw error
         }
         if (handoff) {
-          handoff.round.sentAt ??= Date.now()
+          // A node on the same card may have advanced while delivery was in flight.
+          const delivered = rt.roomOf(projectRoom.id)?.projectCards?.[key]?.rounds[args.card_round - 1]
+          if (delivered?.dispatchId !== exchangeId) throw new Error('The dispatched round is no longer available.')
+          delivered.sentAt ??= Date.now()
           await rt.save({ required: true })
         }
-        const sent = toUser
+        const sent = coordinator && toUser
+          ? `Delivered to ${target.name} in "${projectRoom.name}". It can report the result to this group.`
+          : toUser
           ? `Delivered to ${target.name}. It will answer the user in its own chat; nothing comes back to you, so point the user to ${target.name}'s chat instead of relaying.`
           : working && steer
             ? `Delivered to ${target.name} while it is working: it reads your message at its next step and answers once that work is done. Its reply will arrive later as a new message; do not wait for it.`
@@ -666,6 +680,7 @@ export function install(rt) {
       group: GROUP_REF,
       name: { type: 'string', description: 'New group name; an empty string names it after its members again' },
       notice: { type: 'string', description: 'Replacement notice, the shared instructions every member reads; an empty string clears it; at most 2000 characters' },
+      taskManagementEnabled: { type: 'boolean', description: 'Enable or disable group task management.' },
       add_members: { type: 'array', items: { type: 'string' }, description: 'Exact names of Bots to add' },
       remove_members: { type: 'array', items: { type: 'string' }, description: 'Exact names of Bots to remove' },
       admin: { type: 'string', description: 'Member to make the admin; "none" leaves the group without one (Main Bots only)' },
@@ -709,6 +724,7 @@ export function install(rt) {
         const { room: next, changes } = await rt.updateRoom(room.id, {
           name: args.name,
           notice: args.notice,
+          taskManagementEnabled: args.taskManagementEnabled,
           mode: args.mode,
           admin,
           add: add.bots.map(bot => bot.id),
@@ -848,7 +864,9 @@ export function install(rt) {
       const info = rt.live.get(exec.agent?.id)?.info
       if (info?.role === 'room' && info.roomId === room.id) return `You are speaking in "${room.name}" right now. Write your message as your reply instead.`
       const folder = rt.sessionFolder?.(exec.agent?.session ?? exec.agent)
-      const key = outgoingScope(info, args.taskId, args.message, taskRoom(room), rt.isAdminOf(room, self))
+      const key = outgoingScope(info, args.taskId, args.message, Boolean(args.taskId || scopeOf(info)), rt.isAdminOf(room, self))
+      const origin = key && (info?.roomId ?? projectRoomForCard(rt, key)?.id)
+      if (origin && origin !== room.id) refuse('Report the task in the group that owns it.')
       const text = tagged(key, absoluteLinks(String(args.message ?? '').trim(), folder))
       if (text === '') return 'Write a message to post.'
       // Counted on the whole message. A post past MESSAGE_INLINE_MAX keeps only its
@@ -931,7 +949,7 @@ export function install(rt) {
         .filter(option => option.label !== '')
         .slice(0, 6)
       if (options.length === 0) return 'Give at least one option.'
-      state.questions[id] = {
+      const question = {
         id: randomUUID(),
         ...(exec.callId ? { callId: exec.callId } : {}),
         question: String(args.question ?? '').trim(),
@@ -941,6 +959,14 @@ export function install(rt) {
         ...(args.allowCustom === true ? { allowCustom: true } : {}),
         askedAt: Date.now(),
       }
+      const source = rt.live?.get(id)?.info
+      const target = projectQuestion(rt, id, source)
+      if (target && question.question) {
+        question.projectSource = source
+        if (target.card) target.card.clarification = question.question
+        else clarifyIntake(rt.roomOf(source.roomId), target.receipt, question.question)
+      }
+      state.questions[id] = question
       await rt.save()
       exec.concludeTurn?.()
       return 'The card is on screen; the user\'s answer arrives as their next message.'
@@ -1302,6 +1328,10 @@ export function install(rt) {
   ctx.tools.guard((exec) => {
     if (!rt.isBotSession(exec.agent?.id)) return undefined
     if (exec.name === BLOCKING_QUESTION_TOOL) return `Bots cannot use ${BLOCKING_QUESTION_TOOL}. Ask with ask_user in your own chat, or ask in your reply.`
+    if (exec.name === 'schedule_edit' && exec.arguments?.action === 'update') {
+      const unsupported = Object.keys(exec.arguments).filter(field => !SCHEDULE_UPDATE_FIELDS.has(field))
+      if (unsupported.length > 0) return `These schedule_edit fields are not editable: ${unsupported.join(', ')}. To change frequency, send rrule with a DTSTART anchor in the intended time zone followed by an RRULE line (for example, "DTSTART;TZID=Asia/Taipei:20261118T090000\nRRULE:FREQ=HOURLY;INTERVAL=3"); this converts the task to kind rrule.`
+    }
     const target = exec.arguments?.target
     if (SCHEDULE_TARGET_TOOLS.includes(exec.name) && target !== undefined && target !== 'this_session') return SCHEDULE_TARGET_REFUSAL
     return DELEGATION_TOOLS.includes(exec.name) ? DELEGATION_REFUSAL : undefined

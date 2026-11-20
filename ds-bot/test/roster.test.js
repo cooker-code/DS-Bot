@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import fsp from 'node:fs/promises'
-import { syncBuiltinESMExports } from 'node:module'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { savedTeam, seedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
 import { format } from 'node:util'
 import { createRuntime } from '../index.js'
@@ -31,7 +30,7 @@ function keyed(ctx, stored, records) {
 let rt
 function start(team, { models = [], reasoning = {}, archiveError, keys, selection, lock } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-roster-'))
-  if (team !== undefined) writeFileSync(join(home, 'state.json'), JSON.stringify(team))
+  if (team !== undefined) seedTeam(home, team)
   // A lock another dsh holds, written before this host loads the team.
   if (lock !== undefined) writeFileSync(join(home, 'state.lock'), JSON.stringify(lock))
   const services = {}
@@ -233,8 +232,8 @@ test('a group the user makes without a first message opens with its admin asking
   assert.match(text, /^\[Group chat "[^"]+" · the group was just created\]\n/)
   assert.match(text, /The user just created this group/)
   assert.doesNotMatch(text, /This round so far|Nothing new in this round/)
-  assert.deepEqual(result.passed, ['Writer'])
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).rooms[room.id]
+  assert.deepEqual(result.passed, [], 'a stopped turn did not choose to skip')
+  const saved = savedTeam(home).rooms[room.id]
   assert.equal(saved.sessions[writer.id], turns[0].sessionId)
   assert.deepEqual(saved.log, [])
 })
@@ -351,7 +350,7 @@ test('a window holding live state gets fresh fields after the host restarts at t
   const held = (await first.call('state', {})).value
   assert.equal(Object.keys(held.work.bots).length, 1)
   await first.ctx.dispose()
-  const saved = JSON.parse(readFileSync(join(first.home, 'state.json'), 'utf8'))
+  const saved = savedTeam(first.home)
   const second = start(saved)
   t.after(second.stop)
   const now = (await second.call('state', { since: held.revision, models: held.modelsKey, live: held.liveKey })).value
@@ -410,7 +409,7 @@ test('a team from before the whale was stored gets it once, on its first Main Bo
   assert.equal(team.m1.color, 'red')
   assert.deepEqual(team.m1.avatar, { shape: 'whale' })
   assert.equal(team.w2.avatar, undefined)
-  assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).whaleStored, true)
+  assert.equal(savedTeam(home).whaleStored, true)
 
   // The whale is now an ordinary look: it does not pass on when its Bot is deleted.
   assert.equal((await call('set-main', { id: 'm1', main: false })).ok, true)
@@ -825,7 +824,7 @@ test('Retry right after a fix adds no turn while the greeting it released waits 
 
 const takeover = (home, team) => {
   writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'new-owner' }))
-  if (team !== undefined) writeFileSync(join(home, 'state.json'), JSON.stringify(team))
+  if (team !== undefined) seedTeam(home, team)
 }
 
 test('a host that loses its lock to another dsh refuses changes instead of making a phantom Bot', async (t) => {
@@ -853,8 +852,8 @@ test('a delete whose save fails still stops the Sessions, and the next save writ
   t.after(stop)
   await call('state', {})
   archived.length = 0
-  const blocker = join(home, `state.json.${process.pid}.tmp`)
-  mkdirSync(blocker)
+  const write = rt.teamStorage.write
+  rt.teamStorage.write = () => { throw Object.assign(new Error('synthetic disk failure'), { code: 'EIO' }) }
   const answer = await call('delete-bot', { id: 'w1' })
   assert.equal(answer.ok, false)
   // The Bot is gone from the team, so nothing could stop its tasks later.
@@ -862,38 +861,32 @@ test('a delete whose save fails still stops the Sessions, and the next save writ
     ['w1', { stopActivity: true }],
     ['w2', { stopActivity: true }],
   ])
-  rmSync(blocker, { recursive: true })
+  rt.teamStorage.write = write
   await call('set-prefs', { theme: 'dark' })
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = savedTeam(home)
   assert.equal(saved.bots.w1, undefined)
 })
 
 test('a rolled-back Bot does not come back with a save queued before the rollback', async (t) => {
   const { call, stop, home } = start({ version: 1, mainBotIds: ['chief'], bots: { chief: { id: 'chief', name: 'Chief' } } })
-  t.after(async () => {
-    fsp.rename = rename
-    syncBuiltinESMExports()
-    await stop()
-  })
+  t.after(stop)
   // The first Bot also saves the team's workspace; later ones save only themselves.
   await call('create-bot', { name: 'Warm' })
-  const statePath = join(home, 'state.json')
-  const rename = fsp.rename
+  const write = rt.teamStorage.write
   let entered
   let release
   const first = new Promise(resolve => { entered = resolve })
   const gate = new Promise(resolve => { release = resolve })
   let failed = false
-  fsp.rename = async (from, to) => {
-    if (to === statePath && !failed) {
+  rt.teamStorage.write = async (...args) => {
+    if (!failed) {
       failed = true
       entered()
       await gate
       throw Object.assign(new Error('rename failed'), { code: 'EIO' })
     }
-    return rename(from, to)
+    return write(...args)
   }
-  syncBuiltinESMExports()
   const phantom = call('create-bot', { name: 'Phantom' })
   await first
   // A second Bot's save queues a snapshot that still holds Phantom.
@@ -904,7 +897,7 @@ test('a rolled-back Bot does not come back with a save queued before the rollbac
   assert.equal((await kept).ok, true)
   // The rollback queues a save after Kept's without waiting for it, and no later change may
   // be what drops Phantom, so wait for that save itself.
-  const names = () => Object.values(JSON.parse(readFileSync(statePath, 'utf8')).bots).map(bot => bot.name).sort()
+  const names = () => Object.values(savedTeam(home).bots).map(bot => bot.name).sort()
   await until(() => !names().includes('Phantom'))
   assert.deepEqual(names(), ['Chief', 'Kept', 'Warm'])
 })
@@ -919,7 +912,7 @@ test('a write that fails at save time archives the Session it made', async (t) =
     const made = await create(...args)
     created.push(made.sessionId)
     // The disk write fails after this request's refresh, before its save.
-    mkdirSync(join(home, `state.json.${process.pid}.tmp`))
+    rt.teamStorage.write = () => { throw Object.assign(new Error('synthetic disk failure'), { code: 'EIO' }) }
     return made
   }
   const archived = []
@@ -931,7 +924,7 @@ test('a write that fails at save time archives the Session it made', async (t) =
   assert.deepEqual(archived, created)
   const team = (await call('state', {})).value
   assert.equal(team.bots.some(bot => bot.name === 'Phantom'), false)
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const saved = savedTeam(home)
   assert.equal(Object.values(saved.bots).some(bot => bot.name === 'Phantom'), false)
 })
 
@@ -1294,7 +1287,7 @@ test('old late-round and relay-limit fields of a group load away; calls it parke
   t.after(stop)
   const shown = (await call('state', {})).value.rooms.find(room => room.id === 'r1')
   for (const key of ['lateRounds', 'quietNoticed', 'quietShown', 'relays', 'relayLimit', 'relayLimitDefault', 'paused']) assert.equal(key in shown, false, key)
-  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).rooms.r1
+  const saved = savedTeam(home).rooms.r1
   for (const key of ['lateRounds', 'relays', 'relayLimit']) assert.equal(key in saved, false, key)
   assert.deepEqual(saved.paused, parked)
 

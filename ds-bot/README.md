@@ -10,7 +10,7 @@ Tested with dsh `0.2.2-rc.1` (Web and Desktop).
 - **Working folders**: a Bot can work in a folder you choose instead of the team workspace, and a group chat can set one folder for all its members there. Pick it in the Bot's settings or details panel or in the group's settings, or ask a Bot (`update_bot`, `update_group`). After a change, the chat goes on in a fresh part that starts in the new folder. When a Bot sets a folder outside the team workspace, or adds a Bot to a group that works in one, it asks for your approval if those Bots can only write in their folder. Folders that hold dsh data (`$DSH_HOME`, the team's data) are refused. The team workspace itself moves in Settings > General > Locations; Bots and groups that work there go on in a fresh part in the new folder, and the old folder keeps its files.
 - **Permission presets**: each Bot runs with its own dsh permission preset (Read only, Workspace or Full access), set in its details panel. A group chat can run all its members with one preset there, in place of their own: turn on **Same for every member** under Permissions in the group's settings. Only you set permissions; Bots cannot change them.
 - **Bots work together**: `message_bot` sends a message to another Bot, `create_bot` and `update_bot` add and set up Bots (including a profile photo from a local image file or a data URL), and `ask_user` asks you a question without blocking the other Bots. `show_view` draws a card in a Bot's own chat — text, metrics, tables, charts, inputs with local formulas, progress, choices, confirmations, short forms and sandboxed HTML; an interactive card waits for your answer. `/side` (or **Side chat** in the panel's `···` menu) opens a side chat in the right panel that answers from a snapshot of the Bot's chat without running tools or interrupting its work. A Bot can also be marked **Private** in its settings: other Bots cannot read its working folder, memory or chat, and its outbound sharing needs your approval.
-- **Group chats**: in admin-first mode the admin answers first and calls in other members with `@Name`; in all-members mode members speak in order. Members `@`-mentioned in the same message start work in parallel. Type `@` to pick a member from a list, or use **+ → Reference a chat** to attach another Bot's chat as context. A member with nothing new to add stays quiet (`[PASS]`). For multi-stage work, the admin can align on and run a group **Goal** (`group_goal`), assigning tasks per stage and checking evidence before advancing. Each member has its own hidden Session per group, so a group never reads a Bot's private chat.
+- **Group chats**: in admin-first mode the admin answers first and calls in other members with `@Name`; in all-members mode members speak in order. Members `@`-mentioned in the same message start work in parallel. Type `@` to pick a member from a list, or use **+ → Reference a chat** to attach another Bot's chat as context. A member can use `skip_group_turn` to skip its turn. Task management is on by default. Open **Group settings → Task management** to change it or appoint a task assistant. Choose **+ → Link task** to add a message to an existing task. For multi-stage work, the admin can align on and run a group **Goal** (`group_goal`), assigning tasks per stage and checking evidence before advancing. Each member has its own hidden Session per group, so a group never reads a Bot's private chat.
 - **Roles and permissions**:
 
   | Who | Can do |
@@ -177,7 +177,7 @@ When a Bot needs an API key, token or password, it calls `request_secret`, and a
 - **Use**: the value goes into the Bot's shell environment as `DSH_SECRET_<NAME>` (`$DSH_SECRET_NAME` in bash, `$env:DSH_SECRET_NAME` in PowerShell). `list_secrets` lists the names a Bot can use. An MCP capability can also take `$DSH_SECRET_<NAME>` in its env, its headers and its URL (path or query); in the URL the value is URL-encoded. Use headers when the server accepts them.
 - **Masking**: before a tool result is saved and before each request goes to the model, every copy of a secret value is replaced with `[secret:<NAME>]`.
 - **Manage**: Settings → Secrets lists every secret by name, purpose, the Bot that asked and the last use. You can change who may use it, replace the value, delete it or add one. Deleting a Bot removes it from every secret.
-- **Storage**: `<DSH_HOME>/bot/secrets.json`, file mode 600, written atomically. Values are never in `state.json` or logs.
+- **Storage**: `<DSH_HOME>/bot/secrets.json`, file mode 600, written atomically. Values are never in the team database or logs.
 - **Encryption at rest (optional)**: Settings → Secrets → Encryption at rest turns the same file into a passphrase-locked envelope (scrypt key, AES-256-GCM payload). An unattended start unlocks it with `DS_BOT_SECRETS_PASSPHRASE` or with `DS_BOT_SECRETS_PASSPHRASE_FILE` (a file with the passphrase); without either the store starts locked, the Secrets page says how to unlock it, and secret writes are refused. Plaintext stays the default and existing files need no migration.
 
 Limits:
@@ -203,9 +203,11 @@ Files in `bot/`:
 
 | File | Content |
 |---|---|
-| `state.json` | The team: Bots, groups, Bot-to-Bot messages, preferences and open questions. A long message keeps only its first 2,000 characters here; all of it is in the Session it went to. |
-| `ledger/` | Everything said in each group, whole, one append-only file per group (`group-<id>.jsonl`); removed with the group. `state.json` keeps only a group's latest 60 lines, cut to their start |
-| `handoff-results/` | The whole result of a piece of work a Bot handed on, when it is longer than the 2,000 characters `state.json` keeps, one file per result; each is removed once the answer it went into has gone up |
+| `state/catalog.sqlite` | Team settings, preferences, open questions and the directory of group databases. |
+| `state/bots.sqlite` | Bot identities, private Sessions, default models and working folders. |
+| `state/rooms/<storage_key>/room.sqlite` | One group per file, including its notice, members, member model and folder settings, shared to-dos, tasks and assignment rounds. |
+| `ledger/` | Everything said in each group, whole, one append-only file per group (`group-<id>.jsonl`); removed with the group. The team database keeps only a group's latest 60 lines, cut to their start |
+| `handoff-results/` | The whole result of a piece of work a Bot handed on, when it is longer than the 2,000 characters the team database keeps, one file per result; each is removed once the answer it went into has gone up |
 | `state.lock` | The dsh that is using this data (pid and host), its mtime bumped as a heartbeat. It is removed when that dsh exits; a leftover whose heartbeat has stopped is taken over by the next dsh to load. |
 | `chat-index.sqlite` | Full-text index of older chat parts (`read_own_chat`); rebuilt if deleted |
 | `usage.sqlite` | Token counts for the Usage page; rebuilt from the Session logs if deleted, losing only the calls outside the logs and the names of deleted Bots |
@@ -218,13 +220,15 @@ Files in `bot/`:
 
 The chats themselves are dsh Sessions and are not in `bot/`: they are in `~/.dsh/sessions/`. dsh keeps its workspace list in `~/.dsh/storages/workspace.json` and profiles (with model settings) in `~/.dsh/profiles/`. dsh Desktop keeps each Bot's browser partition in memory only, so its logins are not saved.
 
+The first writable host imports the team from the existing `bot/state.json` or the latest single-file `bot/team.sqlite`. It reconstructs and compares the complete source before publishing the databases under `bot/state/`. Subsequent starts use those databases. The original source stays available as an upgrade snapshot. Upgrade all hosts sharing this team before resuming writes.
+
 **Back up and restore**
 
-1. Quit dsh completely (both the Web server and Desktop), so `state.json` is current.
+1. Quit dsh completely (both the Web server and Desktop), so the team database and Sessions are current.
 2. Copy all of `~/.dsh/` (at least `bot/`, `sessions/` and `storages/`). A copy of `bot/` alone loses the chats.
 3. To restore, quit dsh, put the folder back in the same place, then start dsh.
 
-**Move to another computer**: `state.json` has no absolute paths except the working folders you set for Bots and groups, but dsh's `storages/workspace.json` and the Session folder names contain the workspace's absolute path. If the path is the same on the new computer, copy the folder. If it is different (another user name or system), it is not yet tested whether dsh finds the old Sessions.
+**Move to another computer**: The saved team includes the working folders you set for Bots and groups. DSH's `storages/workspace.json` and the Session folder names contain the workspace's absolute path. If the path is the same on the new computer, copy the folder. If it is different (another user name or system), it is not yet tested whether dsh finds the old Sessions.
 
 **dsh Web and Desktop at the same time**: by default both use the same `~/.dsh`. The dsh that loads the team first takes `bot/state.lock` and can change the team. The other one is read-only: it shows the team and follows changes to the file, but refuses changes (`bot/read-only`, "open in another dsh"), and its Bots cannot start new Sessions. When the first one exits, the other one takes over on its next request. To change the team from both at once, give one of them a different `DSH_HOME` (two separate teams).
 

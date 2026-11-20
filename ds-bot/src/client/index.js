@@ -15,6 +15,7 @@ import { installFrameWatch } from './frame-watch.js'
 import { HeaderPill } from './header.js'
 import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
 import { CHATS_SOURCE, atSources } from './at-menu.js'
+import { taskMentionSource } from './task-mentions.js'
 import { BtwDock, BtwTurnTail } from './btw.js'
 import { SIDE_CSS, sideSource } from './side-chat.js'
 import { VOICE_BUNDLE, closingReplyText, requestPreparation } from './speech.js'
@@ -35,6 +36,7 @@ import { BROWSER_CSS } from './browser-pane.js'
 import { SECRET_CSS, SecretDock } from './secret-card.js'
 import { ConnectorDock, MailDock, CONNECTOR_CSS } from './connectors.js'
 import { CONNECTORS_PAGE_CSS } from './connectors-page.js'
+import { PROVIDERS_CSS } from './providers-page.js'
 import { LearningDock, LearningTurnTail, LEARNING_CSS } from './learning-card.js'
 import { MODEL_CSS, ModelChoiceDock, DeepSeekSignIn } from './model-menu.js'
 import { ReadOnlyDock, READ_ONLY_CSS } from './read-only-dock.js'
@@ -67,6 +69,7 @@ import { PASTE_CSS, PasteDock, PasteGuard } from './paste-card.js'
 import { OPENING_CSS, bindOpeningWait } from './opening.js'
 import { noticeApprovals } from './approval-notices.js'
 import { listedOpener } from './open-listed.js'
+import { bindPrivateWorkspace } from './private-workspace.js'
 import { pollDelay } from './polling.js'
 import { installMotionRest } from './motion-rest.js'
 import { agentSessionToReuse, singleFlight } from './agent-new.js'
@@ -636,6 +639,13 @@ export function apply(ctx) {
         return sessionId
       })
     },
+    deleteParts: async (botId, sessionIds) => {
+      const viewed = mainView()
+      const target = await after(call('bot-delete-parts', { botId, sessionIds }))
+      // Archiving the viewed Session may clear the shell before the roster arrives.
+      if (sessionIds.includes(viewed) && [undefined, viewed].includes(mainView())) show(target)
+      return target
+    },
     archiveAgentSession: async (agentId, sessionId) => {
       await after(call('agent-archive', { agentId, sessionId }))
       const list = ctx.sessions.list.getSnapshot()
@@ -700,7 +710,7 @@ export function apply(ctx) {
         return
       }
       if (mode === 'agent') {
-        ui.set(state => ({ ...state, details: null, view: 'details', settings: null, palette: null, groupSearch: null, newChat: null, menu: null, voice: null, exchange: null, memory: null, toast: null }))
+        ui.set(state => ({ ...state, details: null, view: 'details', settings: null, palette: null, groupSearch: null, groupArchive: null, newChat: null, menu: null, voice: null, exchange: null, memory: null, toast: null }))
       }
       writeMode(mode)
       surface.set(state => ({ ...state, mode }))
@@ -911,28 +921,22 @@ export function apply(ctx) {
       actions.reportError(new Error(t('Couldn’t steer the queued messages. Try again.')), 'steer-queue')
     }
   }
-  // A terminal tab in DSH's right column, only where the terminal plugin
-  // registered its type and the column face is there.
-  actions.canOpenTerminal = () => ctx.get('sidebarRight') !== undefined && ctx.get('sidebarRightTabs')?.get('terminal') !== undefined
-  actions.newTerminal = () => {
-    // The column takes the drawer's space: hand it over first.
+  // Host tabs share the drawer's space. Hand it over before opening the tab.
+  const canOpenSidebarTab = kind => ctx.get('sidebarRight') !== undefined && ctx.get('sidebarRightTabs')?.get(kind) !== undefined
+  const openSidebarTab = kind => {
     actions.closePanel()
     try {
-      ctx.get('sidebarRight')?.openTab('terminal')
+      ctx.get('sidebarRight')?.openTab(kind)
     } catch (error) {
       actions.reportError(error, 'right-sidebar')
     }
   }
-  // The same hand-off for DSH's files tab, where that plugin registered it.
-  actions.canOpenFiles = () => ctx.get('sidebarRight') !== undefined && ctx.get('sidebarRightTabs')?.get('files') !== undefined
-  actions.openFiles = () => {
-    actions.closePanel()
-    try {
-      ctx.get('sidebarRight')?.openTab('files')
-    } catch (error) {
-      actions.reportError(error, 'right-sidebar')
-    }
-  }
+  actions.canOpenTerminal = () => canOpenSidebarTab('terminal')
+  actions.newTerminal = () => openSidebarTab('terminal')
+  actions.canOpenFiles = () => canOpenSidebarTab('files')
+  actions.openFiles = () => openSidebarTab('files')
+  actions.canOpenSidebarBrowser = () => canOpenSidebarTab('browser')
+  actions.openSidebarBrowser = () => openSidebarTab('browser')
 
   // The drawer and DSH's right column never share the window: whichever the
   // user asked for last wins. The column's state is read off the frame's
@@ -998,6 +1002,7 @@ export function apply(ctx) {
         const launched = sessionId => controllerOf(sessionId)?.launcher.getSnapshot() === CHATS_SOURCE
         const offs = [
           ...atSources({ roster, sessions: ctx.sessions, launched, iconFor: menuIcons(roster) }).map(source => triggers.registerSource(source)),
+          triggers.registerSource(taskMentionSource(roster)),
           triggers.registerSource(sideSource({ roster, actions })),
         ]
         atMenu = { controllerOf }
@@ -1048,7 +1053,7 @@ export function apply(ctx) {
   const SHELL_SHEETS = [
     [SHELL_CSS, 'shell'],
     [SIDEBAR_CSS, 'sidebar'],
-    [SECRET_CSS + CONNECTOR_CSS + CONNECTORS_PAGE_CSS, 'secrets'],
+    [SECRET_CSS + CONNECTOR_CSS + CONNECTORS_PAGE_CSS + PROVIDERS_CSS, 'secrets'],
     [LEARNING_CSS, 'learning'],
     [MODEL_CSS + FOLDER_CSS + BOT_SETTINGS_CSS + BOT_MODELS_CSS + AGENT_CARDS_CSS + GROUP_SETTINGS_CSS + AVATAR_LIBRARY_CSS, 'models'],
     [USAGE_CSS, 'usage'],
@@ -1112,6 +1117,8 @@ export function apply(ctx) {
     () => shadow('shell.overlay', { id: 'bot-toast', order: 60, inject: face }, ErrorToast),
   ]
   const installConversation = () => [
+    () => bindPrivateWorkspace({ sessions: ctx.sessions, workspaces, roster, mainView, reportError: actions.reportError,
+      attach: (botId, sessionId) => call('bot-private-workspace', { botId, sessionId }) }),
     () => installCompiledStyles(CONVERSATION_CSS + READ_ONLY_CSS, 'conversation'),
     () => installCompiledStyles(TURN_ERROR_CSS, 'turn-errors'),
     () => installCompiledStyles(QUEUE_CSS, 'queue'),

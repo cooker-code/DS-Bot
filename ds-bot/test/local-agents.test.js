@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import { LocalAgentAdapter } from '../src/host/local-agents/adapter.js'
 import { AcpEngine, stdioBridgePath } from '../src/host/local-agents/acp.js'
 import { CodexEngine } from '../src/host/local-agents/codex.js'
+import { prepareCodexSkills, verifyCodexSkills } from '../src/host/local-agents/codex-skills.js'
 import { JsonRpcPeer, wireProcess } from '../src/host/local-agents/jsonrpc.js'
 import { ClaudeEngine } from '../src/host/local-agents/claude.js'
 import { LoopbackMcp, flattenSchema } from '../src/host/local-agents/mcp.js'
@@ -345,6 +346,60 @@ test('codex app-server: thread per session, models from model/list', async (t) =
   const out = await collect(adapter.stream(options('s1', [user('m1', 'fix it')], { provider: 'local-codex-cli' })))
   assert.match(out.text, /fix it/)
   assert.match(out.thinking, /▸/)
+})
+
+test('Codex accepts only the selected copy of each team skill in the shared workspace', async t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'dsb-skill-rules-')))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const skills = [{ name: 'review', root, description: 'Review code', content: 'Read the diff.' }, { name: 'audit' }]
+  const selection = prepareCodexSkills(skills)
+  const path = join(root, 'review', 'SKILL.md')
+  assert.deepEqual(selection.roots, [root])
+  assert.match(readFileSync(path, 'utf8'), /Read the diff\./)
+  const cwd = join(root, 'shared')
+  const selected = { name: 'review', enabled: true, path }
+  const ambient = { name: 'review', enabled: false, path: join(cwd, '.agents', 'skills', 'review', 'SKILL.md') }
+  const catalog = [selected, ambient, { name: 'audit', enabled: false }, { name: 'personal', enabled: true }]
+  const peer = { request: async (method, params) => {
+    assert.equal(method, 'skills/list')
+    assert.deepEqual(params, { cwds: [cwd], forceReload: true })
+    return { data: [{ skills: catalog }] }
+  } }
+  const verify = () => verifyCodexSkills(peer, cwd, skills, selection.selected)
+  await verify()
+  ambient.enabled = true
+  await assert.rejects(verify(), /could not apply/)
+  selected.enabled = false
+  await assert.rejects(verify(), /could not apply/)
+  ambient.enabled = false
+  selected.enabled = true
+  catalog[2].enabled = true
+  await assert.rejects(verify(), /could not apply/)
+})
+
+test('Codex skill changes start with a clean native catalog in the same DS Bot conversation', async t => {
+  const records = {}
+  const select = { a: true, b: false }
+  const rt = { codexSkillsFor: id => select[id] ? [{ name: 'review', root: '/team/review' }] : [{ name: 'review' }] }
+  const adapter = makeAdapter({ records, rt })
+  t.after(() => adapter.dispose())
+  const open = id => adapter.liveFor({ sessionId: id, provider: 'local-codex-cli', model: 'default' }, 'read-only')
+  const [a, b] = await Promise.all([open('a'), open('b')])
+  assert.notEqual(a.engine, b.engine)
+  const cwd = '/shared/project'
+  records.a = adapter.recordOf(a, { cliSessionId: 'previous', cwd, handedId: 'last-message' })
+  await adapter.closeLive(a, { idle: true })
+  const resumed = await open('a')
+  assert.equal(resumed.cliSessionId, 'previous')
+  select.a = false
+  const changed = await open('a')
+  assert.equal(changed.cliSessionId, undefined)
+  assert.equal(changed.handed, undefined)
+  assert.equal(changed.cwd, cwd)
+  assert.equal(await open('b'), b)
+  await adapter.closeLive(changed, { idle: true })
+  // A restart after the switch still compares the persisted selection before resume.
+  assert.equal((await open('a')).cliSessionId, undefined)
 })
 
 // #1144: Codex 0.166 reads ThreadStartParams at the top level and the MCP servers from
@@ -830,9 +885,7 @@ test('a running turn of a local-agent part is not checked before its steps', asy
   assert.equal(result, 'next-called')
 })
 
-// A manual new part gives the deterministic handoff: verbatim tail + anchors +
-// the read_own_chat line, with no model call.
-test('a fresh part carries the deterministic handoff', async () => {
+test('a manual local-agent session starts without sending earlier messages', async () => {
   const ctx = fakeContext()
   ctx.workspaceRegistry = { archiveSession: async () => {}, unarchiveSession: async () => {} }
   ctx.sessions = { flush: async () => {} }
@@ -846,7 +899,8 @@ test('a fresh part carries the deterministic handoff', async () => {
     state: { bots: { b1: bot }, rooms: {}, prefs: {}, exchanges: [], capabilities: { items: {} }, switching: {}, questions: {}, views: {} },
     warn: (...args) => rt.warnings.push(args.join(' ')),
     warnings: [],
-    async save() {},
+    async save(options) { options?.mutate?.() },
+    indexSessions() {},
     async load() {},
     readOnly: () => undefined,
     botOf: id => rt.state.bots[id],
@@ -905,13 +959,10 @@ test('a fresh part carries the deterministic handoff', async () => {
   partsInstall(rt)
   assert.equal(typeof rt.newPart, 'function')
   await rt.newPart('s1')
-  // The switch runs as a job; the Bot lands on s2 with s1 kept as an earlier part.
-  for (let i = 0; i < 50 && bot.sessionId !== 's2'; i += 1) await new Promise(resolve => setTimeout(resolve, 20))
   assert.equal(bot.sessionId, 's2', rt.warnings.join(' | '))
-  assert.equal(bot.segments.length, 1)
-  assert.equal(bot.segments[0].sessionId, 's1')
-  const text = [...followed, ...delivered].map(message => message?.content?.map?.(block => block.text).join('') ?? message?.text ?? String(message)).join('\n')
-  assert.match(text, /fresh conversation was started|previous part|read_own_chat/i)
+  assert.deepEqual(bot.segments, [])
+  assert.equal(bot.openParts[0].sessionId, 's1')
+  assert.deepEqual([...followed, ...delivered], [])
 })
 
 test('an open-ended request outlives the default deadline', async () => {
@@ -1605,6 +1656,48 @@ test('claude receives Anthropic base64 image blocks for text+image and image-onl
   assert.match(second.text, new RegExp(`"data":"${pngBytes.toString('base64')}"`))
 })
 
+test('ClaudeEngine.steer unwraps block arrays and strings without double-wrapping', async (t) => {
+  const pngBytes = Buffer.from([137, 80, 78, 71, 9, 8, 7, 6])
+  const pngRef = { attachmentId: 'att-c-steer', mediaType: 'image/png', bytes: pngBytes.length, width: 1, height: 1 }
+  const adapter = makeAdapter({
+    attachments: makeMemoryAttachments({ 'att-c-steer': { mediaType: 'image/png', data: pngBytes } }),
+  })
+  t.after(() => adapter.dispose())
+
+  // Put Claude into a running/suspended turn (`session.running === true`) via permission wait,
+  // then send a text+image follow-up so sendInput steers via ClaudeEngine.steer(session, blocks).
+  const first = await collect(adapter.stream(options('c-steer-img', [user('m1', 'ask-claude-perm')], { provider: 'local-claude-code', model: 'sonnet' })))
+  assert.equal(first.finish?.kind, 'tool-calls')
+  const steeredImg = await collect(adapter.stream(options('c-steer-img', [
+    user('m1', 'ask-claude-perm'),
+    imageMsg('m2', 'steer with image', pngRef),
+  ], { provider: 'local-claude-code', model: 'sonnet' })))
+  assert.equal(steeredImg.finish?.kind, 'stop')
+  assert.match(steeredImg.text, /^ok: steer with image/)
+  assert.match(steeredImg.text, new RegExp(`"mediaType":"image/png".*"data":"${pngBytes.toString('base64')}"`))
+
+  // Plain-text follow-up while suspended/running also passes blocks through sendInput.
+  const askText = await collect(adapter.stream(options('c-steer-txt', [user('m1', 'ask-claude-perm')], { provider: 'local-claude-code', model: 'sonnet' })))
+  assert.equal(askText.finish?.kind, 'tool-calls')
+  const steeredText = await collect(adapter.stream(options('c-steer-txt', [
+    user('m1', 'ask-claude-perm'),
+    user('m2', 'steer text only'),
+  ], { provider: 'local-claude-code', model: 'sonnet' })))
+  assert.equal(steeredText.finish?.kind, 'stop')
+  assert.equal(steeredText.text, 'ok: steer text only')
+
+  // Direct string steer via ClaudeEngine.steer keeps working as well.
+  const live = adapter.live.get('c-steer-txt')
+  await live.engine.steer(live.engineSession, 'direct string steer')
+  const evs = []
+  while (true) {
+    const ev = await live.next()
+    evs.push(ev)
+    if (ev.type === 'done' || ev.type === 'error') break
+  }
+  assert.equal(evs.filter(ev => ev.type === 'text').map(ev => ev.text).join(''), 'ok: direct string steer')
+})
+
 test('acp receives {type:"image", mimeType, data} when promptCapabilities.image is true', async (t) => {
   const webpBytes = Buffer.from([82, 73, 70, 70, 1, 2, 3])
   const ref = { attachmentId: 'att-a1', mediaType: 'image/webp', bytes: webpBytes.length, width: 1, height: 1 }
@@ -1696,4 +1789,21 @@ test('replay drops images outside the replay window without reading their attach
   const out = await collect(adapter.stream(options('s1', msgs, { provider: 'local-codex-cli', model: 'gpt-5.1-codex' })))
   assert.equal(out.finish?.kind, 'stop')
   assert.deepEqual(readIds, ['att-recent'])
+})
+
+test('ACP errors with numeric, empty or object codes keep their message and get a string code (#1777)', async (t) => {
+  const adapter = makeAdapter()
+  t.after(() => adapter.dispose())
+  await assert.rejects(
+    collect(adapter.stream(options('s1', [user('m1', 'rpc-error-number')]))),
+    err => err.code === 'LOCAL_AGENT_ERROR' && /approval was cancelled \(JSON-RPC -32603\)/.test(err.message),
+  )
+  await assert.rejects(
+    collect(adapter.stream(options('s2', [user('m1', 'rpc-error-empty')]))),
+    err => err.code === 'LOCAL_AGENT_ERROR' && /empty code/.test(err.message),
+  )
+  await assert.rejects(
+    collect(adapter.stream(options('s3', [user('m1', 'rpc-error-object')]))),
+    err => err.code === 'LOCAL_AGENT_ERROR' && /"reason":"stopped"/.test(err.message) && !/\[object Object\]/.test(err.message),
+  )
 })

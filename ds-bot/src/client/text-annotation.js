@@ -2,15 +2,22 @@ import { createElement as h, useEffect, useRef, useState } from 'react'
 import { t } from './i18n.js'
 import { reducedMotion, SPRING_TAP } from './motion.js'
 
-export const quoteMarkdown = text => text.replace(/\r\n?/gu, '\n').split('\n').map(line => `> ${line}`).join('\n')
-const withAnnotation = (text, annotation) => annotation.trim() ? `${text}\n\n${annotation.trim()}` : text
-export const annotatedMessage = (text, annotation) => quoteMarkdown(withAnnotation(text, annotation))
+import { attributedQuote, insertReplyQuote, quoteMarkdown } from './message-quote.js'
+
+export { quoteMarkdown }
+export const annotatedMessage = (text, annotation) => [quoteMarkdown(text), annotation.trim()].filter(Boolean).join('\n\n')
 export const annotationKey = event => event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229
   ? event.ctrlKey || event.metaKey ? 'send' : 'add'
   : null
 
-export function insertAnnotation(inputActions, text, annotation) {
-  return inputActions.insertQuote(withAnnotation(text, annotation))
+export function insertAnnotation(inputActions, text, annotation, draft, editor) {
+  if (!draft.quoted) {
+    if (!insertReplyQuote(inputActions, text, editor)) return false
+    // A rejected note insertion can be retried from the still-open editor.
+    draft.quoted = true
+  }
+  const note = annotation.trim()
+  return !note || inputActions.insertText(note, inputActions.captureInsertion())
 }
 
 // The host's quote interaction owns admission. This renderer keeps the host's
@@ -25,6 +32,7 @@ export function TextSelectionAction({ sessionId, dismiss, readText, clearSelecti
   const [sending, setSending] = useState(false)
   const [closing, setClosing] = useState(false)
   const field = useRef(null)
+  const draft = useRef({ quoted: false })
   const pending = useRef(false)
   const closeTimer = useRef(null)
   useEffect(() => { if (!enabled) dismiss() }, [enabled, dismiss])
@@ -45,15 +53,26 @@ export function TextSelectionAction({ sessionId, dismiss, readText, clearSelecti
     closeTimer.current = setTimeout(dismiss, reducedMotion() ? 0 : 160)
   }
   const closeNative = () => { clearSelection(); dismiss() }
-  const quoteText = () => excerpt ?? readText()
-  const quoteOnly = () => {
+  const selectedQuote = () => {
     const text = readText()
+    if (!text || !team) return text
+    const selection = window.getSelection?.()
+    const owner = node => (node?.nodeType === 1 ? node : node?.parentElement)?.closest('[data-bt-quote-author]')
+    const from = owner(selection?.anchorNode)
+    return from && from === owner(selection?.focusNode)
+      ? attributedQuote(text, from.dataset.btQuoteAuthor, from.dataset.btQuotePrefix) : text
+  }
+  const editor = () => typeof document === 'undefined' ? undefined : document.querySelector('[data-composer-card] [role=textbox][contenteditable=true]')
+  const quoteText = () => excerpt ?? selectedQuote()
+  const quoteOnly = () => {
+    const text = selectedQuote()
     if (text === null) { dismiss(); return }
-    if (inputActions.insertQuote(text)) closeNative()
+    if (team ? insertReplyQuote(inputActions, text, editor()) : inputActions.insertQuote(text)) closeNative()
   }
   const startAnnotate = () => {
-    const text = readText()
+    const text = selectedQuote()
     if (text === null) { dismiss(); return }
+    draft.current.quoted = false
     setExcerpt(text)
     setEditing(true)
   }
@@ -61,7 +80,7 @@ export function TextSelectionAction({ sessionId, dismiss, readText, clearSelecti
     const text = quoteText()
     if (text === null) { close(); return }
     if (closing) return
-    if (insertAnnotation(inputActions, text, annotation)) close()
+    if (insertAnnotation(inputActions, text, annotation, draft.current, editor())) close()
   }
   const send = async () => {
     const text = quoteText()
@@ -125,6 +144,11 @@ export function TextSelectionAction({ sessionId, dismiss, readText, clearSelecti
 }
 
 export const ANNOTATION_CSS = `
+[data-composer-card] [data-composer-quote]{display:block;max-width:100%;margin-block-end:5px}
+[data-composer-quote] [data-quote-preview]{display:flex;align-items:flex-start;max-width:100%;box-sizing:border-box;padding:5px 8px;border-inline-start:2px solid var(--bt-line-2);border-radius:4px;background:var(--bt-tag-bg);color:var(--bt-ink-2);font:12px/17px var(--bt-font)}
+[data-composer-quote] [data-quote-preview-text]{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:none;white-space:pre-line;overflow:hidden;overflow-wrap:anywhere;color:inherit;font:inherit}
+[data-composer-quote] [data-quote-preview] button{order:1;flex:none;margin-inline-start:auto;color:inherit}
+
 .bt-selection-actions{display:inline-flex;align-items:stretch;overflow:hidden;border-radius:10px;background:var(--dsw-alias-button-floating-fill,var(--bt-card));border:1px solid var(--bt-line-2);box-shadow:var(--dsw-elevation-panel,var(--bt-glass-shadow));animation:bt-annotation-in ${SPRING_TAP.duration}ms ${SPRING_TAP.easing},bt-annotation-veil .12s ease-out}
 .bt-selection-action{display:inline-flex;align-items:center;gap:5px;height:30px;border:0;border-radius:0;margin:0;padding:0 12px;background:transparent;color:var(--dsw-alias-label-primary,var(--bt-ink));font:500 13px/18px var(--bt-font);cursor:pointer;white-space:nowrap;touch-action:manipulation;transition:background-color .12s ease}
 .bt-selection-action+.bt-selection-action{border-left:1px solid var(--bt-line)}

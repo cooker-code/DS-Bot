@@ -9,6 +9,9 @@
 // is settled from the Session's durable log: an answer that was produced goes to the Bot
 // that waits for it, and an outcome that cannot be read is said to be unknown. The
 // request itself is never sent again there.
+import { interruptProject, reconcileProjectRounds, restoreFailedProjects } from './project-execution.js'
+import { assistantId } from './project-assistant.js'
+import { projectRoomForCard } from './project-tasks.js'
 import { outgoingScope, scopeFields, scopeOf } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -98,6 +101,7 @@ const triggerOf = info => ({
   ...(info.exchangeId ? { exchangeId: info.exchangeId } : {}),
   ...(info.senderSessionId ? { senderSessionId: info.senderSessionId } : {}),
   ...(info.senderPart ? { senderPart: info.senderPart } : {}),
+  ...(info.intakeSeq !== undefined ? { intakeSeq: info.intakeSeq } : {}),
   ...(info.roomId ? { roomId: info.roomId } : {}),
   ...(info.work ? { work: info.work } : {}),
   ...(info.audience ? { audience: info.audience } : {}),
@@ -250,9 +254,16 @@ export function install(rt) {
     const bot = rt.botOf(record.botId)
     if (bot === undefined) return
     const text = resumeText(record)
+    const trigger = record.trigger
     if (record.roomId !== undefined) {
       const room = rt.roomOf(record.roomId)
       if (room === undefined || !room.members.includes(bot.id)) return
+      if (trigger?.roomId === room.id && scopeOf(trigger) && trigger.role === 'request') {
+        if (!record.resumed) await rt.deliver({ toId: bot.id, sessionId: await rt.memberSession(room, bot.id),
+          ...scopeFields(scopeOf(trigger)), intakeSeq: trigger.intakeSeq, fromId: trigger.senderSessionId, fromRoomId: trigger.senderRoomId,
+          exchangeId: trigger.exchangeId, role: 'request', audience: trigger.audience, roomId: room.id, resumed: true, text })
+        return
+      }
       await rt.postToRoom(room, bot, '', { ...scopeFields(scopeOf(record.trigger)), resumed: true, quiet: true, ...(record.resumed ? { again: true } : {}) })
       // A turn already picked up once and cut off again stays stopped: a restart loop
       // must not run it forever.
@@ -265,10 +276,22 @@ export function install(rt) {
     // foreground chat when that part is a background one. A part gone since (archived and
     // dropped) falls back to the Bot's current chat.
     const ownPart = rt.selfOf(sessionId) === bot.id && rt.isBotSession(sessionId) ? { sessionId } : {}
-    const trigger = record.trigger
+    if (trigger?.taskId && trigger.exchangeId) {
+      const room = trigger.roomId ? rt.roomOf(trigger.roomId) : projectRoomForCard(rt, trigger.taskId)
+      const card = room?.projectCards?.[trigger.taskId]
+      const round = card?.rounds.find(r => r.dispatchId === trigger.exchangeId && r.ownerId === bot.id)
+      if (round?.planNode) {
+        await interruptProject(rt, room, card, round, 'restart', 'The host restarted during this dispatch.')
+        return
+      }
+    }
     if (scopeOf(trigger) && trigger.audience === 'user' && trigger.role === 'request') {
-      await rt.deliver({ toId: bot.id, ...ownPart, ...scopeFields(scopeOf(trigger)), role: 'request', audience: 'user',
-        fromId: trigger.senderSessionId, exchangeId: trigger.exchangeId, roomId: trigger.roomId, resumed: true, text })
+      const room = rt.roomOf(trigger.roomId)
+      const dispatch = room?.projectCards?.[trigger.taskId]?.rounds.some(round => round.dispatchId === trigger.exchangeId && round.ownerId === bot.id)
+      const coordinator = room && !dispatch && (rt.isAdminOf(room, bot.id) || assistantId(room) === bot.id)
+      const target = coordinator ? { sessionId: await rt.memberSession(room, bot.id) } : ownPart
+      await rt.deliver({ toId: bot.id, ...target, ...scopeFields(scopeOf(trigger)), intakeSeq: trigger.intakeSeq, role: 'request', audience: 'user',
+        fromId: trigger.senderSessionId, fromRoomId: trigger.senderRoomId, exchangeId: trigger.exchangeId, roomId: trigger.roomId, resumed: true, text })
       return
     }
     if ((trigger?.role === 'request' || trigger?.role === 'stopped') && trigger.senderSessionId && trigger.audience !== 'user' && rt.botOf(trigger.senderSessionId)) {
@@ -282,8 +305,13 @@ export function install(rt) {
 
   // Where a queued note goes now: its Session if it still is one, else the
   // current Session of its Bot, or of its group when the message went to one.
-  const sessionFor = (sessionId, args) => (rt.isBotSession(sessionId) ? sessionId
-    : args?.roomId === undefined ? rt.chatOf(args?.toId) : rt.roomOf(args.roomId)?.sessions?.[args.toId])
+  const sessionFor = (sessionId, args) => {
+    if (rt.isBotSession(sessionId)) return sessionId
+    const previous = rt.pastOwners.get(sessionId)
+    if (previous && !previous.roomId) return rt.chatOf(args.toId)
+    const roomId = previous?.roomId ?? args.roomId
+    return roomId ? rt.roomOf(roomId)?.sessions?.[args.toId] : rt.chatOf(args.toId)
+  }
 
   // A hard stop keeps the inbox, which the Session runs once it wakes; only what DSH
   // cancelled is sent again. The notes stay queued until a turn takes the messages
@@ -479,10 +507,17 @@ export function install(rt) {
       ? setTimeout(() => void resumeAll().catch(error => rt.warn('ds-bot: picking up interrupted work failed: %s', error)), RESUME_DELAY_MS)
       : setTimeout(() => void rt.load().then(() => rt.settleRoomBatches?.()).catch(error => rt.warn('ds-bot: settling group batches failed: %s', error)), 0)
     timer?.unref?.()
+    const bootAt = Date.now()
+    const repair = setTimeout(() => void restoreFailedProjects(rt, rt.rememberProjectFailure)
+      .catch(error => rt.warn('ds-bot: restoring failed task status: %s', error))
+      .then(() => rt.readOnly() === undefined && reconcileProjectRounds(rt, bootAt))
+      .catch(error => rt.warn('ds-bot: reconciling project nodes: %s', error)), RESUME_DELAY_MS)
+    repair.unref?.()
     // What the turns stopped by this shutdown left stays as last noted.
     return () => {
       stopped = true
       clearTimeout(timer)
+      clearTimeout(repair)
       return writing
     }
   }, 'ds-bot: resume interrupted turns')

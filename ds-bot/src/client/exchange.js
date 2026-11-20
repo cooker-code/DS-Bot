@@ -68,7 +68,7 @@ export function ExchangeDialog({ pair, paneLeft, roster, actions }) {
                 showDay ? h('time', { className: 'bt-time' }, dayLabel(entry.time)) : null,
                 h('div', { className: 'bt-group-msg' },
                   h('span', { className: 'bt-group-name', style: flat ? undefined : { color: inkText(colorOf(bot)) } }, flat ? lead : null, bot.name),
-                  h(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: flat ? null : lead })))
+                  h(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, bot, actions, whole, lead: flat ? null : lead })))
             })),
       h('div', { className: 'bt-dialog-foot' }, h('button', { type: 'button', className: 'bt-soft', onClick: close }, t('Close Chat')))))
 }

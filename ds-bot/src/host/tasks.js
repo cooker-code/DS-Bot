@@ -5,9 +5,10 @@
 import { randomBytes } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { output } from './tools.js'
+import { reviewBaseline, verifyReviewCommit } from './project-branches.js'
 
-export const TASK_STATUSES = ['active', 'review', 'blocked', 'done', 'cancelled']
-const OPEN_STATUSES = ['active', 'review', 'blocked']
+export const TASK_STATUSES = ['active', 'review', 'blocked', 'clarify', 'failed', 'done', 'cancelled']
+const OPEN_STATUSES = ['active', 'review', 'blocked', 'clarify', 'failed']
 const GOAL_MAX = 200
 const PROGRESS_MAX = 300
 const RESULT_MAX = 2000
@@ -20,6 +21,50 @@ const listOf = room => Object.values(tasksOf(room)).sort((a, b) => a.startedAt -
 export const openTasksOf = room => listOf(room).filter(task => OPEN_STATUSES.includes(task.status))
 export const pastTasksOf = room => listOf(room).filter(task => !OPEN_STATUSES.includes(task.status))
 const newId = () => `t_${randomBytes(4).toString('hex')}`
+
+// Called inside the team writer queue. Group messages retain their intake IDs, so
+// remember dismissed intakes even for older cards created before the inbox existed.
+export function deleteBoardTasks(room, items) {
+  if (!room) throw new Error('Unknown group chat')
+  if (!Array.isArray(items) || !items.length) throw new Error('Select tasks to delete.')
+  const selected = { member: new Set(), project: new Set(), intake: new Set() }
+  for (const item of items) {
+    if (!item || !Object.hasOwn(selected, item.kind) || typeof item.id !== 'string' || !item.id)
+      throw new Error('Invalid task selection.')
+    selected[item.kind].add(item.id)
+  }
+  const dismissed = new Set(room.deletedTaskIntakes)
+  const changes = {}
+  for (const [kind, field] of [['member', 'tasks'], ['project', 'projectCards']]) {
+    const entries = Object.entries(room[field] ?? {})
+    const remaining = entries.filter(([id, task]) => {
+      if (!selected[kind].has(id)) return true
+      if (kind === 'project') for (const intake of task.intakes ?? []) dismissed.add(intake)
+      return false
+    })
+    if (remaining.length !== entries.length) changes[field] = Object.fromEntries(remaining)
+  }
+  for (const intake of room.projectInbox ?? []) {
+    if (!selected.intake.has(intake.id)) continue
+    if (!['pending', 'planning', 'clarify'].includes(intake.status)) throw new Error('The intake changed. Check the task list again.')
+    dismissed.add(intake.id)
+  }
+  if (dismissed.size !== (room.deletedTaskIntakes?.length ?? 0)) changes.deletedTaskIntakes = [...dismissed]
+  if (room.projectInbox?.some(intake => dismissed.has(intake.id)))
+    changes.projectInbox = room.projectInbox.filter(intake => !dismissed.has(intake.id))
+  if (room.projectReplyScopes && (dismissed.size || selected.project.size)) {
+    changes.projectReplyScopes = Object.fromEntries(Object.entries(room.projectReplyScopes)
+      .filter(([, key]) => !dismissed.has(key) && !selected.project.has(key)))
+  }
+  const previous = Object.fromEntries(Object.keys(changes).map(key => [key, room[key]]))
+  Object.assign(room, changes)
+  return () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete room[key]
+      else room[key] = value
+    }
+  }
+}
 
 // Why DS Bot blocked a task: the member's turn failed, or the user stopped it. The panel
 // words the same facts in the user's language.
@@ -56,6 +101,8 @@ export function install(rt) {
       task.status = task.blocked.from
       delete task.blocked
     }
+    if (status === 'clarify' && task.status !== 'clarify') task.beforeClarification = task.status
+    if (status !== undefined && status !== 'clarify') delete task.beforeClarification
     if (status !== undefined) task.status = status
     if (progress !== undefined) task.progress = oneLine(progress, PROGRESS_MAX)
     task.updatedAt = Date.now()
@@ -68,6 +115,7 @@ export function install(rt) {
     if (task.botId !== botId) return { error: `Task ${task.id} belongs to another member.` }
     const text = oneLine(result, RESULT_MAX)
     if (text === '') return { error: 'A finished task needs a result summary.' }
+    delete task.beforeClarification
     task.status = 'done'
     delete task.blocked
     task.result = text
@@ -79,6 +127,7 @@ export function install(rt) {
     if (task === undefined) return { error: 'No open task to cancel.' }
     if (!OPEN_STATUSES.includes(task.status)) return { error: 'That task is already finished.' }
     if (task.botId !== botId && !isAdmin) return { error: `Task ${task.id} belongs to another member; only its owner, the admin or a Main Bot cancels it.` }
+    delete task.beforeClarification
     task.status = 'cancelled'
     delete task.blocked
     const why = oneLine(reason, REASON_MAX)
@@ -91,6 +140,10 @@ export function install(rt) {
     if (task === undefined) return undefined
     const line = oneLine(text, NOTE_MAX)
     if (line === '') return undefined
+    if (by === 'user' && task.status === 'clarify') {
+      task.status = task.beforeClarification ?? 'active'
+      delete task.beforeClarification
+    }
     ;(task.notes ??= []).push({ at: Date.now(), by, text: line })
     task.updatedAt = Date.now()
     return task
@@ -120,7 +173,10 @@ export function install(rt) {
       action: { type: 'string', required: true, enum: ['open', 'update', 'complete', 'cancel', 'show'], description: 'What to do' },
       goal: { type: 'string', description: 'open: the task in one line, as the user would say the goal' },
       id: { type: 'string', description: 'update, complete, cancel: the task id; the caller\'s newest open task when left out' },
-      status: { type: 'string', enum: ['active', 'review', 'blocked'], description: 'update: active while working, review when the result waits for the user, blocked when something stops you' },
+      status: { type: 'string', enum: OPEN_STATUSES, description: 'Use clarify when human context is required, review for submitted work, failed for execution errors, or blocked for other obstacles.' },
+      deliveryKind: { type: 'string', enum: ['code', 'other'], description: 'Declare code changes or another deliverable when opening a task, or at first review for an unclassified task.' },
+      repository: { type: 'string', description: 'Absolute path to the assigned project repository for a code task.' },
+      commit: { type: 'string', description: 'Full delivery commit ID for code review. The host checks local main/master.' },
       progress: { type: 'string', description: 'update: the latest one-line progress' },
       result: { type: 'string', description: 'complete: the result summary the board keeps' },
       reason: { type: 'string', description: 'cancel: why the task stops' },
@@ -137,8 +193,39 @@ export function install(rt) {
       const action = String(args.action ?? '')
       let result
       switch (action) {
-        case 'open': result = open(room, self, args.goal); break
-        case 'update': result = update(room, self, args.id, { status: args.status, progress: args.progress }); break
+        case 'open': {
+          let base
+          const kind = args.deliveryKind ?? (args.repository ? 'code' : undefined)
+          if (kind === 'other' && args.repository) return 'Use deliveryKind code for a task with an assigned repository.'
+          if (kind === 'code') {
+            if (!args.repository) return 'Supply the assigned repository for a code task.'
+            base = await reviewBaseline(rt, room, args.repository)
+          }
+          result = open(room, self, args.goal)
+          if (result.task && kind) result.task.deliveryKind = kind
+          if (result.task && base) Object.assign(result.task, { repository: args.repository, reviewBase: base })
+          break
+        }
+        case 'update': {
+          const task = pickTask(room, args.id, self)
+          let evidence, kind
+          if (args.status === 'review' && task?.botId === self && OPEN_STATUSES.includes(task.status)) {
+            if (task.deliveryKind && args.deliveryKind && task.deliveryKind !== args.deliveryKind)
+              return 'The delivery kind must match the registered task.'
+            kind = task.deliveryKind ?? args.deliveryKind ?? (args.repository || args.commit ? 'code' : undefined)
+            if (!kind) return 'Specify deliveryKind as code or other before requesting review.'
+            if (kind !== 'code' && (args.commit || args.repository)) return 'Register a code delivery to verify its Git commit.'
+            if (kind === 'code') {
+              const repository = task.repository ?? args.repository
+              if (!repository) return 'Supply the assigned repository for a code task.'
+              evidence = await verifyReviewCommit(rt, room, repository, args.commit ?? (task.status === 'review' ? task.mainReview?.commit : undefined), { base: task.reviewBase })
+            }
+          }
+          result = update(room, self, task?.id ?? args.id, { status: args.status, progress: args.progress })
+          if (result.task && kind) result.task.deliveryKind = kind
+          if (result.task && evidence) Object.assign(result.task, { repository: evidence.repository, mainReview: evidence })
+          break
+        }
         case 'complete': result = complete(room, self, args.id, args.result); break
         case 'cancel': result = cancel(room, self, args.id, args.reason, isAdmin); break
         case 'show': return ledger(room, self)
@@ -160,13 +247,13 @@ export function install(rt) {
     const room = rt.roomOf(roomId)
     if (room === undefined) return
     // A system block is renewed with the latest cause; a block the Bot set stays its own.
-    const running = openTasksOf(room).filter(task => task.botId === botId && (task.status !== 'blocked' || task.blocked !== undefined)
+    const running = openTasksOf(room).filter(task => task.botId === botId && task.status !== 'clarify' && (task.status !== 'blocked' || task.blocked !== undefined)
       && (since === undefined || task.updatedAt < since))
     if (running.length === 0) return
     const at = Date.now()
     for (const task of running) {
       task.blocked = { by: 'system', ...cause, from: task.blocked?.from ?? task.status, at }
-      task.status = 'blocked'
+      task.status = cause.cause === 'failed' ? 'failed' : 'blocked'
       task.updatedAt = at
     }
     void rt.save().catch(() => {})
@@ -204,6 +291,7 @@ export function install(rt) {
       const task = tasksOf(room)[String(id ?? '')]
       if (task === undefined) return { error: 'No such task.' }
       if (!OPEN_STATUSES.includes(task.status)) return { error: 'That task is already finished.' }
+      delete task.beforeClarification
       task.status = 'cancelled'
       delete task.blocked
       task.updatedAt = Date.now()

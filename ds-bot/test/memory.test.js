@@ -4,6 +4,7 @@ import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { format } from 'node:util'
+import { savedTeam, seedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import {
   MEMORY_LIMITS, addLink, cleanEntry, cleanTopic, formatEntry, insertEntry, looksLikeKey,
@@ -133,7 +134,7 @@ const ownChat = [
 // some routes do.
 let rt
 function start({ home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-')), replies = [], config = {}, history = {}, reasoning = { efforts: [{ id: 'off' }, { id: 'high' }] }, models = ['v4'], defaultModel, modelMaxTokens, requireSession = false } = {}) {
-  if (!existsSync(join(home, 'state.json'))) writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
+  if (!existsSync(join(home, 'state.json'))) seedTeam(home, TEAM)
   const services = defaultModel === undefined ? {} : { agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: defaultModel }) } }
   const ctx = fakeContext({ services })
   const warnings = []
@@ -519,9 +520,9 @@ test('memory-history lists a Bot\'s own and team changes, newest first', async (
 test('memory-history reads a private Bot\'s own log beside the shared one', async (t) => {
   const { tool, call, stop, home } = start()
   t.after(() => stop())
-  const team = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const team = savedTeam(home)
   team.bots.b2.private = true
-  writeFileSync(join(home, 'state.json'), JSON.stringify(team))
+  seedTeam(home, team)
   await tool('remember', { text: 'A private fact' }, 'b2')
   await tool('remember', { text: 'Team drinks tea', scope: 'team', always: true }, 'm1')
   const page = await call('memory-history', { botId: 'b2' })
@@ -1494,7 +1495,7 @@ test('a first group review reads back to the user\'s line past a round of replie
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-'))
   const replies = Array.from({ length: 6 }, (_, at) => ({ who: at % 2 ? 'Coder' : 'Writer', botId: at % 2 ? 'b3' : 'b2', text: `Reply ${at + 1}`, seq: at + 2 }))
   const room = { ...TEAM.rooms.r1, seq: 7, log: [{ who: 'User', text: 'From now on, answer in Chinese', seq: 1 }, ...replies] }
-  writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, rooms: { r1: room } }))
+  seedTeam(home, { ...TEAM, rooms: { r1: room } })
   const { ctx, call, read, requests, stop } = start({ home, replies: [JSON.stringify({ changes: [] })], config: { memoryReviewDelayMs: 0 } })
   t.after(() => stop())
   await call('state', {})
@@ -1998,9 +1999,9 @@ test('a move can finish when its exact destination copy is already saved', async
 test('an entry moved out of a private Bot is the only thing of it the shared log sees', async (t) => {
   const { tool, call, read, stop, home } = start()
   t.after(() => stop())
-  const team = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  const team = savedTeam(home)
   team.bots.b2.private = true
-  writeFileSync(join(home, 'state.json'), JSON.stringify(team))
+  seedTeam(home, team)
   await tool('remember', { text: 'A private fact' }, 'b2')
   await tool('remember', { text: 'A fact to share' }, 'b2')
   await call('memory-move', { botId: 'b2', scope: 'own', text: 'A fact to share', to: 'team' })
@@ -2078,7 +2079,7 @@ test('group search after an upgrade reads the saved full text of a legacy line',
   const text = `The launch notes follow. ${'Plan details. '.repeat(155)}Final deliverable appendix.`
   const line = { who: 'User', seq: 4, text: text.slice(0, 2000), length: text.length }
   assert.doesNotMatch(line.text, /deliverable appendix/)
-  writeFileSync(join(first.home, 'state.json'), JSON.stringify({ ...TEAM, rooms: { r1: { ...TEAM.rooms.r1, seq: 4, log: [...TEAM.rooms.r1.log, line] } } }))
+  seedTeam(first.home, { ...TEAM, rooms: { r1: { ...TEAM.rooms.r1, seq: 4, log: [...TEAM.rooms.r1.log, line] } } })
   await first.stop({ keep: true })
   rmSync(join(first.home, 'ledger'), { recursive: true, force: true })
   mkdirSync(join(first.home, 'group-lines', 'r1'), { recursive: true })
@@ -2091,7 +2092,7 @@ test('group search after an upgrade reads the saved full text of a legacy line',
 test('a group review writes only to the group whose conversation it read', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-'))
   const r2 = { ...TEAM.rooms.r1, id: 'r2', name: 'Other project', log: [], seq: 0, sessions: {} }
-  writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, rooms: { ...TEAM.rooms, r2 } }))
+  seedTeam(home, { ...TEAM, rooms: { ...TEAM.rooms, r2 } })
   const replies = [JSON.stringify({ changes: [{ op: 'add', group: 'Other project', text: 'Launch reports fit one page' }] })]
   const { ctx, call, read, stop } = start({ home, replies, config: { memoryReviewDelayMs: 0 } })
   t.after(() => stop())
@@ -2254,7 +2255,7 @@ test('the pill opens the memory that changed last on the host, when one poll bri
   assert.equal(latestMemoryChange({}, []), null)
 })
 
-const twoMembers = home => writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, rooms: { r1: { ...TEAM.rooms.r1, members: ['b2', 'b3', 'b4'], sessions: { b2: 'g2', b3: 'g3' } } } }))
+const twoMembers = home => seedTeam(home, { ...TEAM, rooms: { r1: { ...TEAM.rooms.r1, members: ['b2', 'b3', 'b4'], sessions: { b2: 'g2', b3: 'g3' } } } })
 
 test('the members of a group read its memory in their Sessions there, and no Bot reads it anywhere else', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-'))
@@ -2397,7 +2398,7 @@ test('a queued review keeps the group lines that leave the log while it waits', 
   mkdirSync(join(home, 'memory'), { recursive: true })
   writeFileSync(join(home, 'memory', 'reviewed.json'), JSON.stringify({ 'chat:b2': 9, 'group:r1': 5 }))
   const log = [{ who: 'User', text: 'Call me Lu from now on', seq: 6 }, ...Array.from({ length: 39 }, (_, at) => ({ who: 'Coder', botId: 'b3', text: `Step ${at + 1}`, seq: at + 7 }))]
-  writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, rooms: { r1: { ...TEAM.rooms.r1, sessions: { b2: 'g2', b3: 'g3' }, seq: 45, log } } }))
+  seedTeam(home, { ...TEAM, rooms: { r1: { ...TEAM.rooms.r1, sessions: { b2: 'g2', b3: 'g3' }, seq: 45, log } } })
   let release
   const replies = [new Promise(resolve => { release = resolve }), ...Array.from({ length: 6 }, () => JSON.stringify({ changes: [] }))]
   const { ctx, call, requests, stop } = start({ home, replies, config: { memoryReviewDelayMs: 0 } })
@@ -2584,7 +2585,7 @@ test('a turn whose Session moves to a fresh part before its review is still revi
   ctx.emit('agent/status', { agent: { id: 'b2' }, status: 'idle' })
   // Before the review is due, the chat moves on to part 2 and this host takes over.
   const moved = { ...TEAM, bots: { ...TEAM.bots, b2: { ...TEAM.bots.b2, sessionId: 'b2-next', segments: [{ sessionId: 'b2', endedAt: Date.now() }] } } }
-  writeFileSync(join(home, 'state.json'), JSON.stringify(moved))
+  seedTeam(home, moved)
   rmSync(join(home, 'state.lock'))
   await call('state', {})
   await reviewed(call)
@@ -2670,7 +2671,7 @@ test('a memory call names the current part of the Bot chat', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-'))
   const team = structuredClone(TEAM)
   team.bots.b2.sessionId = 'b2-part2'
-  writeFileSync(join(home, 'state.json'), JSON.stringify(team))
+  seedTeam(home, team)
   const { call, requests, stop } = start({ home, requireSession: true, replies: [JSON.stringify({ reply: 'This part.', changes: [] })] })
   t.after(() => stop())
   const answer = await call('memory-ask', { botId: 'b2', text: 'Which part?' })

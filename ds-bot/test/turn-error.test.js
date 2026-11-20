@@ -188,7 +188,7 @@ test('once the host no longer holds the failure, Retry leads and asks the Bot to
   list[0].node.props.onClick()
   await tick()
   const [again] = side.buttons(side.render())
-  assert.equal(again.label, 'Retrying…')
+  assert.equal(again.label, 'Sent')
   assert.equal(again.node.props.disabled, true)
   assert.deepEqual(side.calls, [['resume', 'chief']])
 })
@@ -353,23 +353,41 @@ test('a failed turn another Bot asked for offers its fixes but no Retry', () => 
   assert.deepEqual(labels(own.buttons(own.render())), ['Retry'])
 })
 
-test('connection, rate and server failures retry; other codes keep a short line, not the raw text', () => {
+test('rate and server failures retry and unrelated errors keep their repair labels', () => {
   const cases = [
-    ['TRANSPORT', 'Could not reach the model service.'],
-    ['TIMEOUT', 'Could not reach the model service.'],
     ['RATE_LIMIT', 'Too many requests. Wait a moment, then try again.'],
     ['SERVER', 'The model service failed.'],
     ['CONTEXT_WINDOW_EXCEEDED', 'The conversation is too long for the model'],
     ['SOMETHING_NEW', 'This turn failed.'],
-    [undefined, 'This turn failed.'],
+    [undefined, 'Chief · provider diagnostic'],
   ]
   for (const [code, text] of cases) {
-    const side = cell({ code, message: 'socket hang up at 10.0.0.1' })
+    const side = cell({ code, message: 'provider diagnostic' })
     const tree = side.render()
     assert.equal(textOf(walk(tree, node => node.props?.className === 'bt-fail-text')[0]), text, code)
     assert.deepEqual(labels(side.buttons(tree)), ['Retry'], code)
-    assert.ok(side.tech(tree).includes('socket hang up at 10.0.0.1'), code)
+    assert.ok(side.tech(tree).includes('provider diagnostic'), code)
   }
+})
+
+test('any Bot shows its network error inline in current and earlier private turns', () => {
+  for (const [name, code, message, category] of [
+    ['Writer', 'TRANSPORT', 'fetch failed', 'Could not reach the model service'],
+    ['Tester', 'TIMEOUT', 'deadline expired', 'The model took too long to answer'],
+    ['Reviewer', 'ECONNRESET', 'connection reset by peer', 'Could not reach the model service'],
+    ['Assistant', 'LOCAL_AGENT_ERROR', 'socket hang up', 'Could not reach the model service'],
+  ]) {
+    for (const later of [true, false]) {
+      const side = cell({ code, message, later, bot: { name } })
+      const tree = side.render()
+      assert.equal(textOf(walk(tree, node => node.props?.className === 'bt-fail-text')[0]), `${name} · ${category} (${code} · ${message})`)
+      if (!later) assert.deepEqual(labels(side.buttons(tree)), ['Retry'])
+    }
+  }
+  const side = cell({ code: 'TRANSPORT', message: 'fetch failed at ?token=sensitive-example' })
+  assert.doesNotMatch(textOf(side.render()), /sensitive-example/)
+  const unclassified = cell({ bot: { name: 'Tester' }, code: 'UNKNOWN', message: 'Upstream closed the channel' })
+  assert.equal(textOf(walk(unclassified.render(), node => node.props?.className === 'bt-fail-text')[0]), 'Tester · Upstream closed the channel (UNKNOWN)')
 })
 
 test('every failure code a Bot chat can show offers at least one button', () => {
@@ -497,7 +515,8 @@ test('in a Chinese interface every repair card state reads in Chinese, outside T
           let tree = side.render()
           const key = side.buttons(tree).find(entry => entry.label === '填入 API Key' || entry.label === '重新填 Key')
           if (key) { key.node.props.onClick(); tree = side.render() }
-          const left = shown(tree).replace(ENGLISH_ALLOWED, '')
+          const technical = ['TRANSPORT', 'TIMEOUT'].includes(code) ? `(${code}${blocked ? ' · HTTP 401' : ''} · raw provider text)` : ''
+          const left = shown(tree).replace(technical, '').replace(ENGLISH_ALLOWED, '')
           assert.doesNotMatch(left, /[A-Za-z]{2,}/, `${code} ${blocked ? 'blocked' : 'free'} ${later ? 'settled' : 'current'}: ${shown(tree)}`)
           const [summary] = walk(tree, node => node.type === 'summary')
           if (summary) assert.equal(textOf(summary), '技术详情')

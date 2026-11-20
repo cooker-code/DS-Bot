@@ -74,7 +74,7 @@ export function createRuntime(ctx, config = {}) {
     config,
     dshHome,
     home,
-    statePath: join(home, 'state.json'),
+    statePath: join(home, 'state', 'catalog.sqlite'),
     // The Bot-only tools each module defines; tools.js registers them in each
     // Bot Session's own scope, never globally (see shareBotTools).
     teamTools: [],

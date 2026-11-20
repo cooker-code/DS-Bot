@@ -118,21 +118,21 @@ function composerInserts(sessionId, quote) {
 }
 
 test('a reply in a group that split its chat quotes into the Session on screen', () => {
-  assert.deepEqual(quotedFrom(SPLIT, 'group-b-part2'), { id: 'group-b-part2', text: 'the plan is ready' })
+  assert.deepEqual(quotedFrom(SPLIT, 'group-b-part2'), { id: 'group-b-part2', text: 'Writer:\nthe plan is ready' })
   // The bug: the row sent the stable room id, while the composer listens for the Session.
   const room = SPLIT
   assert.notEqual(room.id, room.sessionId)
 })
 
 test('a reply in a group that never split quotes into its Session as before', () => {
-  assert.deepEqual(quotedFrom(INTACT, 'group-a'), { id: 'group-a', text: 'the plan is ready' })
+  assert.deepEqual(quotedFrom(INTACT, 'group-a'), { id: 'group-a', text: 'Writer:\nthe plan is ready' })
 })
 
 test('the quote reaches the composer of the chat it came from, in both groups', () => {
   for (const [room, sessionId] of [[INTACT, 'group-a'], [SPLIT, 'group-b-part2']]) {
     const quoted = quotedFrom(room, sessionId)
     const inserted = composerInserts(sessionId, { sessionId: quoted.id, text: quoted.text, token: 1 })
-    assert.deepEqual(inserted, ['> the plan is ready\n\n'], `quoted into ${sessionId}`)
+    assert.deepEqual(inserted, ['> Writer:\n> the plan is ready\n\n'], `quoted into ${sessionId}`)
   }
 })
 

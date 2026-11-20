@@ -3,11 +3,13 @@ import * as ui from '@deepseek-ai/dsh-client-ui-primitives'
 import { imPlatform } from '../shared/im-platforms.js'
 import { mentionSpans } from '../shared/mentions.js'
 import { BotMark } from './mark.js'
-import { CheckIcon, CopyIcon } from './icons.js'
+import { CheckIcon, CopyIcon, ReplyIcon } from './icons.js'
 import { dateLocale, t } from './i18n.js'
 import { noHover } from './motion.js'
 import { clockLabel, messageClock } from './text.js'
 import { useFold } from './fold.js'
+import { attributedQuote, messageExcerpt, QuotePreview, splitReply } from './message-quote.js'
+import { taskMessage } from '../shared/task-message.js'
 
 // -------------------------------------------------------------------------
 // The user's own messages. DS Bot owns the row (fold, time, IM tag, copy, steering
@@ -159,12 +161,14 @@ function ProjectedContent({ data, text, shown, folded, control, roster, sessionI
   const referenceLabels = data.referenceLabels ?? []
   const references = openFile && openSkill ? { openFile, openSkill } : undefined
   const body = h(UserText, { text: shown, bots: mentionableBots(roster, sessionId), referenceLabels, skillNames: data.skillNames ?? [], references, actions })
-  return h(Fragment, null,
+  const combined = text !== '' && attachments.some(block => block.type === 'image')
+  const contents = h(combined ? 'div' : Fragment, combined ? { className: 'bt-ucombined' } : null,
     attachments.length > 0 ? h(Attachments, { attachments, renderMessageImages }) : null,
     text !== '' || rest.length > 0 ? h('div', { className: 'bt-ubody', title: clock(data.time), 'data-folded': folded || undefined, 'data-text-interaction-source': text !== '' ? '' : undefined, onClick },
       control ? h('div', { className: 'bt-fold-body' }, body) : body,
       control,
-      rest.map((block, index) => (ui.JsonBlock ? h(ui.JsonBlock, { key: index, label: t('Content'), payload: block }) : null))) : null,
+      rest.map((block, index) => (ui.JsonBlock ? h(ui.JsonBlock, { key: index, label: t('Content'), payload: block }) : null))) : null)
+  return h(Fragment, null, contents,
     referenceLabels.length > 0 ? h('div', { className: 'bt-urefs' }, t('Referenced {labels}', { labels: referenceLabels.join(t(', ')) })) : null)
 }
 
@@ -175,6 +179,7 @@ function ProjectedContent({ data, text, shown, folded, control, roster, sessionI
 // the factory draws.
 function HostContent({ data, prepared, shown, folded, control, loadImage, renderFactorySlot, onClick }) {
   const referenceLabels = data.referenceLabels ?? []
+  const combined = prepared.text !== '' && prepared.attachments.some(block => block.type === 'image')
   const content = renderFactorySlot('conversation.chat.user.content', {
     content: { text: shown, attachments: prepared.attachments, extraBlocks: prepared.extraBlocks },
     loadImage,
@@ -182,7 +187,7 @@ function HostContent({ data, prepared, shown, folded, control, loadImage, render
     interactive: true,
   })
   return h(Fragment, null,
-    h('div', { className: 'bt-uhost', title: clock(data.time), 'data-folded': folded || undefined, onClick },
+    h('div', { className: combined ? 'bt-uhost bt-ucombined' : 'bt-uhost', title: clock(data.time), 'data-folded': folded || undefined, onClick },
       control ? h('div', { className: 'bt-fold-body' }, content) : content,
       control),
     referenceLabels.length > 0 ? h('div', { className: 'bt-urefs' }, t('Referenced {labels}', { labels: referenceLabels.join(t(', ')) })) : null)
@@ -197,7 +202,12 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
   const steering = node.kind === 'steering'
   const sentAt = Number.isFinite(data.time) ? messageClock(data.time) : undefined
   const via = viaOf(data.source) ?? roster.imVia?.[sessionId]?.[data.seq]
-  const { shown, folded, control } = useFold(text, { markdown: false })
+  const room = roster.roomsById[sessionId]
+  const linked = data.source?.taskId && room?.projectCards?.find(card => card.taskId === data.source.taskId)
+  const display = linked ? { body: text } : taskMessage(text, room)
+  const reply = splitReply(display.body, room)
+  const prefix = display.prefix ?? reply.prefix
+  const { shown, folded, control } = useFold(reply.body, { markdown: false })
   const row = useRef(null)
   // Touch has no hover: a tap on the bubble opens its copy tool, a tap elsewhere closes it.
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -208,22 +218,31 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
     window.addEventListener('touchstart', onDown)
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('touchstart', onDown) }
   }, [toolsOpen])
+  const turn = node.location?.turn?.turn ?? data.turn
+  if (room?.archivedDiscussions?.some(row => row.part === sessionId && (row.turn === turn || (data.seq >= row.startSeq && data.seq <= row.endSeq)))) return null
   const tapTools = (event) => {
     if (!noHover() || event.target instanceof Element && event.target.closest('a,button,input,textarea,select,pre,code,[role=button],[role=link]')) return
     setToolsOpen(value => !value)
   }
-  const fold = { data, text, shown, folded, control, onClick: tapTools }
-  return h('div', { ref: row, className: 'bt-umsg', 'data-steering': steering || undefined },
+  const fold = { data, text: reply.body, shown, folded, control, onClick: tapTools }
+  return h('div', { ref: row, className: 'bt-umsg', 'data-bt-quote-author': t('Me'), 'data-bt-quote-prefix': prefix, 'data-steering': steering || undefined },
     h('div', { className: 'bt-ustack' },
+      linked ? h('button', { type: 'button', className: 'bt-mini', onClick: () => actions.showDetails(sessionId, 'task/' + linked.taskId) }, linked.title) : null,
+      h(QuotePreview, { text: reply.quote }),
       prepared === undefined
         ? h(ProjectedContent, { ...fold, roster, sessionId, actions, renderMessageImages, openFile, openSkill })
         : h(HostContent, { ...fold, prepared, loadImage, renderFactorySlot }),
       (sentAt || via) ? h('div', { className: 'bt-utime', title: clockLabel(data.time) }, ...(via ? [h(ViaTag, { key: 'via', via })] : []), sentAt) : null),
-    text === '' ? null : h('div', { className: 'bt-utools', 'data-open': toolsOpen || undefined }, h(CopyButton, { text })))
+    text === '' ? null : h('div', { className: 'bt-utools', 'data-open': toolsOpen || undefined }, h(CopyButton, { text }),
+      sessionId && actions.quote ? h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('Reply'), title: t('Reply'),
+        onClick: () => actions.quote(sessionId, attributedQuote(messageExcerpt(reply.body || reply.quote || text), t('Me'), prefix)) }, h(ReplyIcon)) : null))
 }
 
 export const USER_MESSAGE_CSS = `
-.bt-umsg{display:flex;flex-direction:row-reverse;align-items:center;justify-content:flex-start;gap:4px}
+.bt-umsg{padding-block-start:12px;display:flex;flex-direction:row-reverse;align-items:center;justify-content:flex-start;gap:4px}
+.bt-reply-quote{box-sizing:border-box;max-width:100%;margin:0;padding:5px 10px;border-inline-start:2px solid var(--bt-line-2);border-radius:4px;background:var(--bt-tag-bg);color:var(--bt-ink-2);font:12px/17px var(--bt-font);white-space:pre-wrap;overflow-wrap:anywhere;max-height:78px;overflow:auto;text-align:start}
+.bt-urow>.bt-reply-quote{max-width:calc(var(--bt-msg-w) * 100%)}
+.bt-uhost:empty{display:none}
 .bt-ustack{min-width:0;max-width:calc(var(--bt-msg-w) * 100%);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .bt-ubody{max-width:100%;box-sizing:border-box;background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:var(--dsh-content-font-size,14px);line-height:calc(var(--dsh-content-font-size,14px) + 10px);white-space:pre-wrap;word-break:break-word;text-wrap:pretty;text-autospace:normal}
 .bt-ubody a{color:inherit}
@@ -233,6 +252,10 @@ export const USER_MESSAGE_CSS = `
 .bt-uhost{max-width:100%;min-width:0;display:flex;flex-direction:column;align-items:flex-end}
 .bt-uhost [class*="_userStack"]{max-width:100%}
 .bt-uhost>.bt-fold{color:var(--bt-ink-3)}
+.bt-ucombined{max-width:100%;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:7px 12px;background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px}
+.bt-ucombined .bt-uattach{align-self:flex-start}
+.bt-ucombined .bt-ubody,.bt-uhost.bt-ucombined [class*="_bubble"]{background:none!important;border:0!important;box-shadow:none!important;padding:0!important;border-radius:0!important}
+.bt-ucombined>.bt-fold{color:inherit}
 .bt-umention{display:inline-flex;align-items:center;gap:3px;vertical-align:-3px;max-width:100%;padding:0 1px;border:0;background:none;color:inherit;font:inherit;font-weight:600;line-height:inherit;cursor:pointer;border-radius:6px;white-space:nowrap}
 .bt-umention:hover{text-decoration:underline;text-underline-offset:2px}
 .bt-umention[data-static]{cursor:inherit}

@@ -4,7 +4,7 @@
 // it works on it hangs below it, and the recipient's answer goes up only once all of
 // that came back, together with what came back. Results find their way up by
 // themselves, so no Bot needs to message one that waits for it, and that is the one
-// hand-off refused. The open works are kept in state.json so a restart waits on.
+// hand-off refused. The open works are kept in team state so a restart waits on.
 import { scopeFields, scopeOf } from './task-routing.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -29,14 +29,13 @@ const forHowLong = since => {
 export function install(rt) {
   const { ctx, state } = rt
   const works = () => (state.works ??= {})
-  // What came back, whole; state.json keeps the start of each.
+  // What came back, whole; the team snapshot keeps the start of each.
   const whole = new Map()
   const save = () => void rt.save().catch(() => {})
   const nameOf = id => rt.botOf(id)?.name
 
-  // The whole result of a work, in a file of its own: state.json is written whole on
-  // every save, so it keeps only the start of a long result, and a restart would cut
-  // that result short before it reached the Bot that asked for it.
+  // The snapshot keeps the start of each result. Keep its full text separately
+  // until the Bot that asked for it has received it, even across restarts.
   const resultsDir = join(rt.home, 'handoff-results')
   const resultPath = name => join(resultsDir, name)
   // A work id is a UUID, but a saved team could carry any name: it stays inside the
@@ -76,7 +75,7 @@ export function install(rt) {
     try {
       // save() can resolve without writing during shutdown. Check the durable
       // references too, so an old state can still recover its result after restart.
-      const saved = JSON.parse(readFileSync(join(rt.home, 'state.json'), 'utf8'))
+      const saved = rt.teamStorage.read()
       if (Object.values(saved.works ?? {}).some(work => (work.results ?? []).some(result => result.file === name))) return
       rmSync(resultPath(name), { force: true })
     } catch {}
