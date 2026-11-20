@@ -6,7 +6,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { homedir, platform } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { CATALOG, entryOf, customId, tokenSecretOf, refreshSecretOf, clientSecretOf, keySecretOf, envSecretOf } from './catalog.js'
@@ -589,9 +589,9 @@ export function install(rt) {
   const importFiles = () => {
     const home = homedir()
     const files = [
-      { source: 'claude', key: 'mcpServers', path: platform() === 'darwin' ? join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json') : join(home, '.config', 'Claude', 'claude_desktop_config.json') },
+      { source: 'claude', key: 'mcpServers', path: join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json') },
       { source: 'cursor', key: 'mcpServers', path: join(home, '.cursor', 'mcp.json') },
-      { source: 'vscode', key: 'servers', path: platform() === 'darwin' ? join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json') : join(home, '.config', 'Code', 'User', 'mcp.json') },
+      { source: 'vscode', key: 'servers', path: join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json') },
     ]
     return files
   }

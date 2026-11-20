@@ -1,12 +1,12 @@
 # 发版前真机检查
 
-CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 DPI、安装方式、Desktop 和 Web 同时开这些，只有真机能测。每次发版前，在受影响的 macOS 或 Linux 环境验证。
+CI 只跑单元测试和 macOS 上的测试台。窗口外框、输入法、高 DPI、安装方式、Desktop 和 Web 同时开这些，只有真机能测。每次发版前，在受影响的 macOS 环境验证。
 
 每一项记「通过 / 不通过 / 备注」。不通过的截图，抄下错误原文，开 Issue。结果贴在 Release PR 的评论里。
 
 ## 准备
 
-- macOS 或 Linux。
+- macOS。
 - 官方的 DSH Desktop，版本和 README 里写的一致（现在是 `0.2.2-rc.1`）。只从 DeepSeek Harness 官方渠道下载。
 - 要发的包：在 `ds-bot/` 里运行 `npm pack`，得到 `ds-bot-<版本>.tgz`。
 - 一个能用的模型（DeepSeek API key 或账号）。测试里要填的密钥都用**假值**。

@@ -38,7 +38,7 @@ const outputOf = (file, args) => new Promise((resolve) => {
   } catch { resolve(undefined) }
 })
 
-// macOS/Linux apps launched from a dock icon inherit a sparse PATH; the login
+// macOS apps launched from a dock icon inherit a sparse PATH; the login
 // shell knows where the user actually installed things, and so does npm's global
 // prefix. Both are looked up in the background and kept for a minute.
 let found = { at: 0, dirs: [] }
@@ -67,7 +67,7 @@ function searchDirs() {
     join(home, '.bun', 'bin'),
     join(home, '.cargo', 'bin'),
     join(home, '.npm-global', 'bin'),
-    process.platform === 'darwin' ? join(home, 'Library', 'pnpm') : join(home, '.local', 'share', 'pnpm'),
+    join(home, 'Library', 'pnpm'),
     join(home, 'bin'),
     '/opt/homebrew/bin',
     '/usr/local/bin',

@@ -14,7 +14,7 @@ const SHELL_TOOLS = ['bash', 'pwsh', 'terminal_open', 'terminal_send']
 const SESSION_TOOLS = ['session_search', 'session_event_search', 'session_trace', 'session_event_trace', 'session_event_read']
 
 // The default macOS filesystem ignores case.
-const fold = text => (process.platform === 'linux' ? text : text.toLowerCase())
+const fold = text => text.toLowerCase()
 const overlap = (a, b) => within(a, b) || within(b, a)
 const strings = value => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(strings) : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [])
 // Recognize alternate path spellings in shell arguments.

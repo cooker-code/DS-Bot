@@ -54,7 +54,7 @@ test('DSH settings pages keep usable height and scrolling (#1359)', async (t) =>
   try {
     browser = await chromium.launch({ channel: 'chrome', headless: true })
   } catch (error) {
-    // GitHub's Linux runners include Chrome. Local contributors
+    // GitHub's macOS runners include Chrome. Local contributors
     // without it can still run the non-browser suite.
     if (!process.env.CI && /not found|doesn't exist|not installed/i.test(error.message)) {
       t.skip('Chrome is required for the settings layout regression')

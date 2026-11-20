@@ -278,7 +278,7 @@ test('other Bots cannot read, write or search what a private Bot keeps', async (
   }
   await refused('read', { file_path: notes })
   await refused('read', { file_path: relative(team, notes) })
-  if (process.platform !== 'linux') await refused('read', { file_path: notes.toUpperCase() })
+  await refused('read', { file_path: notes.toUpperCase() })
   await refused('write', { file_path: notes, content: 'x' })
   await refused('edit', { file_path: join(diary, 'new.txt'), old_string: 'a', new_string: 'b' })
   await refused('str_replace_editor', { command: 'view', path: notes })

@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { apply, createRuntime } from '../index.js'
-import { defaultBrowserHeadless } from '../src/host/browser-plugins.js'
 import { gateScope } from '../src/host/browser/gate.js'
 import { mountBrowserPlugin } from '../src/host/browser/mount.js'
 import { systemPrompt as refsPrompt, toolDefs as refsTools } from '../src/host/browser/refs.js'
@@ -446,11 +445,6 @@ test('browser-stop cancels the Bot chat, stops its room work, and sets a user ho
   })
 })
 
-test('browser headless defaults only on Linux without a display', () => {
-  assert.equal(defaultBrowserHeadless('linux', { DISPLAY: ':0' }), false)
-  assert.equal(defaultBrowserHeadless('linux', {}), true)
-  assert.equal(defaultBrowserHeadless('darwin', {}), false)
-})
 
 test('browser_task uses the Bot session model route when no test completion is injected', async (t) => {
   const { ctx, stop } = start({

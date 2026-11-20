@@ -248,7 +248,6 @@ test('Antigravity uses only a positive macOS Keychain lookup as sign-in evidence
   const unavailable = t.mock.fn((_file, _args, options) => spawn(join(process.execPath, 'missing'), [], options))
   assert.equal(await probeSignIn(agy, signedIn, { platform: 'darwin', spawnKeychain: unavailable }), null)
 
-  assert.equal(await probeSignIn(agy, signedIn, { platform: 'linux', spawnKeychain: hit }), null)
   assert.equal(hit.mock.callCount(), 1)
 })
 

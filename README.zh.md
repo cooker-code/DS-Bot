@@ -1,5 +1,7 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg"><img src="docs/images/logo.svg" alt="DS Bot" width="260"></picture></p>
 
+本地二开版仅支持 macOS。
+
 # DS Bot
 
 [English](README.md) | 中文
@@ -89,7 +91,7 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 在 设置 → 电脑操控 里打开开关后，bot 可以在你允许的范围内操作电脑上的应用。你可以给每个 bot 单独设档位（只看、后台操作、可以动前台）和允许使用的应用，操作时屏幕顶部有指示条，随时能暂停或接管；系统设置、密码管理这类应用永远不会交给 bot。
 
-所有 bot 和你共用同一个桌面，同一个应用或前台鼠标同一时间只能有一个 bot 用。macOS 需要 14 及以上并开启辅助功能与屏幕录制权限；Linux 支持 X11，Wayland 受限。
+所有 bot 和你共用同一个桌面，同一个应用或前台鼠标同一时间只能有一个 bot 用。macOS 需要 14 及以上并开启辅助功能与屏幕录制权限。
 
 ### IM
 

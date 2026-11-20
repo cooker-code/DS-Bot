@@ -19982,12 +19982,12 @@ var ACTION_NAMES = { click: "Click", doubleClick: "Double click", rightClick: "R
 var actionName = (method) => {
   const known = ACTION_NAMES[method];
   if (known !== void 0) return known;
-  const words = String(method ?? "").replace(/^cua_driver_native__/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").trim();
+  const words = String(method ?? "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").trim();
   return words === "" ? "Computer" : words[0].toUpperCase() + words.slice(1);
 };
 function ComputerCallRow({ sessionId, call: call2, roster, actions, hooks }) {
   const { value: argValue } = toolArgs(call2);
-  const method = argValue("method") ?? String(call2?.name ?? "").replace(/^cua_driver_native__/, "");
+  const method = argValue("method") ?? String(call2?.name ?? "");
   const stepApp = hooks?.useComputer?.((map) => (map.bots?.[roster.byId[sessionId]?.id]?.steps ?? []).find((step) => step.callId === call2?.callId)?.app);
   const selector = argValue("params")?.selector;
   const app = stepApp ?? (method === "getApp" && typeof selector === "string" && selector !== "" ? selector : void 0);
@@ -29879,7 +29879,7 @@ var PHRASES2 = {
   working: ["On it", "Busy with it", "Moving ahead", "Taking care of it", "Making headway"]
 };
 var TOOL_PHRASES = [
-  [/^cua(_driver_native__|$)|^computer_/, "Using the computer"],
+  [/^cua$|^computer_/, "Using the computer"],
   [/web_?search|search_?web/i, "Searching online"],
   [/fetch|browse|browser|web/i, "Reading a page"],
   [/shell|bash|pwsh|powershell|exec|command|terminal/i, "Running shell commands"],
@@ -30157,7 +30157,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
     })
   );
 }
-var isComputerCall = (name) => name === "cua" || name?.startsWith("cua_driver_native__") === true;
+var isComputerCall = (name) => name === "cua";
 var DRAWN = /* @__PURE__ */ new Set(["message_bot", "stop_bot", "create_bot", "update_bot", "group_relay", "create_group", "update_group", "delete_group", "post_to_group", "ask_user", "request_secret", "request_connector", "mail_send", "ask_user_question", "show_view", "browser_handoff", "read_group_chat", "remember", "forget"]);
 var CARDS = /* @__PURE__ */ new Set(["ask_user", "request_secret", "request_connector", "mail_send", "show_view", "browser_handoff", "computer_handoff"]);
 function callTree(root) {
@@ -38635,7 +38635,6 @@ function installSettingsShell(ctx, { face, actions, ui: ui2, held }) {
         aliases: ["settings", "preferences"],
         defaults: {
           "desktop:macos": { code: "Comma", modifiers: ["primary"] },
-          "desktop:linux": { code: "Comma", modifiers: ["primary"] },
           "web:macos": { code: "Comma", modifiers: ["primary", "alt"] }
         },
         regions: ["page", "editable", "terminal"],

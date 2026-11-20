@@ -12,10 +12,6 @@ export const browserPlugins = { refs, script, task }
 const NAMES = Object.keys(browserPlugins)
 const GRANT_KINDS = new Set(['post', 'upload', 'download', 'delete'])
 
-export function defaultBrowserHeadless(platform, env = process.env) {
-  return platform === 'linux' && !env.DISPLAY && !env.WAYLAND_DISPLAY
-}
-
 function optionalNumber(config, key) {
   const value = config[key]
   if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) throw new TypeError(`${key} must be a positive number`)
@@ -105,9 +101,7 @@ export function install(rt) {
   const playwrightUrl = optionalString(rt.config, 'playwrightUrl')
   const executablePath = optionalString(rt.config, 'browserExecutablePath')
   const downloadGraceMs = optionalNumber(rt.config, 'browserDownloadGraceMs')
-  const headless = typeof rt.config.browserHeadless === 'boolean'
-    ? rt.config.browserHeadless
-    : defaultBrowserHeadless(process.platform)
+  const headless = rt.config.browserHeadless === true
   const downloadRoot = join(rt.home, 'browser-downloads')
   async function downloadRoots(botId) {
     await rt.load()

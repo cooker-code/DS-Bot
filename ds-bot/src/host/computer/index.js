@@ -7,7 +7,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { dshVersion } from '../diagnostics.js'
 import { LEGACY_EXECUTABLES, LEGACY_NAME } from '../legacy.mjs'
-import { classify, isComputerTool, levelAllows, LEVELS, DRIVER_GLOBAL, DRIVER_REFUSED } from './catalog.js'
+import { classify, isComputerTool, levelAllows, LEVELS } from './catalog.js'
 import { createLeases } from './leases.js'
 import { REPLY_KIND } from '../constants.js'
 import { output } from '../tools.js'
@@ -15,7 +15,6 @@ import { output } from '../tools.js'
 const REGISTRY_PACKAGE = '@deepseek-ai/dsh-computer-use'
 const PROVIDER_PACKAGES = {
   darwin: '@deepseek-ai/dsh-experimental-cua-macos',
-  linux: '@deepseek-ai/dsh-experimental-computer-use-cua-driver-native',
 }
 // The provider's prompt section, filtered out of Sessions that get no computer tools.
 const PROVIDER_SECTION = /^computer-use:/
@@ -171,7 +170,7 @@ export function install(rt) {
           return
         }
         const provider = await importPackage(name).catch(error => { throw missing(error, [name]) })
-        const config = process.platform === 'darwin' ? { agentPreset: false } : {}
+        const config = { agentPreset: false }
         if (stopped || !enabled()) return
         providerFiber = ctx.plugin(provider, config)
         await providerFiber.await?.()
@@ -354,50 +353,18 @@ export function install(rt) {
   }
   // The app a call works on, from its arguments and what earlier results recorded.
   // cua: getApp names it by selector, the rest by the appHandle getApp returned.
-  // driver: the pid the call names, known after a list_apps/list_windows result.
   const targetAppOf = (exec, call) => {
     const sessionId = exec.agent?.id
-    if (call.provider === 'cua') {
-      const params = exec.arguments?.params ?? {}
-      if (call.method === 'getApp') {
-        const selector = String(params.selector ?? '')
-        return { key: `selector:${normName(selector)}`, name: selector || 'an app', tentative: true }
-      }
-      const handle = typeof params.appHandle === 'string' ? params.appHandle : undefined
-      if (handle === undefined) return undefined
-      return appsOfSession(sessionId).get(`handle:${handle}`) ?? { key: `handle:${handle}`, name: 'the selected app', unknown: true }
+    const params = exec.arguments?.params ?? {}
+    if (call.method === 'getApp') {
+      const selector = String(params.selector ?? '')
+      return { key: `selector:${normName(selector)}`, name: selector || 'an app', tentative: true }
     }
-    const args = exec.arguments ?? {}
-    if (call.method === 'launch_app') {
-      const id = [args.bundle_id, args.bundleId, args.app_id, args.appId].find(value => typeof value === 'string' && value !== '')
-      const path = [args.path, args.app_path, args.executable_path, args.executablePath].find(value => typeof value === 'string' && value !== '')
-      const name = [args.name, args.app_name, args.appName, args.app].find(value => typeof value === 'string' && value !== '')
-      if (id === undefined && path === undefined && name === undefined) return undefined
-      return { key: appKeyOf({ id, path, name }), name: name ?? path ?? id, id, path, tentative: true }
-    }
-    const pid = [args.pid, args.appPid, args.windowPid, args.target_pid].find(value => Number.isInteger(value))
-    if (pid !== undefined) {
-      const known = appsOfSession(sessionId).get(`pid:${pid}`)
-      return known ?? { key: `pid:${pid}`, name: `pid ${pid}`, pid, unknown: true }
-    }
-    // A window_id resolves to the app that owns the window, recorded from a
-    // list_windows/get_window_state result.
-    const windowId = [args.window_id, args.windowId, args.wid, args.window].find(value => value !== undefined && value !== null)
-    if (windowId !== undefined) {
-      const known = appsOfSession(sessionId).get(`window:${windowId}`)
-      return known ?? { key: `window:${windowId}`, name: `window ${windowId}`, unknown: true }
-    }
-    // An element token resolves to the window it was read from.
-    const token = [args.element_token, args.token, args.ref, args.element_id, args.elementId, args.element, args.target]
-      .find(value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)))
-    if (token !== undefined) {
-      const known = appsOfSession(sessionId).get(`token:${token}`)
-      return known ?? { key: `token:${token}`, name: 'an element', unknown: true }
-    }
-    return undefined
+    const handle = typeof params.appHandle === 'string' ? params.appHandle : undefined
+    if (handle === undefined) return undefined
+    return appsOfSession(sessionId).get(`handle:${handle}`) ?? { key: `handle:${handle}`, name: 'the selected app', unknown: true }
   }
-  // What a result tells DS Bot about apps: getApp returns the handle plus the app's
-  // identity; driver lists name pids.
+  // What a result tells DS Bot about apps: getApp returns the app identity and handle.
   const recordAppResult = async (exec, call, result) => {
     const sessionId = exec.agent?.id
     if (sessionId === undefined || result === null || typeof result !== 'object') return
@@ -416,76 +383,6 @@ export function install(rt) {
         if (grant !== undefined) { grant.id = identity.id; await rt.save() }
       }
       return
-    }
-    if (call.provider !== 'cua-driver') return
-    const apps = appsOfSession(sessionId)
-    // DSH's MCP bridge keeps the tool's own JSON under `structuredContent`:
-    // `{ content: [...], structuredContent: { windows: [...] } }`. Plain results and
-    // older providers put those fields at the top, so read the body and fall back.
-    const body = result.structuredContent !== null && typeof result.structuredContent === 'object' && !Array.isArray(result.structuredContent)
-      ? result.structuredContent
-      : result
-    const textOf = value => (typeof value === 'string' && value.trim() !== '' ? value : undefined)
-    const recordPid = (item, known = {}) => {
-      // list_apps lists installed apps too; their pid is 0 and is no target.
-      const pid = [item?.pid, item?.appPid, item?.app_pid, item?.processId].find(value => Number.isInteger(value) && value > 0)
-      if (pid === undefined) return undefined
-      const id = item.bundle_id ?? item.bundleId ?? item.id ?? item.app_id ?? item.appId ?? known.id
-      const path = item.launch_path ?? item.path ?? item.executablePath ?? item.executable_path ?? item.exe_path ?? known.path
-      const name = textOf(item.name) ?? textOf(item.app_name) ?? textOf(item.appName) ?? textOf(item.title) ?? textOf(item.window_title) ?? known.name
-      const app = {
-        key: appKeyOf({ id, path, name }),
-        name: name ?? `pid ${pid}`,
-        ...(id !== undefined ? { id } : {}),
-        ...(path !== undefined ? { path } : {}),
-        pid,
-      }
-      apps.set(`pid:${pid}`, app)
-      return app
-    }
-    const recordTitle = (item) => {
-      const title = textOf(item?.title)
-      return title === undefined ? undefined : { key: `title:${normName(title)}`, name: title }
-    }
-    const recordItem = (item, known = {}) => {
-      const app = recordPid(item, known) ?? recordTitle(item)
-      if (app === undefined) return
-      const windowId = [item?.window_id, item?.windowId, item?.wid].find(value => value !== undefined && value !== null)
-      if (windowId !== undefined) apps.set(`window:${windowId}`, app)
-    }
-    const lists = [body.apps, body.windows, body.items, Array.isArray(body) ? body : undefined]
-    for (const list of lists) {
-      if (!Array.isArray(list)) continue
-      for (const item of list) {
-        recordItem(item)
-        // list_apps carries each app's windows; they identify the same app.
-        if (!Array.isArray(item?.windows)) continue
-        for (const win of item.windows) {
-          recordItem(win, { id: item.bundle_id ?? item.id, path: item.launch_path ?? item.path, name: textOf(item.name) })
-        }
-      }
-    }
-    // launch_app answers with the launched app and its windows; the windows carry
-    // the same identity as the app, so a window call resolves to that same grant.
-    if (call.method === 'launch_app') {
-      const known = { id: body.bundle_id ?? body.id, path: body.launch_path ?? body.path, name: textOf(body.name) }
-      for (const win of Array.isArray(body.windows) ? body.windows : []) recordItem(win, known)
-      recordItem(body)
-    }
-    // get_window_state reports one window and the element tokens inside it;
-    // record both so a later call on either resolves to the window's app.
-    const stateWindow = [body.window_id, body.windowId, body.wid, body.window?.window_id, body.window?.id].find(value => value !== undefined && value !== null)
-    const statePid = [body.pid, body.appPid, body.app_pid, body.window?.pid, body.window?.app_pid].find(value => Number.isInteger(value) && value > 0)
-    let stateApp = statePid !== undefined ? recordPid(body) ?? apps.get(`pid:${statePid}`) : undefined
-    if (stateApp === undefined && stateWindow !== undefined) stateApp = apps.get(`window:${stateWindow}`)
-    if (stateApp === undefined && body.window !== null && typeof body.window === 'object') stateApp = recordPid(body.window)
-    if (stateWindow !== undefined && stateApp !== undefined) apps.set(`window:${stateWindow}`, stateApp)
-    if (stateApp !== undefined) {
-      const elements = [body.elements, body.interactive_elements, body.targets, body.items].find(list => Array.isArray(list)) ?? []
-      for (const element of elements) {
-        const token = [element?.element_token, element?.token, element?.element_id, element?.elementId, element?.id, element?.ref, element?.handle].find(value => value !== undefined && value !== null)
-        if (token !== undefined) apps.set(`token:${token}`, stateApp)
-      }
     }
   }
   // Consent after a real getApp: the model only keeps the handle when the Bot may
@@ -507,14 +404,13 @@ export function install(rt) {
     const decision = decisions.get(app.key) ?? decisions.get(normName(app.name))
     if (decision === 'deny') return refuse(`The user did not allow ${bot.name} to use ${app.name}.`)
     if (decision === 'once' || grantFor(bot, app) !== undefined) return undefined
-    const verdict = await driverConsent(exec, bot, sessionId, app)
+    const verdict = await requestAppConsent(exec, bot, sessionId, app)
     if (verdict !== 'allow') return refuse(verdict)
     return undefined
   }
   // ---- On-screen Bot cursor: where a just-finished action pointed ----
   // cua reports window bounds in global points and screenshot pixel sizes per
-  // window — enough to place a cursor at the point a call used. The driver owns
-  // a real cursor inside a per-Bot session; its post-call position is the point.
+  // window so the cursor can mark the point an action used.
   const winGeo = new Map()
   const geoMapOf = (sessionId) => {
     let map = winGeo.get(sessionId)
@@ -590,47 +486,6 @@ export function install(rt) {
       publishCursor(botId, { ...common, x: win.x + win.w / 2, y: win.y + 14, mode: 'window', ripple: false })
       return
     }
-    // The driver's own cursor already moved inside the Bot's session; read where
-    // it ended up after the action, without holding the call's result.
-    if (call.provider === 'cua-driver') {
-      void driverCursorPoint(exec, botId).then(point => {
-        if (point !== undefined) publishCursor(botId, { ...point, mode: 'point', ripple: RIPPLE_METHODS.has(call.method) })
-      })
-    }
-  }
-  // A stable driver session per Bot, so the driver can keep its cursor hidden
-  // for the app (which draws its own) and report where its actions pointed.
-  const driverSessionOf = (botId) => {
-    let hash = 0
-    for (const ch of String(botId)) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0
-    return `dsbot-${(hash >>> 0).toString(16)}`
-  }
-  // The registered tool's schema decides whether a session argument is legal —
-  // some driver inputs deny unknown fields, so nothing is injected without it.
-  const injectDriverSession = (exec, call, botId) => {
-    if (call.provider !== 'cua-driver' || DRIVER_REFUSED.has(call.method)) return
-    let def
-    try { def = ctx.tools?.get?.(exec.name, exec.agent) } catch { return }
-    const props = def?.inputSchema?.properties ?? def?.parameters?.properties ?? def?.schema?.properties
-    if (props === null || typeof props !== 'object' || !('session' in props)) return
-    exec.arguments = { ...(exec.arguments ?? {}), session: driverSessionOf(botId) }
-  }
-  const driverCursorOff = new Set()
-  const ensureDriverCursorOff = async (exec, botId) => {
-    const session = driverSessionOf(botId)
-    if (driverCursorOff.has(session)) return
-    driverCursorOff.add(session)
-    try {
-      await ctx.tools?.get?.('cua_driver_native__set_agent_cursor_enabled', exec.agent)?.execute({ session, enabled: false }, exec)
-    } catch {}
-  }
-  const driverCursorPoint = async (exec, botId) => {
-    try {
-      const out = await ctx.tools?.get?.('cua_driver_native__get_agent_cursor_state', exec.agent)?.execute({ session: driverSessionOf(botId) }, exec)
-      const value = out !== null && typeof out === 'object' && 'value' in out ? out.value : out
-      const position = value?.position
-      return position !== null && typeof position === 'object' && Number.isFinite(position.x) && Number.isFinite(position.y) ? { x: position.x, y: position.y } : undefined
-    } catch { return undefined }
   }
 
   // The display name the lease and the card show for an appKey, from any session's
@@ -729,9 +584,7 @@ export function install(rt) {
     decisionsOf(bot.id, sessionId).set(app.key, answer === 'once' ? 'once' : 'deny')
     return answer === 'once' ? allow() : deny()
   }, { prepend: true })
-  // Linux: no consent inside the provider, so the first call that targets an
-  // app asks through the same card, before the call runs.
-  const driverConsent = async (exec, bot, sessionId, app) => {
+  const requestAppConsent = async (exec, bot, sessionId, app) => {
     if (grantFor(bot, app) !== undefined) return 'allow'
     const decisions = decisionsOf(bot.id, sessionId)
     const before = decisions.get(app.key)
@@ -751,6 +604,10 @@ export function install(rt) {
 
   // ---- The guard ----
   ctx.on('tools/pre-execute', async function computerGate(exec, next) {
+    if (exec.name?.startsWith('cua_driver_native__')) {
+      await rt.load()
+      if (isBotAt(exec.agent?.id)) return { kind: 'deny', reason: 'This Bot uses the macOS computer provider.' }
+    }
     const call = classify(exec.name, exec.arguments)
     if (call === undefined) return next()
     await rt.load()
@@ -790,24 +647,7 @@ export function install(rt) {
         return { kind: 'deny', reason: `The user did not allow ${bot.name} to use ${app.name}.` }
       }
       if (decision !== 'once' && grantFor(bot, app) === undefined) {
-        const verdict = await driverConsent(exec, bot, sessionId, app)
-        if (verdict !== 'allow') return { kind: 'deny', reason: verdict }
-      }
-    }
-    if (call.provider === 'cua-driver') {
-      if (DRIVER_REFUSED.has(call.method)) {
-        return { kind: 'deny', reason: `Bots may not use ${call.method}.` }
-      }
-      injectDriverSession(exec, call, bot.id)
-      await ensureDriverCursorOff(exec, bot.id)
-      if (app === undefined) {
-        if (!DRIVER_GLOBAL.has(call.method)) {
-          return { kind: 'deny', reason: 'Name the window from list_windows first.' }
-        }
-      } else if (app.unknown === true) {
-        return { kind: 'deny', reason: `${bot.name} does not know ${app.name}. List the windows or apps first.` }
-      } else {
-        const verdict = await driverConsent(exec, bot, sessionId, app)
+        const verdict = await requestAppConsent(exec, bot, sessionId, app)
         if (verdict !== 'allow') return { kind: 'deny', reason: verdict }
       }
     }
@@ -1106,8 +946,7 @@ export function install(rt) {
     // A revoked app keeps no recorded cua handles in this Bot's Sessions: the
     // next call on one refuses "was revoked" and the model has to getApp again,
     // which asks by card. Other Bots' Sessions keep their handles — their own
-    // grants still cover the app. The driver's pid/window records stay so its
-    // calls ask by card as before.
+    // grants still cover the app.
     for (const [sessionId, map] of sessionApps) {
       if (rt.botOf(rt.selfOf(sessionId))?.id !== botId) continue
       for (const key of aliases) {

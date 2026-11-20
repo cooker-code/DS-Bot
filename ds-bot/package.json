@@ -85,5 +85,8 @@
   },
   "bin": {
     "ds-bot": "./bin/ds-bot-doctor.mjs"
-  }
+  },
+  "os": [
+    "darwin"
+  ]
 }

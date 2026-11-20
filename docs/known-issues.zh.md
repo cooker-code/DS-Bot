@@ -76,15 +76,3 @@ Error: configured web provider "auto" is not registered
 想确认结果，可以运行 `npx @deepseek-ai/dsh@0.2.2-rc.1 --profile web --dump-config`，看 `web` 那一行。另外，有的插件会在 DSH 运行时设置搜索 provider，时间在 profile patch 之后。以后关掉这类插件时，也要再检查一下这个设置。
 
 另见插件 README 的 [Web search](../ds-bot/README.md#web-search) 一节和 issue [#128](https://github.com/Fei2411/DS-Bot/issues/128)。
-
-## Linux：加载 libghostty-vt.so 报「GLIBC_2.27 not found」
-
-**在哪里：** 在 glibc 低于 2.28 的 Linux 系统上（CentOS 7 自带 glibc 2.17），本机装的 `dsh web` 启动即失败。动态加载器报告缺少某个 glibc 版本，例如：
-
-```text
-libghostty-vt.so: GLIBC_2.27 not found
-```
-
-**原因：** DeepSeek Harness 自带的原生库（包括 `libghostty-vt.so`）是按比 CentOS 7 更新的 glibc 符号编译的。DS Bot 是插件，没法重编 DSH 的库，所以没有适配 glibc 2.17 的版本可装。可以用 `ldd --version` 查看本机版本。
-
-请在 glibc 版本满足所用 DSH 发行版要求的 Linux 系统上运行 DSH Web。

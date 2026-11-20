@@ -1,5 +1,7 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg"><img src="docs/images/logo.svg" alt="DS Bot" width="260"></picture></p>
 
+This fork supports macOS only.
+
 # DS Bot
 
 English | [中文](README.zh.md)
@@ -89,7 +91,7 @@ Enable a browser plugin in Settings to let bots operate a separate Chromium prof
 
 Turn on Settings → Computer use to let bots operate apps on your computer as far as you allow. You can set a level (view only, background, or foreground) and allowed apps for each bot, with a top bar showing when a bot is working so you can pause or take over at any time; apps like system settings and password managers are never given to a bot.
 
-All bots share your desktop, so only one bot can use a given app or the foreground mouse at a time. macOS requires 14 or later with Accessibility and Screen Recording permissions; Linux supports X11, with limited Wayland support.
+All bots share your desktop, so only one bot can use a given app or the foreground mouse at a time. macOS requires 14 or later with Accessibility and Screen Recording permissions.
 
 ### IM
 

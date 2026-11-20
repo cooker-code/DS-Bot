@@ -192,7 +192,7 @@ The plugin saves its data in `config.home`. Without it, the folder is `$DSH_HOME
 
 | System | Default folder |
 |---|---|
-| Linux, macOS | `~/.dsh/bot/` |
+| macOS | `~/.dsh/bot/` |
 
 - To move all dsh data (Sessions, profiles and plugin data), set `DSH_HOME`.
 - To move only the plugin data, set `home` in the configuration (see [Configuration](#configuration)).

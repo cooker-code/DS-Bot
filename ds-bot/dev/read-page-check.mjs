@@ -21,7 +21,7 @@ const option = (name, fallback) => {
 }
 const lines = Number(option('--lines', 40))
 const outDir = option('--out')
-const chrome = option('--chrome', '/usr/bin/google-chrome')
+const chrome = option('--chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 if (args.length === 0) {
   console.error('usage: node dev/read-page-check.mjs [--lines 40] [--out dir] [--chrome path] <url>...')
   process.exit(2)

@@ -76,15 +76,3 @@ The error code is `WEB_PROVIDER_CONFIGURED_MISSING`.
 To check the result, run `npx @deepseek-ai/dsh@0.2.2-rc.1 --profile web --dump-config` and look at the `web` row. Another plugin can also set the search provider while DSH runs, after the profile patch. If you turn such a plugin off later, check this setting again.
 
 See also [Web search](../ds-bot/README.md#web-search) in the plugin README and issue [#128](https://github.com/Fei2411/DS-Bot/issues/128).
-
-## Linux: "GLIBC_2.27 not found" loading libghostty-vt.so
-
-**Where:** on a Linux system whose glibc is older than 2.28 (CentOS 7 ships glibc 2.17), a host-installed `dsh web` fails at start. The loader reports a missing glibc version, for example:
-
-```text
-libghostty-vt.so: GLIBC_2.27 not found
-```
-
-**Why:** DeepSeek Harness ships native libraries, including `libghostty-vt.so`, built against newer glibc symbols than CentOS 7 provides. DS Bot is a plugin and cannot rebuild DSH's libraries, so there is no glibc-2.17 build to install. Check your version with `ldd --version`.
-
-Run DSH Web on a Linux system with a glibc version supported by your DSH release.

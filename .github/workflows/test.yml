@@ -14,18 +14,9 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.os }} · Node ${{ matrix.node }} · DSH ${{ matrix.dsh }}
-    runs-on: ${{ matrix.os }}
-    # The suite takes a few minutes; a test that never settles used to hold the job for the
-    # runner's six-hour limit.
+    name: Test result
+    runs-on: macos-latest
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, node: 24, dsh: 0.2.2-rc.1 }
-          - { os: ubuntu-latest, node: 22, dsh: 0.2.2-rc.1 }
-          - { os: ubuntu-latest, node: 24, dsh: 0.2.0-rc.2 }
     defaults:
       run:
         shell: bash
@@ -34,39 +25,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 24
       - run: npm ci --no-fund --no-audit
-      - name: Install DSH ${{ matrix.dsh }}
-        # The testkit pins the DSH packages it was built with; at another version it would
-        # bring a second, mismatched set.
-        run: npm run harness -- --no-save "@deepseek-ai/dsh@${{ matrix.dsh }}" "@deepseek-ai/dsh-agent-loop-testkit@${{ matrix.dsh }}"
+      - run: npm run harness
       - run: npm run test:all
       - run: node scripts/build-client.mjs --check
       - run: npm run lint
-
-  scan:
-    name: Repository checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - name: Check operator API documentation
+        working-directory: .
         run: python3 .agents/skills/ds-bot-doc/scripts/check_contract.py
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      # Scan exactly the tracked files, as they would be published.
-      - run: mkdir -p "$RUNNER_TEMP/tree" && git archive HEAD | tar -x -C "$RUNNER_TEMP/tree"
-      - run: node scripts/scan.mjs "$RUNNER_TEMP/tree"
+      - name: Scan tracked files
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/tree"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/tree"
+          node scripts/scan.mjs "$RUNNER_TEMP/tree"
         env:
           SCAN_EXTRA_PATTERNS: ${{ secrets.SCAN_EXTRA_PATTERNS }}
-
-  # The one check that branch rules require. A job whose needs failed is skipped,
-  # and GitHub counts a skipped required check as passed, so this job always runs
-  # and fails unless the plugin test matrix and repository checks passed.
-  result:
-    name: Test result
-    needs: [test, scan]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: test "${{ needs.test.result }}" = success && test "${{ needs.scan.result }}" = success

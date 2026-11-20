@@ -918,7 +918,7 @@ export const PHRASES = {
   working: ['On it', 'Busy with it', 'Moving ahead', 'Taking care of it', 'Making headway'],
 }
 const TOOL_PHRASES = [
-  [/^cua(_driver_native__|$)|^computer_/, 'Using the computer'],
+  [/^cua$|^computer_/, 'Using the computer'],
   [/web_?search|search_?web/i, 'Searching online'],
   [/fetch|browse|browser|web/i, 'Reading a page'],
   [/shell|bash|pwsh|powershell|exec|command|terminal/i, 'Running shell commands'],
@@ -1155,7 +1155,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
 
 // The calls ToolCell draws. A PTC program (`run_code`) dispatches the real tools as
 // its sub-calls, so a call draws by its own name wherever it sits in the tree.
-const isComputerCall = name => name === 'cua' || name?.startsWith('cua_driver_native__') === true
+const isComputerCall = name => name === 'cua'
 const DRAWN = new Set(['message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
 // Calls whose card a dock above the composer carries when the call is not drawn.
 const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'browser_handoff', 'computer_handoff'])

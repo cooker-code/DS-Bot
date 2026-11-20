@@ -492,7 +492,7 @@ test('custom connectors get unique ids that never collide with the catalog', asy
 test('import scan returns env names only and never writes the source files', async (t) => {
   const fakeHome = mkdtempSync(join(tmpdir(), 'dsb-fakehome-'))
   // Every supported platform location sees the same file.
-  const dirs = [join(fakeHome, 'Library', 'Application Support', 'Claude'), join(fakeHome, '.config', 'Claude')]
+  const dirs = [join(fakeHome, 'Library', 'Application Support', 'Claude')]
   for (const dir of dirs) mkdirSync(dir, { recursive: true })
   const configPath = join(dirs[0], 'claude_desktop_config.json')
   for (const dir of dirs) writeFileSync(join(dir, 'claude_desktop_config.json'), JSON.stringify({ mcpServers: { jira: { command: 'npx', args: ['-y', 'jira-mcp'], env: { JIRA_TOKEN: 'RAW-SECRET' } }, docs: { url: 'https://docs.example.com/mcp' } } }))
