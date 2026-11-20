@@ -256,6 +256,7 @@ export const GROUP_SETTINGS_CSS = `
 @media (prefers-reduced-motion:reduce){.bt-ng,.bt-ng-step,.bt-ng-chip .bt-admin-star{animation:none}}
 .bt-gs-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
 .bt-gs-heading .bt-seg{margin-inline-start:auto}
+.bt-gs-heading .bt-seg button{flex:0 0 auto;white-space:nowrap}
 .bt-gs-member{gap:8px;flex-wrap:wrap}
 .bt-gs-member>.bt-select{max-width:50%;min-width:0}
 .bt-gs-workspace{order:1;flex-basis:100%;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
