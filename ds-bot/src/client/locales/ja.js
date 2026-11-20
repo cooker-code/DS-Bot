@@ -73,7 +73,7 @@ export const JA = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "変更が小さく対象ファイルが重ならない場合はブランチを共有し、分離が必要な場合は個別のワークツリーを使用します。",
   "Git workspace policy": "Git 作業環境の方針",
   "Applies to new plans and revisions. Each task card shows its branch.": "新しい計画と改訂版に適用されます。各タスクカードに使用するブランチが表示されます。",
-  "Main Bot decides": "メイン Bot が選択",
+  "Task assistant decides (Main Bot if unassigned)": "タスクアシスタントが決定（未指定時はメイン Bot）",
   "Current branch only": "現在のブランチのみ",
   "Separate worktree only": "個別のワークツリーのみ",
   "Current branch · {branch}": "現在のブランチ · {branch}",

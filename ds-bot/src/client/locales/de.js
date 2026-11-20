@@ -73,7 +73,7 @@ export const DE = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "Kleine Änderungen an unterschiedlichen Dateien können sich einen Branch teilen. Für isolierte Arbeiten wird ein separater Arbeitsbaum verwendet.",
   "Git workspace policy": "Git-Arbeitsbereichsrichtlinie",
   "Applies to new plans and revisions. Each task card shows its branch.": "Gilt für neue und überarbeitete Pläne. Jede Aufgabenkarte zeigt ihren Branch.",
-  "Main Bot decides": "Haupt-Bot entscheidet",
+  "Task assistant decides (Main Bot if unassigned)": "Aufgabenassistent entscheidet (sonst der Haupt-Bot)",
   "Current branch only": "Nur aktueller Branch",
   "Separate worktree only": "Nur separater Arbeitsbaum",
   "Current branch · {branch}": "Aktueller Branch · {branch}",

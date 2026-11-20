@@ -10,6 +10,11 @@ export function runsProject(rt, room, actor) {
   return assistant ? actor === assistant : rt.isAdminOf(room, actor)
 }
 
+export function decidesGitWorkspace(rt, room, actor) {
+  if (room.unresolvedTaskAssistant) return false
+  return room.projectAssistantId ? actor === assistantId(room) : rt.isMain(actor)
+}
+
 export async function projectNotice(rt, room, toId, scope, event, text, attachments = {}, details) {
   const key = rt.requestIdentity({ caller: toId, context: 'project-coordination:' + room.id,
     name: event, payload: { event, details } })

@@ -1315,7 +1315,7 @@ const ZH = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "小改动且涉及文件不重叠时可共用分支，需要隔离时使用独立工作树。",
   "Git workspace policy": "Git 工作区策略",
   "Applies to new plans and revisions. Each task card shows its branch.": "适用于新计划和修订版。每张任务卡显示其使用的分支。",
-  "Main Bot decides": "由主 Bot 决定",
+  "Task assistant decides (Main Bot if unassigned)": "由任务助理决定（未任命时由主 Bot 兼任）",
   "Current branch only": "只用当前分支",
   "Separate worktree only": "只用独立工作树",
   "Current branch · {branch}": "当前分支 · {branch}",

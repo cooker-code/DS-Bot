@@ -210,7 +210,7 @@ var JA = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "変更が小さく対象ファイルが重ならない場合はブランチを共有し、分離が必要な場合は個別のワークツリーを使用します。",
   "Git workspace policy": "Git 作業環境の方針",
   "Applies to new plans and revisions. Each task card shows its branch.": "新しい計画と改訂版に適用されます。各タスクカードに使用するブランチが表示されます。",
-  "Main Bot decides": "メイン Bot が選択",
+  "Task assistant decides (Main Bot if unassigned)": "タスクアシスタントが決定（未指定時はメイン Bot）",
   "Current branch only": "現在のブランチのみ",
   "Separate worktree only": "個別のワークツリーのみ",
   "Current branch · {branch}": "現在のブランチ · {branch}",
@@ -2731,7 +2731,7 @@ var KO = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "작고 파일이 겹치지 않는 변경은 브랜치를 공유할 수 있습니다. 격리가 필요하면 별도 작업 트리를 사용합니다.",
   "Git workspace policy": "Git 작업 공간 정책",
   "Applies to new plans and revisions. Each task card shows its branch.": "새 계획과 수정된 계획에 적용됩니다. 각 작업 카드에 해당 브랜치가 표시됩니다.",
-  "Main Bot decides": "메인 Bot이 결정",
+  "Task assistant decides (Main Bot if unassigned)": "작업 도우미가 결정 (미지정 시 메인 Bot)",
   "Current branch only": "현재 브랜치만 사용",
   "Separate worktree only": "별도 작업 트리만 사용",
   "Current branch · {branch}": "현재 브랜치 · {branch}",
@@ -5297,7 +5297,7 @@ var ES = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "Los cambios pequeños en archivos distintos pueden compartir rama. Para aislar el trabajo se usa otro árbol de trabajo.",
   "Git workspace policy": "Política del espacio de trabajo Git",
   "Applies to new plans and revisions. Each task card shows its branch.": "Se aplica a planes nuevos y revisados. Cada tarjeta de tarea muestra su rama.",
-  "Main Bot decides": "Decide el Bot principal",
+  "Task assistant decides (Main Bot if unassigned)": "Decide el asistente de tareas (en su ausencia, el Bot principal)",
   "Current branch only": "Solo la rama actual",
   "Separate worktree only": "Solo árboles de trabajo independientes",
   "Current branch · {branch}": "Rama actual · {branch}",
@@ -7863,7 +7863,7 @@ var FR = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "Les petites modifications sur des fichiers distincts peuvent partager une branche. Un arbre de travail distinct permet d’isoler le travail.",
   "Git workspace policy": "Stratégie d’espace de travail Git",
   "Applies to new plans and revisions. Each task card shows its branch.": "S’applique aux nouveaux plans et aux révisions. Chaque fiche de tâche indique sa branche.",
-  "Main Bot decides": "Le Bot principal décide",
+  "Task assistant decides (Main Bot if unassigned)": "Décision de l’assistant de tâches (à défaut, du Bot principal)",
   "Current branch only": "Branche actuelle uniquement",
   "Separate worktree only": "Arbre de travail distinct uniquement",
   "Current branch · {branch}": "Branche actuelle · {branch}",
@@ -10384,7 +10384,7 @@ var DE = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "Kleine Änderungen an unterschiedlichen Dateien können sich einen Branch teilen. Für isolierte Arbeiten wird ein separater Arbeitsbaum verwendet.",
   "Git workspace policy": "Git-Arbeitsbereichsrichtlinie",
   "Applies to new plans and revisions. Each task card shows its branch.": "Gilt für neue und überarbeitete Pläne. Jede Aufgabenkarte zeigt ihren Branch.",
-  "Main Bot decides": "Haupt-Bot entscheidet",
+  "Task assistant decides (Main Bot if unassigned)": "Aufgabenassistent entscheidet (sonst der Haupt-Bot)",
   "Current branch only": "Nur aktueller Branch",
   "Separate worktree only": "Nur separater Arbeitsbaum",
   "Current branch · {branch}": "Aktueller Branch · {branch}",
@@ -14188,7 +14188,7 @@ var ZH = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "小改动且涉及文件不重叠时可共用分支，需要隔离时使用独立工作树。",
   "Git workspace policy": "Git 工作区策略",
   "Applies to new plans and revisions. Each task card shows its branch.": "适用于新计划和修订版。每张任务卡显示其使用的分支。",
-  "Main Bot decides": "由主 Bot 决定",
+  "Task assistant decides (Main Bot if unassigned)": "由任务助理决定（未任命时由主 Bot 兼任）",
   "Current branch only": "只用当前分支",
   "Separate worktree only": "只用独立工作树",
   "Current branch · {branch}": "当前分支 · {branch}",
@@ -32121,7 +32121,7 @@ var SIDEBAR_CSS = `
 
 // src/shared/project-workspace.js
 var workspacePolicies = {
-  auto: "Main Bot decides",
+  auto: "Task assistant decides (Main Bot if unassigned)",
   current: "Current branch only",
   worktree: "Separate worktree only"
 };

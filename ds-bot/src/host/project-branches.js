@@ -1,5 +1,5 @@
 import { taskManagementEnabled, taskError } from '../shared/task-settings.js'
-import { assistantId } from './project-assistant.js'
+import { decidesGitWorkspace } from './project-assistant.js'
 // The room owns its branch observations. Git owns the refs and checkouts.
 import { execFile } from 'node:child_process'
 import { lstat, realpath, stat } from 'node:fs/promises'
@@ -74,7 +74,7 @@ async function checkouts(repo) {
 }
 
 export async function existingProjectDir(path) {
-  if (!path) throw new Error('The branch has no working tree. The Main Bot must prepare it before planning.')
+  if (!path) throw new Error('The branch has no working tree. The task assistant (or the Main Bot if unassigned) must prepare it before planning.')
   const dir = await realpath(path).catch(() => { throw new Error('The planned working tree is missing at ' + path + '. Inspect the branch and its Git registration before dispatch.') })
   if (!(await lstat(dir)).isDirectory()) throw new Error('The assigned working folder must be a directory: ' + path)
   return dir
@@ -186,7 +186,7 @@ async function prepare(rt, repo, args, target, exec) {
   if (policy?.mode === 'workspace-write') {
     const folder = rt.sessionFolder(exec.agent.session)
     if (!folder || !within(repo, await realpath(folder))) {
-      await rt.approveFolder(exec, { path: repo, sessions: [exec.agent.id], who: { en: 'the project Main Bot', zh: '项目主 Bot' } })
+      await rt.approveFolder(exec, { path: repo, sessions: [exec.agent.id], who: { en: 'the Bot preparing the project worktree', zh: '准备项目工作树的 Bot' } })
     }
   }
   if (await rt.realBeyond(path) !== path) throw new Error('Choose a worktree path without symbolic links.')
@@ -381,8 +381,8 @@ export function workspaceDecisions(card) {
 export async function manageBranches(rt, room, args, actor, exec) {
   const session = exec.agent.id
   const check = () => {
-    if (rt.roomOf(room.id) !== room || !room.members.includes(actor) || (!rt.isMain(actor) && actor !== assistantId(room)) || room.sessions?.[actor] !== session)
-      throw new Error('Manage project branches from a Main Bot chat in this group.')
+    if (rt.roomOf(room.id) !== room || !room.members.includes(actor) || !decidesGitWorkspace(rt, room, actor) || room.sessions?.[actor] !== session)
+      throw new Error('Manage project branches from the appointed task assistant’s group chat, or a Main Bot group chat if unassigned.')
     if (rt.readOnly() !== undefined) throw new Error('This host cannot write the Bot team.')
   }
   check()
@@ -462,7 +462,7 @@ export async function resolvePlanWorkspaces(rt, room, args, actor, card) {
     if (node.workspaceMode === 'none') {
       if (node.workDir || node.workRef || node.repository || node.writePaths || node.baseRef) throw new Error('Remove Git assignment fields for non-repository work.')
     } else if (['current', 'worktree'].includes(node.workspaceMode)) {
-      if (!rt.isMain(actor) && actor !== assistantId(room)) throw new Error('The Main Bot must plan Git assignments.')
+      if (!decidesGitWorkspace(rt, room, actor)) throw new Error('Only the task assistant (or the Main Bot if unassigned) can plan Git assignments.')
       const selected = previous?.repository && previous.workRef === node.workRef &&
         (!node.repository || previous.repository === node.repository) ? previous : undefined
       resolved.push(await resolveNodeWorkspace(rt, room, node, selected))

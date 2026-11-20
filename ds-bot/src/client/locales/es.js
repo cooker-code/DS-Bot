@@ -73,7 +73,7 @@ export const ES = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "Los cambios pequeños en archivos distintos pueden compartir rama. Para aislar el trabajo se usa otro árbol de trabajo.",
   "Git workspace policy": "Política del espacio de trabajo Git",
   "Applies to new plans and revisions. Each task card shows its branch.": "Se aplica a planes nuevos y revisados. Cada tarjeta de tarea muestra su rama.",
-  "Main Bot decides": "Decide el Bot principal",
+  "Task assistant decides (Main Bot if unassigned)": "Decide el asistente de tareas (en su ausencia, el Bot principal)",
   "Current branch only": "Solo la rama actual",
   "Separate worktree only": "Solo árboles de trabajo independientes",
   "Current branch · {branch}": "Rama actual · {branch}",

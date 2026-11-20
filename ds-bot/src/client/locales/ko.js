@@ -73,7 +73,7 @@ export const KO = {
   "Small, disjoint changes can share a branch. Work that needs isolation uses a separate worktree.": "작고 파일이 겹치지 않는 변경은 브랜치를 공유할 수 있습니다. 격리가 필요하면 별도 작업 트리를 사용합니다.",
   "Git workspace policy": "Git 작업 공간 정책",
   "Applies to new plans and revisions. Each task card shows its branch.": "새 계획과 수정된 계획에 적용됩니다. 각 작업 카드에 해당 브랜치가 표시됩니다.",
-  "Main Bot decides": "메인 Bot이 결정",
+  "Task assistant decides (Main Bot if unassigned)": "작업 도우미가 결정 (미지정 시 메인 Bot)",
   "Current branch only": "현재 브랜치만 사용",
   "Separate worktree only": "별도 작업 트리만 사용",
   "Current branch · {branch}": "현재 브랜치 · {branch}",
