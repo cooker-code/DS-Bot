@@ -208,6 +208,9 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
     window.addEventListener('touchstart', onDown)
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('touchstart', onDown) }
   }, [toolsOpen])
+  const room = roster.roomsById?.[sessionId]
+  const turn = node.location?.turn?.turn ?? data.turn
+  if (room?.archivedDiscussions?.some(row => row.part === sessionId && (row.turn === turn || (data.seq >= row.startSeq && data.seq <= row.endSeq)))) return null
   const tapTools = (event) => {
     if (!noHover() || event.target instanceof Element && event.target.closest('a,button,input,textarea,select,pre,code,[role=button],[role=link]')) return
     setToolsOpen(value => !value)

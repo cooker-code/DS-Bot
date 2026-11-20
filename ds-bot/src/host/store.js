@@ -413,7 +413,7 @@ export function install(rt) {
     return warnReadOnly()
   }
 
-  const save = ({ required = false } = {}) => {
+  const save = ({ required = false, mutate } = {}) => {
     if (stopped) return required ? Promise.reject(new Error('The Bot team cannot be saved after this host stopped.')) : writing
     indexSessions()
     // A reading host keeps the file's revision, so its window does not skip the next change.
@@ -428,6 +428,7 @@ export function install(rt) {
       }
       // The snapshot is taken here, so a save made while an adopt was pending
       // writes the adopted state, not the stale one it had.
+      const undo = mutate?.()
       const epoch = lockEpoch
       state.revision += 1
       state.exchanges = state.exchanges.slice(-MAX_EXCHANGES)
@@ -460,6 +461,7 @@ export function install(rt) {
           try { listener() } catch (error) { warn('ds-bot: saved listener failed: %s', error) }
         }
       } catch (error) {
+        undo?.()
         await unlink(temp).catch(() => {})
         throw error
       }

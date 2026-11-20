@@ -28,6 +28,19 @@ const ZH = {
   "Reasoning: {effort}": "推理：{effort}",
 
 
+  "Archive 1 discussion": "归档所选 1 轮",
+  "Archived discussions": "已归档的讨论",
+  "Archive earlier discussions": "归档此轮之前的讨论",
+  "Archive discussions": "归档讨论",
+  "No discussions available": "没有符合条件的讨论",
+  "Group discussion": "群讨论",
+  "Restore to chat": "恢复到群聊",
+  "Archive {count} discussions": "归档所选 {count} 轮",
+  "Discussion actions": "本轮操作",
+  "Archive this discussion": "归档这一轮",
+  "Select discussions…": "选择多轮…",
+  "Archive all discussions before this one": "归档此轮之前的所有讨论",
+  "Archived": "已归档",
   // Shared
   'Main Bot': '主 Bot',
   Working: '进行中',

@@ -203,6 +203,7 @@ function GroupOverview({ room, roster, actions, run, usage, useWork, openSetting
       : h('button', { key: 'notice', type: 'button', className: 'bt-more', onClick: openSettings }, t('Add a notice in group settings')),
     h(GroupTodos, { key: 'todos', room, actions }),
     h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
+    h('button', { key: 'archive', type: 'button', className: 'bt-more', onClick: () => actions.openArchive(room.id, 'library') }, t('Archived discussions')),
     h('div', { key: 'members' },
       h('div', { className: 'bt-members-head' },
         h('div', { className: 'bt-section-title' }, t('Members · {count}', { count: members.length })),

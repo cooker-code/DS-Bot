@@ -587,7 +587,17 @@ function EarlierParts({ sessionId, roster, actions }) {
     pages: current.pages.map(page => ({ ...page, btw: page.btw.filter(card => card?.id !== cardId) })),
   }))
   const items = []
-  for (const page of view.pages) items.push(...withBtwRows(page.items, page.btw))
+  for (const page of view.pages) {
+    const room = roster.roomsById[sessionId]
+    const part = room?.ownParts?.[page.partIndex]
+    const archived = new Set(room?.archivedDiscussions?.filter(row => row.part === part).map(row => row.turn))
+    const visible = withBtwRows(page.items, page.btw).filter(row => !archived.has(row.turn))
+    for (const [index, row] of visible.entries()) {
+      items.push(row)
+      if (room && part && row.turn != null && visible[index + 1]?.turn !== row.turn && !roster.readOnly)
+        items.push({ kind: 'discussion-menu', room, boundary: part + '/' + row.turn })
+    }
+  }
   return h('div', { className: 'bt-earlier', role: 'feed', 'aria-label': t('Earlier messages'), 'aria-busy': view.loading },
     h('div', { ref: top, className: 'bt-earlier-top' },
       view.loading ? h(Shimmer, null, t('Loading earlier messages…'))
@@ -629,6 +639,7 @@ export function ChatRows({ items, sessionId, roster, actions, useUi, clock = fal
 // `useUi` gives a block its reactions and its Reply tool.
 function chatRow(row, key, { sessionId, selfId, roster, actions, useUi, onBtwDelete }) {
   switch (row.kind) {
+    case 'discussion-menu': return h(DiscussionMenu, { key, room: row.room, actions, boundary: row.boundary })
     case 'divider': return h(PartLine, { key, time: row.time })
     case 'user': return h(EarlierUser, { key, row, actions })
     case 'answer': return h(AnsweredReply, { key, node: { data: row } })
@@ -703,6 +714,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
     const first = openingTurn(state[sessionId], order, hiddenTurns)
     return first?.turn === turn && unseenSince(visit, first.start) ? clockLabel(first.start) : ''
   })
+  if (roster.roomsById[sessionId]?.archivedDiscussions?.some(row => row.part === sessionId && row.turn === turn)) return h(CellEmpty)
   const body = triggerBody()
   return unreadOpening
     ? h(Fragment, null, h('div', { className: 'bt-open-new' }, h(NewDivider), h('div', { className: 'bt-time-sep', role: 'separator' }, unreadOpening)), body)
@@ -1020,6 +1032,16 @@ function RelayEvent({ reply, bot, sessionId, actions }) {
 // Rows a later call closed do not change: each is read from the group's book once per page.
 const settledRows = new Map()
 
+function DiscussionMenu({ room, actions, boundary }) {
+  return h('details', { className: 'bt-discussion-menu' },
+    h('summary', { 'aria-label': t('Discussion actions') }, '⋯'),
+    ...[['one', 'Archive this discussion'], ['multi', 'Select discussions…'], ['before', 'Archive all discussions before this one']].map(([mode, label]) =>
+      h('button', { key: mode, type: 'button', className: 'bt-soft', onClick: e => {
+        e.currentTarget.closest('details').open = false
+        actions.openArchive(room.id, mode, boundary)
+      } }, t(label))))
+}
+
 function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi, useWork }) {
   const [live, setLive] = useState({ replies: [], speaking: [] })
   useEffect(() => {
@@ -1152,7 +1174,7 @@ function useShownCards(actions, sessionId, callIds) {
   }, [sessionId, key])
 }
 
-function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks }) {
+function renderCall(call, { turn, sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks }) {
   const tool = toolName(call)
   const done = call.kind === 'tool-result'
   const { text: arg, value: argValue } = toolArgs(call)
@@ -1177,8 +1199,12 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot,
       const target = findBot(arg('name')) ?? findBot(arg('bot')) ?? (arg('bot') ? undefined : self)
       return done && target ? h(EventLine, { prefix: t('Updated'), bots: [target], onOpen: bot => actions.openSession(bot.id) }) : h(CellEmpty)
     }
-    case 'group_relay':
-      return h(GroupReplies, { sessionId, callId: call.callId, done, content: call.content, roster, actions, useUi, useWork })
+    case 'group_relay': {
+      const room = roster.roomsById[sessionId]
+      const key = sessionId + '/' + turn
+      return h(Fragment, null, h(GroupReplies, { sessionId, callId: call.callId, done, content: call.content, roster, actions, useUi, useWork }),
+        done && room && Number.isInteger(turn) && actions.openArchive && !roster.readOnly && h(DiscussionMenu, { room, actions, boundary: key }))
+    }
     case 'create_group':
     case 'update_group':
     case 'delete_group':
@@ -1260,6 +1286,7 @@ export function ToolCell({ node, sessionId, useRoster, useUi, useWork, useHeldCa
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note)
   useShownCards(actions, sessionId, drawn.filter(call => (CARDS.has(toolName(call)) || isComputerCall(toolName(call))) && call.callId).map(call => call.callId))
   if (drawn.length === 0) return h(CellEmpty)
-  const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer } }
+  if (roster.roomsById[sessionId]?.archivedDiscussions?.some(row => row.part === sessionId && row.turn === turn)) return h(CellEmpty)
+  const env = { turn, sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer } }
   return h(Fragment, null, drawn.map((call, index) => h(Fragment, { key: call.callId ?? index }, renderCall(call, env))))
 }

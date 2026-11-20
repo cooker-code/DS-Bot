@@ -29,6 +29,10 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // The token keeps a late exit timer from closing a palette opened again since.
     closePalette: (token) => { ui.set(state => (state.palette && (token === undefined || state.palette.token === token) ? { ...state, palette: null } : state)) },
     // Searching one group's own history, from its header.
+    openArchive: (roomId, mode, boundary) => ui.set(state => ({ ...state, groupArchive: { roomId, mode, boundary, token: Date.now() } })),
+    closeArchive: () => ui.set(state => ({ ...state, groupArchive: null })),
+    discussions: (roomId, detail) => call('group-discussions', { roomId, detail }),
+    archiveDiscussions: (roomId, action, ids) => after(call('archive-discussions', { roomId, action, ids })),
     openGroupSearch: (roomId) => { if (roomId) ui.set(state => ({ ...state, groupSearch: { roomId, token: Date.now() }, palette: null, newChat: null, menu: null })) },
     closeGroupSearch: (token) => { ui.set(state => (state.groupSearch && (token === undefined || state.groupSearch.token === token) ? { ...state, groupSearch: null } : state)) },
     openExchange: (a, b) => { if (a && b) ui.set(state => ({ ...state, exchange: [a, b] })) },
