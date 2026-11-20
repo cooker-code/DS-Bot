@@ -31440,7 +31440,7 @@ function TeamSidebar(props) {
   const top = wideContent ? (0, import_react37.createElement)(
     "div",
     { className: "bt-side-top" },
-    (0, import_react37.createElement)("span", { className: "bt-brand" }, (0, import_react37.createElement)(BrandName)),
+    (0, import_react37.createElement)(SidebarBrand, { useUpdate: props.useUpdate }),
     (0, import_react37.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
     (0, import_react37.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New section"), title: t("New section"), onClick: createNewSection }, (0, import_react37.createElement)(FolderIcon)),
     (0, import_react37.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Search"), title: t("Search"), onClick: () => actions.openPalette() }, (0, import_react37.createElement)(SearchIcon)),
@@ -31860,6 +31860,15 @@ function BrandMark({ size = 24 }) {
 function BrandName() {
   return (0, import_react37.createElement)("span", { style: { fontWeight: 600, fontSize: 14 } }, "DS Bot");
 }
+function SidebarBrand({ useUpdate }) {
+  const version = useUpdate((update) => update?.current);
+  return (0, import_react37.createElement)(
+    "span",
+    { className: "bt-brand" },
+    (0, import_react37.createElement)(BrandName),
+    version ? (0, import_react37.createElement)("small", { className: "bt-brand-version" }, "v" + version.replace(/-local\.(\d+)$/, ".$1")) : null
+  );
+}
 var SIDEBAR_CSS = `
 .bt-confirm{width:260px;max-width:72vw;padding:10px 12px 12px;display:flex;flex-direction:column;gap:10px}
 .bt-confirm-text{margin:0;font-size:13px;line-height:19px;color:var(--bt-ink-2)}
@@ -31869,7 +31878,8 @@ var SIDEBAR_CSS = `
 .bt-confirm-go{height:28px;padding:0 14px;border:0;border-radius:999px;background:var(--bt-accent);color:var(--bt-accent-ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .12s ease}
 .bt-confirm-go:hover:not(:disabled){opacity:.9}
 .bt-confirm-go:disabled{opacity:.6;cursor:default}
-.bt-side-top .bt-brand{cursor:default;padding-left:6px}
+.bt-side-top .bt-brand{position:relative;cursor:default;padding-left:6px}
+.bt-brand-version{position:absolute;top:calc(50% + 8px);right:8px;color:var(--bt-ink-2);font-size:10px;font-weight:400;line-height:10px;letter-spacing:normal;white-space:nowrap}
 .bt-side-top .bt-brand:hover{background:none}
 .bt-brand .bt-mark{flex:none}
 .bt-pin{flex:none;display:inline-flex;color:var(--bt-ink-3)}
