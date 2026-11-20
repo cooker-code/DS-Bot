@@ -222,6 +222,9 @@ body[data-ds-dark-theme] .bt-mw-ask{color:#f0b84a}
 .bt-members{display:flex;flex-direction:column;gap:2px;margin:0 -8px}
 .bt-members-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-members-head>.bt-section-title{margin:0}
+.bt-members-toggle{display:inline-flex;align-items:center;gap:4px;padding:0;border:0;background:none;font-family:inherit;text-align:left;cursor:pointer}
+.bt-members-toggle:hover{color:var(--bt-ink)}
+.bt-members-toggle:focus-visible{outline:2px solid var(--bt-accent);outline-offset:4px;border-radius:4px}
 /* The button hangs over the title's line, so the list below does not move when it appears. */
 .bt-members-head>.bt-soft-sm{margin:-6px 0}
 .bt-members-head>.bt-soft-sm:disabled{opacity:.5;cursor:default}
