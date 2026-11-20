@@ -75,6 +75,8 @@ const ZH = {
   "Choose Link task to continue an existing task.": "请使用「关联任务」选择要继续的任务。",
   "Round {number}": "第 {number} 轮",
 
+  "Role": "角色",
+  "Member workspace": "工作空间",
   'Member settings': '成员设置',
   'Use Bot default': '使用 Bot 默认模型',
   'Inherit group or Bot folder': '继承群或 Bot 的工作目录',

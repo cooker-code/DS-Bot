@@ -83,6 +83,8 @@ export const DE = {
   "No reason recorded.": "In diesem Plan wurde kein Grund festgehalten.",
   "Retry confirmation timed out. Check the task status before trying again.": "Die Bestätigung des erneuten Versuchs ist abgelaufen. Prüfe vor einem weiteren Versuch den Aufgabenstatus.",
   "This failed assignment is no longer current.": "Der fehlgeschlagene Auftrag ist nicht mehr aktuell.",
+  "Role": "Rolle",
+  "Member workspace": "Arbeitsbereich",
   'Member settings': 'Mitgliedereinstellungen',
   'Use Bot default': 'Standardmodell des Bots verwenden',
   'Inherit group or Bot folder': 'Ordner der Gruppe oder des Bots übernehmen',

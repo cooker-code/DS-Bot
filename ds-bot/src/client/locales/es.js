@@ -83,6 +83,8 @@ export const ES = {
   "No reason recorded.": "Este plan no registra el motivo.",
   "Retry confirmation timed out. Check the task status before trying again.": "Se agotó el tiempo de confirmación del reintento. Comprueba el estado de la tarea antes de volver a intentarlo.",
   "This failed assignment is no longer current.": "Esta asignación fallida ya no está vigente.",
+  "Role": "Rol",
+  "Member workspace": "Espacio de trabajo",
   'Member settings': 'Configuración del miembro',
   'Use Bot default': 'Usar el modelo predeterminado del Bot',
   'Inherit group or Bot folder': 'Heredar la carpeta del grupo o del Bot',

@@ -71,8 +71,10 @@ export function Row({ label, hint, stack = false, children }) {
     children)
 }
 
-export function Card({ title, children }) {
-  return h('section', { className: 'bt-set-section' }, title ? h('h3', null, title) : null, h('div', { className: 'bt-set-card' }, children))
+export function Card({ title, headerAction, children }) {
+  return h('section', { className: 'bt-set-section' }, headerAction
+    ? h('div', { className: 'bt-gs-heading' }, h('h3', null, title), headerAction)
+    : title ? h('h3', null, title) : null, h('div', { className: 'bt-set-card' }, children))
 }
 
 export function Switch({ on, label, disabled, onChange }) {

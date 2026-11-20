@@ -83,6 +83,8 @@ export const JA = {
   "No reason recorded.": "この計画には選択理由が記録されていません。",
   "Retry confirmation timed out. Check the task status before trying again.": "再試行の確認がタイムアウトしました。もう一度試す前にタスクの状態を確認してください。",
   "This failed assignment is no longer current.": "この割り当ての状態はすでに変わっています。",
+  "Role": "役割",
+  "Member workspace": "ワークスペース",
   "Member settings": "メンバー設定",
   "Use Bot default": "Bot の既定モデルを使う",
   "Inherit group or Bot folder": "グループまたは Bot のフォルダーを継承",

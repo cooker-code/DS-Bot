@@ -83,6 +83,8 @@ export const FR = {
   "No reason recorded.": "Aucun motif consigné dans ce plan.",
   "Retry confirmation timed out. Check the task status before trying again.": "Le délai de confirmation de la nouvelle tentative a expiré. Vérifiez l’état de la tâche avant de réessayer.",
   "This failed assignment is no longer current.": "Cette affectation en échec n’est plus en cours.",
+  "Role": "Rôle",
+  "Member workspace": "Espace de travail",
   "Member settings": "Paramètres des membres",
   "Use Bot default": "Utiliser le modèle par défaut du Bot",
   "Inherit group or Bot folder": "Hériter du dossier du groupe ou du Bot",

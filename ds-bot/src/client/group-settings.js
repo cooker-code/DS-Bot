@@ -79,10 +79,33 @@ function ProjectWorkspacePolicy({ room, roster, actions, run, disabled }) {
       h('option', { key: value, value }, t(label)))))
 }
 
+const memberViews = [['role', 'Role'], ['workspace', 'Member workspace'], ['model', 'Model']]
+
+function MemberControl({ view, member, room, roster, actions, run, update }) {
+  const setting = Object.hasOwn(room.memberSettings ?? {}, member.id) ? room.memberSettings[member.id] : {}
+  const change = patch => update({ memberSetting: { botId: member.id, ...patch } })
+  const disabled = !!roster.readOnly
+  if (view === 'role') return h('select', { className: 'bt-select', disabled, 'aria-label': `${member.name} · ${t('Role')}`,
+    value: room.admin === member.id ? 'admin' : 'member',
+    onChange: e => update({ admin: e.target.value === 'admin' ? member.id : null }) },
+    h('option', { value: 'member' }, t('Member')), h('option', { value: 'admin' }, t('Admin')))
+  if (view === 'model') return h('select', { className: 'bt-select', disabled, 'aria-label': `${member.name} · ${t('Model')}`,
+    value: setting.model ?? '', onChange: e => change({ model: e.target.value || null }) },
+    h('option', { value: '' }, t('Use Bot default')),
+    (roster.models ?? []).map(m => h('option', { key: m.ref, value: m.ref }, m.name ?? m.ref)))
+  const hasDir = Object.hasOwn(room.memberDirs ?? {}, member.id)
+  return h('div', { className: 'bt-gs-workspace' },
+    h('span', { className: 'bt-set-hint' }, !hasDir ? t('Inherit group or Bot folder') : setting.override ? t('Member override') : t('Legacy member folder')),
+    h(FolderMenu, { disabled, value: hasDir ? room.memberDirs[member.id] : undefined, actions, run, onPick: workDir => change({ workDir }) }),
+    !hasDir || room.memberDirs[member.id] !== null || !setting.override ? h('button', { type: 'button', disabled, className: 'bt-mini', onClick: () => change({ workDir: '' }) }, t('Use team workspace')) : null,
+    hasDir ? h('button', { type: 'button', disabled, className: 'bt-mini', onClick: () => change({ workDir: null }) }, t('Use inherited folder')) : null)
+}
+
 // A group chat's settings as grouped cards: its name and notice, who answers, its
 // members and admin, its permissions, its sidebar place, and deleting it. The user may
 // change all of it; the host enforces what Bots may change.
 export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
+  const [memberView, setMemberView] = useState('role')
   const [adding, setAdding] = useState(false)
   const [confirming, setConfirming] = useState(false)
   useEffect(() => {
@@ -144,32 +167,17 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
           members.filter(member => admin && member.id !== admin.id).map(member => h('option', { key: member.id, value: member.id }, member.name)))),
       h(ProjectWorkspacePolicy, { key: room.id, room, roster, actions, run, disabled: !enabled })),
     h(GroupPermission, { room, catalog: roster.permissions, update }),
-    h(Card, { title: t('Member settings') }, members.map(member => {
-      const setting = Object.hasOwn(room.memberSettings ?? {}, member.id) ? room.memberSettings[member.id] : {}
-      const hasDir = Object.hasOwn(room.memberDirs ?? {}, member.id)
-      const change = patch => update({ memberSetting: { botId: member.id, ...patch } })
-      return h('details', { key: member.id, className: 'bt-set-row bt-bs-stack' },
-        h('summary', null, member.name),
-        h(Row, { label: t('Model') }, h('select', { 'aria-label': t('Model'), value: setting.model ?? '',
-          onChange: e => change({ model: e.target.value || null }) },
-          h('option', { value: '' }, t('Use Bot default')),
-          (roster.models ?? []).map(m => h('option', { key: m.ref, value: m.ref }, m.name ?? m.ref)))),
-        h(Row, { label: t('Working folder'), hint: !hasDir ? t('Inherit group or Bot folder') : setting.override ? t('Member override') : t('Legacy member folder') },
-          h(FolderMenu, { value: hasDir ? room.memberDirs[member.id] : undefined, actions, run, onPick: workDir => change({ workDir }) }),
-          !hasDir || room.memberDirs[member.id] !== null || !setting.override ? h('button', { type: 'button', className: 'bt-mini', onClick: () => change({ workDir: '' }) }, t('Use team workspace')) : null,
-          hasDir ? h('button', { type: 'button', className: 'bt-mini', onClick: () => change({ workDir: null }) }, t('Use inherited folder')) : null))
-    })),
-    h(Card, { title: t('Members · {count}', { count: members.length }) },
+    h(Card, { title: t('Members · {count}', { count: members.length }),
+      headerAction: h(Segmented, { label: t('Member settings'), value: memberView }, memberViews.map(([id, label]) =>
+        h('button', { key: id, type: 'button', 'aria-pressed': memberView === id, onClick: () => setMemberView(id) }, t(label)))) },
       members.map((member) => {
         const leads = room.admin === member.id
         return h('div', { key: member.id, className: 'bt-set-row bt-bs-row bt-gs-member' },
           h('button', { type: 'button', className: 'bt-gs-who', title: t("Open {name}'s chat", { name: member.name }), onClick: () => openBot(member.id) },
             h(BotAvatar, { bot: member, size: 26, main: isMainOf(roster, member.id), admin: leads, live: false }),
             h('span', { className: 'bt-row-title' }, member.name),
-            leads ? h('span', { className: 'bt-tag' }, t('Admin')) : !assistantInvalid && member.id === room.projectAssistantId ? h('span', { className: 'bt-tag' }, t('Task assistant')) : null),
-          leads
-            ? h('button', { type: 'button', className: 'bt-mini', title: t('Leave the group without an admin'), onClick: () => update({ admin: null }) }, t('Unset'))
-            : h('button', { type: 'button', className: 'bt-mini', onClick: () => update({ admin: member.id }) }, t('Make admin')),
+            !assistantInvalid && member.id === room.projectAssistantId ? h('span', { className: 'bt-tag' }, t('Task assistant')) : null),
+          h(MemberControl, { view: memberView, member, room, roster, actions, run, update }),
           members.length > 2 ? h('button', { type: 'button', className: 'bt-x', 'aria-label': t('Remove {name} from the group', { name: member.name }), title: t('Remove from group'), onClick: () => update({ remove: [member.id] }) }, '×') : null)
       }),
       adding
@@ -246,7 +254,11 @@ export const GROUP_SETTINGS_CSS = `
 .bt-ng-chip .bt-admin-star{animation:bt-check-pop .4s cubic-bezier(.34,1.56,.64,1)}
 .bt-ng-name{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.bt-ng,.bt-ng-step,.bt-ng-chip .bt-admin-star{animation:none}}
-.bt-gs-member{gap:8px}
+.bt-gs-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.bt-gs-heading .bt-seg{margin-inline-start:auto}
+.bt-gs-member{gap:8px;flex-wrap:wrap}
+.bt-gs-member>.bt-select{max-width:50%;min-width:0}
+.bt-gs-workspace{order:1;flex-basis:100%;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .bt-gs-who{flex:1;display:flex;align-items:center;gap:8px;min-width:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .bt-gs-who .bt-row-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-gs-who:hover .bt-row-title{text-decoration:underline;text-underline-offset:2px}

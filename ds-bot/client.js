@@ -220,6 +220,8 @@ var JA = {
   "No reason recorded.": "この計画には選択理由が記録されていません。",
   "Retry confirmation timed out. Check the task status before trying again.": "再試行の確認がタイムアウトしました。もう一度試す前にタスクの状態を確認してください。",
   "This failed assignment is no longer current.": "この割り当ての状態はすでに変わっています。",
+  "Role": "役割",
+  "Member workspace": "ワークスペース",
   "Member settings": "メンバー設定",
   "Use Bot default": "Bot の既定モデルを使う",
   "Inherit group or Bot folder": "グループまたは Bot のフォルダーを継承",
@@ -2739,6 +2741,8 @@ var KO = {
   "No reason recorded.": "이 계획에는 선택 이유가 기록되지 않았습니다.",
   "Retry confirmation timed out. Check the task status before trying again.": "재시도 확인 시간이 초과되었습니다. 다시 시도하기 전에 작업 상태를 확인하세요.",
   "This failed assignment is no longer current.": "실패한 이 작업 배정의 상태가 변경되었습니다.",
+  "Role": "역할",
+  "Member workspace": "작업 공간",
   "Member settings": "멤버 설정",
   "Use Bot default": "Bot 기본 모델 사용",
   "Inherit group or Bot folder": "그룹 또는 Bot 폴더 상속",
@@ -5303,6 +5307,8 @@ var ES = {
   "No reason recorded.": "Este plan no registra el motivo.",
   "Retry confirmation timed out. Check the task status before trying again.": "Se agotó el tiempo de confirmación del reintento. Comprueba el estado de la tarea antes de volver a intentarlo.",
   "This failed assignment is no longer current.": "Esta asignación fallida ya no está vigente.",
+  "Role": "Rol",
+  "Member workspace": "Espacio de trabajo",
   "Member settings": "Configuración del miembro",
   "Use Bot default": "Usar el modelo predeterminado del Bot",
   "Inherit group or Bot folder": "Heredar la carpeta del grupo o del Bot",
@@ -7867,6 +7873,8 @@ var FR = {
   "No reason recorded.": "Aucun motif consigné dans ce plan.",
   "Retry confirmation timed out. Check the task status before trying again.": "Le délai de confirmation de la nouvelle tentative a expiré. Vérifiez l’état de la tâche avant de réessayer.",
   "This failed assignment is no longer current.": "Cette affectation en échec n’est plus en cours.",
+  "Role": "Rôle",
+  "Member workspace": "Espace de travail",
   "Member settings": "Paramètres des membres",
   "Use Bot default": "Utiliser le modèle par défaut du Bot",
   "Inherit group or Bot folder": "Hériter du dossier du groupe ou du Bot",
@@ -10386,6 +10394,8 @@ var DE = {
   "No reason recorded.": "In diesem Plan wurde kein Grund festgehalten.",
   "Retry confirmation timed out. Check the task status before trying again.": "Die Bestätigung des erneuten Versuchs ist abgelaufen. Prüfe vor einem weiteren Versuch den Aufgabenstatus.",
   "This failed assignment is no longer current.": "Der fehlgeschlagene Auftrag ist nicht mehr aktuell.",
+  "Role": "Rolle",
+  "Member workspace": "Arbeitsbereich",
   "Member settings": "Mitgliedereinstellungen",
   "Use Bot default": "Standardmodell des Bots verwenden",
   "Inherit group or Bot folder": "Ordner der Gruppe oder des Bots übernehmen",
@@ -12930,6 +12940,8 @@ var ZH = {
   "The task assistant binding is invalid. Select a member in group settings.": "任务助理绑定失效，请在群设置中重新选择成员。",
   "Choose Link task to continue an existing task.": "请使用「关联任务」选择要继续的任务。",
   "Round {number}": "第 {number} 轮",
+  "Role": "角色",
+  "Member workspace": "工作空间",
   "Member settings": "成员设置",
   "Use Bot default": "使用 Bot 默认模型",
   "Inherit group or Bot folder": "继承群或 Bot 的工作目录",
@@ -17177,7 +17189,7 @@ body[data-ds-dark-theme] .bt-scrim{background:rgba(0,0,0,.5)}
 .bt-settings-form{display:flex;flex-direction:column;gap:18px}
 .bt-set-section{display:flex;flex-direction:column;gap:8px}
 .bt-capabilities-head,.bt-skill-actions{flex-wrap:wrap}
-.bt-set-section>h3,.bt-la-sec-head>h3{font-size:13px;line-height:18px;font-weight:600;color:var(--bt-ink);margin:0;padding:0 4px}
+.bt-set-section>h3,.bt-gs-heading>h3,.bt-la-sec-head>h3{font-size:13px;line-height:18px;font-weight:600;color:var(--bt-ink);margin:0;padding:0 4px}
 .bt-browser-settings{display:flex;flex-direction:column;gap:22px}
 .bt-set-card{border:.5px solid var(--bt-glass-rim);border-radius:12px;background:var(--bt-card);box-shadow:var(--bt-card-shadow);display:flex;flex-direction:column}
 .bt-set-card>*+*{border-top:.5px solid var(--bt-line)}
@@ -26561,8 +26573,8 @@ function Row({ label, hint, stack = false, children }) {
     children
   );
 }
-function Card2({ title, children }) {
-  return (0, import_react28.createElement)("section", { className: "bt-set-section" }, title ? (0, import_react28.createElement)("h3", null, title) : null, (0, import_react28.createElement)("div", { className: "bt-set-card" }, children));
+function Card2({ title, headerAction, children }) {
+  return (0, import_react28.createElement)("section", { className: "bt-set-section" }, headerAction ? (0, import_react28.createElement)("div", { className: "bt-gs-heading" }, (0, import_react28.createElement)("h3", null, title), headerAction) : title ? (0, import_react28.createElement)("h3", null, title) : null, (0, import_react28.createElement)("div", { className: "bt-set-card" }, children));
 }
 function Switch({ on, label, disabled, onChange }) {
   return (0, import_react28.createElement)(
@@ -32272,7 +32284,47 @@ function ProjectWorkspacePolicy({ room: room2, roster, actions, run: run2, disab
     }, Object.entries(workspacePolicies).map(([value, label]) => (0, import_react40.createElement)("option", { key: value, value }, t(label))))
   );
 }
+var memberViews = [["role", "Role"], ["workspace", "Member workspace"], ["model", "Model"]];
+function MemberControl({ view, member, room: room2, roster, actions, run: run2, update }) {
+  const setting = Object.hasOwn(room2.memberSettings ?? {}, member.id) ? room2.memberSettings[member.id] : {};
+  const change = (patch) => update({ memberSetting: { botId: member.id, ...patch } });
+  const disabled = !!roster.readOnly;
+  if (view === "role") return (0, import_react40.createElement)(
+    "select",
+    {
+      className: "bt-select",
+      disabled,
+      "aria-label": `${member.name} · ${t("Role")}`,
+      value: room2.admin === member.id ? "admin" : "member",
+      onChange: (e) => update({ admin: e.target.value === "admin" ? member.id : null })
+    },
+    (0, import_react40.createElement)("option", { value: "member" }, t("Member")),
+    (0, import_react40.createElement)("option", { value: "admin" }, t("Admin"))
+  );
+  if (view === "model") return (0, import_react40.createElement)(
+    "select",
+    {
+      className: "bt-select",
+      disabled,
+      "aria-label": `${member.name} · ${t("Model")}`,
+      value: setting.model ?? "",
+      onChange: (e) => change({ model: e.target.value || null })
+    },
+    (0, import_react40.createElement)("option", { value: "" }, t("Use Bot default")),
+    (roster.models ?? []).map((m) => (0, import_react40.createElement)("option", { key: m.ref, value: m.ref }, m.name ?? m.ref))
+  );
+  const hasDir = Object.hasOwn(room2.memberDirs ?? {}, member.id);
+  return (0, import_react40.createElement)(
+    "div",
+    { className: "bt-gs-workspace" },
+    (0, import_react40.createElement)("span", { className: "bt-set-hint" }, !hasDir ? t("Inherit group or Bot folder") : setting.override ? t("Member override") : t("Legacy member folder")),
+    (0, import_react40.createElement)(FolderMenu, { disabled, value: hasDir ? room2.memberDirs[member.id] : void 0, actions, run: run2, onPick: (workDir) => change({ workDir }) }),
+    !hasDir || room2.memberDirs[member.id] !== null || !setting.override ? (0, import_react40.createElement)("button", { type: "button", disabled, className: "bt-mini", onClick: () => change({ workDir: "" }) }, t("Use team workspace")) : null,
+    hasDir ? (0, import_react40.createElement)("button", { type: "button", disabled, className: "bt-mini", onClick: () => change({ workDir: null }) }, t("Use inherited folder")) : null
+  );
+}
 function GroupSettingsForm({ room: room2, roster, actions, run: run2, onDeleted }) {
+  const [memberView, setMemberView] = (0, import_react40.useState)("role");
   const [adding, setAdding] = (0, import_react40.useState)(false);
   const [confirming, setConfirming] = (0, import_react40.useState)(false);
   (0, import_react40.useEffect)(() => {
@@ -32395,36 +32447,12 @@ function GroupSettingsForm({ room: room2, roster, actions, run: run2, onDeleted 
       (0, import_react40.createElement)(ProjectWorkspacePolicy, { key: room2.id, room: room2, roster, actions, run: run2, disabled: !enabled })
     ),
     (0, import_react40.createElement)(GroupPermission, { room: room2, catalog: roster.permissions, update }),
-    (0, import_react40.createElement)(Card2, { title: t("Member settings") }, members.map((member) => {
-      const setting = Object.hasOwn(room2.memberSettings ?? {}, member.id) ? room2.memberSettings[member.id] : {};
-      const hasDir = Object.hasOwn(room2.memberDirs ?? {}, member.id);
-      const change = (patch) => update({ memberSetting: { botId: member.id, ...patch } });
-      return (0, import_react40.createElement)(
-        "details",
-        { key: member.id, className: "bt-set-row bt-bs-stack" },
-        (0, import_react40.createElement)("summary", null, member.name),
-        (0, import_react40.createElement)(Row, { label: t("Model") }, (0, import_react40.createElement)(
-          "select",
-          {
-            "aria-label": t("Model"),
-            value: setting.model ?? "",
-            onChange: (e) => change({ model: e.target.value || null })
-          },
-          (0, import_react40.createElement)("option", { value: "" }, t("Use Bot default")),
-          (roster.models ?? []).map((m) => (0, import_react40.createElement)("option", { key: m.ref, value: m.ref }, m.name ?? m.ref))
-        )),
-        (0, import_react40.createElement)(
-          Row,
-          { label: t("Working folder"), hint: !hasDir ? t("Inherit group or Bot folder") : setting.override ? t("Member override") : t("Legacy member folder") },
-          (0, import_react40.createElement)(FolderMenu, { value: hasDir ? room2.memberDirs[member.id] : void 0, actions, run: run2, onPick: (workDir) => change({ workDir }) }),
-          !hasDir || room2.memberDirs[member.id] !== null || !setting.override ? (0, import_react40.createElement)("button", { type: "button", className: "bt-mini", onClick: () => change({ workDir: "" }) }, t("Use team workspace")) : null,
-          hasDir ? (0, import_react40.createElement)("button", { type: "button", className: "bt-mini", onClick: () => change({ workDir: null }) }, t("Use inherited folder")) : null
-        )
-      );
-    })),
     (0, import_react40.createElement)(
       Card2,
-      { title: t("Members · {count}", { count: members.length }) },
+      {
+        title: t("Members · {count}", { count: members.length }),
+        headerAction: (0, import_react40.createElement)(Segmented, { label: t("Member settings"), value: memberView }, memberViews.map(([id, label]) => (0, import_react40.createElement)("button", { key: id, type: "button", "aria-pressed": memberView === id, onClick: () => setMemberView(id) }, t(label))))
+      },
       members.map((member) => {
         const leads = room2.admin === member.id;
         return (0, import_react40.createElement)(
@@ -32435,9 +32463,9 @@ function GroupSettingsForm({ room: room2, roster, actions, run: run2, onDeleted 
             { type: "button", className: "bt-gs-who", title: t("Open {name}'s chat", { name: member.name }), onClick: () => openBot(member.id) },
             (0, import_react40.createElement)(BotAvatar, { bot: member, size: 26, main: isMainOf(roster, member.id), admin: leads, live: false }),
             (0, import_react40.createElement)("span", { className: "bt-row-title" }, member.name),
-            leads ? (0, import_react40.createElement)("span", { className: "bt-tag" }, t("Admin")) : !assistantInvalid && member.id === room2.projectAssistantId ? (0, import_react40.createElement)("span", { className: "bt-tag" }, t("Task assistant")) : null
+            !assistantInvalid && member.id === room2.projectAssistantId ? (0, import_react40.createElement)("span", { className: "bt-tag" }, t("Task assistant")) : null
           ),
-          leads ? (0, import_react40.createElement)("button", { type: "button", className: "bt-mini", title: t("Leave the group without an admin"), onClick: () => update({ admin: null }) }, t("Unset")) : (0, import_react40.createElement)("button", { type: "button", className: "bt-mini", onClick: () => update({ admin: member.id }) }, t("Make admin")),
+          (0, import_react40.createElement)(MemberControl, { view: memberView, member, room: room2, roster, actions, run: run2, update }),
           members.length > 2 ? (0, import_react40.createElement)("button", { type: "button", className: "bt-x", "aria-label": t("Remove {name} from the group", { name: member.name }), title: t("Remove from group"), onClick: () => update({ remove: [member.id] }) }, "×") : null
         );
       }),
@@ -32561,7 +32589,11 @@ var GROUP_SETTINGS_CSS = `
 .bt-ng-chip .bt-admin-star{animation:bt-check-pop .4s cubic-bezier(.34,1.56,.64,1)}
 .bt-ng-name{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.bt-ng,.bt-ng-step,.bt-ng-chip .bt-admin-star{animation:none}}
-.bt-gs-member{gap:8px}
+.bt-gs-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.bt-gs-heading .bt-seg{margin-inline-start:auto}
+.bt-gs-member{gap:8px;flex-wrap:wrap}
+.bt-gs-member>.bt-select{max-width:50%;min-width:0}
+.bt-gs-workspace{order:1;flex-basis:100%;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .bt-gs-who{flex:1;display:flex;align-items:center;gap:8px;min-width:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .bt-gs-who .bt-row-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-gs-who:hover .bt-row-title{text-decoration:underline;text-underline-offset:2px}

@@ -83,6 +83,8 @@ export const KO = {
   "No reason recorded.": "이 계획에는 선택 이유가 기록되지 않았습니다.",
   "Retry confirmation timed out. Check the task status before trying again.": "재시도 확인 시간이 초과되었습니다. 다시 시도하기 전에 작업 상태를 확인하세요.",
   "This failed assignment is no longer current.": "실패한 이 작업 배정의 상태가 변경되었습니다.",
+  "Role": "역할",
+  "Member workspace": "작업 공간",
   'Member settings': '멤버 설정',
   'Use Bot default': 'Bot 기본 모델 사용',
   'Inherit group or Bot folder': '그룹 또는 Bot 폴더 상속',
