@@ -25,11 +25,10 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import semver from 'semver'
-import { findExecutable, launchOf } from '../src/host/local-agents/discover.js'
+import { findExecutable } from '../src/host/local-agents/discover.js'
 
 const run = (file, args, options) => {
-  const launch = launchOf(findExecutable(file) ?? file, args)
-  return spawnSync(launch.file, launch.args, { ...options, ...launch.options })
+  return spawnSync(findExecutable(file) ?? file, args, options)
 }
 
 const OFFICIAL = /^@deepseek-ai\/dsh(?:-|$)/
