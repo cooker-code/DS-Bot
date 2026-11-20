@@ -23,8 +23,7 @@ const PREVIEW_TIMEOUT_MS = 3000
 const RESIZE_LATER_MS = 200
 const SEARCH_URL = 'https://www.bing.com/search?q='
 // The drawer cards preview a page by its own words: its description, else its first
-// real paragraph. Webview capturePage() is not used: on Windows a failed capture
-// (UnknownVizError) takes the whole app renderer down.
+// real paragraph.
 export const PREVIEW_SCRIPT = `(() => {
   const meta = key => document.querySelector('meta[name="' + key + '"],meta[property="' + key + '"]')?.content ?? ''
   const paragraph = [...document.querySelectorAll('main p, article p, p')].map(node => node.innerText ?? '').find(text => text.trim().length > 40) ?? ''

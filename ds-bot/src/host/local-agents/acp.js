@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 // The Agent Client Protocol engine: one child process per route (or per working
 // folder when the CLI pins shell commands to its process cwd), ACP over stdio.
 // A process multiplexes sessions: each DS Bot Session maps to one ACP session,
@@ -7,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
-import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from './discover.js'
+import { cleanEnv, findEngineExecutable, terminateChild } from './discover.js'
 import { acpMode } from './engines.js'
 
 const CLIENT = { name: 'ds-bot', version: '1' }
@@ -99,11 +100,10 @@ export class AcpEngine {
     const bin = findEngineExecutable(this.engine, name => this.findExecutable(name))
     if (bin === undefined) throw Object.assign(new Error(`${this.engine.name} is not installed`), { code: 'NO_ADAPTER' })
     const spawnCwd = this.engine.spawnCwd && existsSync(this.engine.spawnCwd) ? this.engine.spawnCwd : undefined
-    const child = spawnAgent(bin, this.engine.args ?? [], {
+    const child = spawn(bin, this.engine.args ?? [], {
       ...(spawnCwd !== undefined ? { cwd: spawnCwd } : {}),
       env: cleanEnv(this.engine.env ?? {}),
       stdio: ['pipe', 'pipe', 'inherit'],
-      windowsHide: true,
     })
     this.child = child
     const peer = this.peer = new JsonRpcPeer(line => child.stdin.write(`${JSON.stringify(line)}\n`))

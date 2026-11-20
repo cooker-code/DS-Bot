@@ -35,7 +35,6 @@ function seed({ diary, privateBot, archives = [], picked, openPart = false }) {
 }
 
 async function start({ services = {}, privateBot = true, archives, memberPick = false, openPart = false } = {}) {
-  // The native realpath, as fs/promises uses: on Windows the JS one keeps 8.3 short names.
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-privacy-')))
   const dsh = join(root, 'dsh')
   const home = join(dsh, 'bot')

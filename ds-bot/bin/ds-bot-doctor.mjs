@@ -179,7 +179,7 @@ function main(argv) {
   return broken.length > 0 ? 2 : 0
 }
 
-// npm links a bin with a symlink on Unix (and a shim on Windows): argv[1] can name the
+// npm links a bin with a symlink: argv[1] can name the
 // link while import.meta.url names the file it points at. Compare the real paths, or an
 // `npx ds-bot doctor` call would find no entry point and exit 0 without doing anything.
 function invokedDirectly() {

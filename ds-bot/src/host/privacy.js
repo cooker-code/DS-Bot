@@ -13,11 +13,11 @@ const SEARCH_TOOLS = ['glob', 'grep']
 const SHELL_TOOLS = ['bash', 'pwsh', 'terminal_open', 'terminal_send']
 const SESSION_TOOLS = ['session_search', 'session_event_search', 'session_trace', 'session_event_trace', 'session_event_read']
 
-// Windows and macOS file systems ignore case.
+// The default macOS filesystem ignores case.
 const fold = text => (process.platform === 'linux' ? text : text.toLowerCase())
 const overlap = (a, b) => within(a, b) || within(b, a)
 const strings = value => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(strings) : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [])
-// The same path as a shell writes it: forward slashes, and on Windows both drive forms.
+// Recognize alternate path spellings in shell arguments.
 const asShell = (path) => {
   const slashed = path.replace(/\\/g, '/')
   const drive = /^([a-z]):\//i.exec(slashed)

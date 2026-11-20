@@ -205,7 +205,7 @@ test('env sanitization drops agent and key variables', () => {
 
 // A Dock-launched app has PATH=/usr/bin:/bin:…; a CLI found in ~/.local/bin or
 // Homebrew must also find its `#!/usr/bin/env node` there.
-test('agent env PATH includes the folders CLIs are found in', { skip: process.platform === 'win32' }, () => {
+test('agent env PATH includes the folders CLIs are found in', () => {
   const saved = { HOME: process.env.HOME, PATH: process.env.PATH }
   const home = mkdtempSync(join(tmpdir(), 'dsbot-home-'))
   mkdirSync(join(home, '.local', 'bin'), { recursive: true })
@@ -830,8 +830,6 @@ test('the adapter\'s MCP server lists the current turn\'s tools (#1061)', async 
     assert.deepEqual(await list(mcp), ['post_to_group'])
   } finally {
     mcp.close()
-    // fetch keeps the socket alive; on Windows a forced exit with it still
-    // closing trips a libuv assertion.
     mcp.server.closeAllConnections()
   }
 })
@@ -1418,10 +1416,8 @@ test('stdioBridgePath extracts .asar bridges into a private directory and leaves
   assert.notEqual(extracted, asarSource)
   assert.equal(stdioBridgePath(asarSource), extracted)
   assert.equal(readFileSync(extracted, 'utf8'), '// bridge\n')
-  if (process.platform !== 'win32') {
-    assert.equal(statSync(dirname(extracted)).mode & 0o777, 0o700)
-    assert.equal(statSync(extracted).mode & 0o777, 0o600)
-  }
+  assert.equal(statSync(dirname(extracted)).mode & 0o777, 0o700)
+  assert.equal(statSync(extracted).mode & 0o777, 0o600)
   assert.equal(stdioBridgePath(unpackedSource), unpackedSource)
 })
 

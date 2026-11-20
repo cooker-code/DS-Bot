@@ -92,7 +92,7 @@ test('historical member failures are distinct from interrupted work after loadin
   assert.equal(rt.teamStorage.read().rooms.r.tasks.failed.status, 'failed')
 })
 
-test('metadata-only changes to a room file do not interrupt a required save', { skip: process.platform === 'win32' }, async t => {
+test('metadata-only changes to a room file do not interrupt a required save', async t => {
   const { rt, home } = runtime(t, { version: 1, rooms: { r: { id: 'r' } } })
   await rt.load()
   const path = join(home, 'state', 'rooms', 'id-r', 'room.sqlite')

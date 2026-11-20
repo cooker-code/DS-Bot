@@ -343,8 +343,7 @@ def _kill_hook_tree(proc: subprocess.Popen[str]) -> None:
 
     POSIX: the hook is started with ``start_new_session=True``, so the shell and
     every descendant share one fresh process group; SIGKILL the group.
-    Windows: ``taskkill /F /T`` walks the tree (best effort).
-    Either way ``proc.kill()`` is the fallback.
+    ``proc.kill()`` is the fallback.
 
     Limitation: a hook that calls ``setsid`` itself leaves the group and
     survives this. Accepted and out of scope — a hook is arbitrary code, and the
@@ -354,20 +353,11 @@ def _kill_hook_tree(proc: subprocess.Popen[str]) -> None:
     import signal
     import subprocess
 
-    if os.name == "posix":
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            return
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
-    else:
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                capture_output=True,
-            )
-        except (OSError, ValueError):
-            pass
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        return
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
 
     try:
         proc.kill()
@@ -461,9 +451,6 @@ def run_task_hooks(event: str, task_json_path: Path, repo_root: Path) -> None:
 
     # POSIX only: a fresh session puts the shell and every descendant in one
     # process group, which is what makes the timeout kill the whole tree.
-    popen_kwargs: dict = {}
-    if os.name == "posix":
-        popen_kwargs["start_new_session"] = True
 
     for cmd in commands:
         proc = None
@@ -478,7 +465,7 @@ def run_task_hooks(event: str, task_json_path: Path, repo_root: Path) -> None:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                **popen_kwargs,
+                start_new_session=True,
             )
             try:
                 stdout, stderr = proc.communicate(timeout=HOOK_TIMEOUT_SECONDS)

@@ -99,10 +99,10 @@ _KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*):(.*)$")
 # YAML block-scalar introducers; the value lives in the indented lines below.
 _BLOCK_SCALARS = ("|", ">", "|-", ">-", "|+", ">+")
 
-# macOS and Windows filesystems are case-insensitive: the very same file can
+# macOS filesystems are case-insensitive: the very same file can
 # be handed to us in a case the glob author never wrote. Match case-insensitively
 # there — over-injecting a spec is the safe side of the asymmetry.
-_CASE_INSENSITIVE_FS = sys.platform == "darwin" or sys.platform.startswith("win")
+_CASE_INSENSITIVE_FS = sys.platform == "darwin"
 _GLOB_FLAGS = re.IGNORECASE if _CASE_INSENSITIVE_FS else 0
 
 
@@ -346,7 +346,7 @@ def glob_to_regex(glob: str) -> re.Pattern[str]:
     grammar and examples): ``**`` as a whole segment spans zero or more
     segments; ``*`` becomes ``[^/]*``; ``?`` becomes ``[^/]``; everything
     else is escaped literally. A trailing ``/`` is expanded to ``/**`` first.
-    On case-insensitive filesystems (macOS, Windows) the pattern compiles with
+    On case-insensitive filesystems (macOS) the pattern compiles with
     ``re.IGNORECASE`` — see ``_CASE_INSENSITIVE_FS``.
     """
     if glob.endswith("/"):

@@ -2217,7 +2217,6 @@ var DSH_JA = {
     "app.warp": "Warp",
     "app.iterm": "iTerm2",
     "app.kitty": "kitty",
-    "app.windowsterminal": "Windows Terminal",
     "app.gitbash": "Git Bash",
     "app.gnometerminal": "GNOME Terminal",
     "app.konsole": "Konsole",
@@ -4782,7 +4781,6 @@ var DSH_KO = {
     "app.warp": "Warp",
     "app.iterm": "iTerm2",
     "app.kitty": "kitty",
-    "app.windowsterminal": "Windows Terminal",
     "app.gitbash": "Git Bash",
     "app.gnometerminal": "GNOME Terminal",
     "app.konsole": "Konsole",
@@ -7347,7 +7345,6 @@ var DSH_ES = {
     "app.warp": "Warp",
     "app.iterm": "iTerm2",
     "app.kitty": "kitty",
-    "app.windowsterminal": "Windows Terminal",
     "app.gitbash": "Git Bash",
     "app.gnometerminal": "GNOME Terminal",
     "app.konsole": "Konsole",
@@ -9867,7 +9864,6 @@ var DSH_FR = {
     "app.warp": "Warp",
     "app.iterm": "iTerm2",
     "app.kitty": "kitty",
-    "app.windowsterminal": "Windows Terminal",
     "app.gitbash": "Git Bash",
     "app.gnometerminal": "GNOME Terminal",
     "app.konsole": "Konsole",
@@ -12432,7 +12428,6 @@ var DSH_DE = {
     "app.warp": "Warp",
     "app.iterm": "iTerm2",
     "app.kitty": "kitty",
-    "app.windowsterminal": "Windows Terminal",
     "app.gitbash": "Git Bash",
     "app.gnometerminal": "GNOME Terminal",
     "app.konsole": "Konsole",
@@ -16713,8 +16708,8 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
    Mica the app styles DSH's sidebar the same way, via --bt-leftcol-fill there);
    it stays under the shell's title-bar switch (z 30) and the popovers (z 60),
    and the floating drawer keeps the opaque fill over the conversation. */
-.bt-leftcol{position:fixed;left:0;top:0;bottom:0;z-index:25;display:flex;--bt-lc-clear:var(--dsh-frame-top-clearance,var(--dsh-windows-titlebar-height,0px));background:var(--bt-leftcol-fill,var(--bt-sidebar));border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:calc(var(--bt-lc-clear) + 6px) 12px 6px;color:var(--bt-ink);font-family:var(--bt-font)}
-html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{border-right:none}
+.bt-leftcol{position:fixed;left:0;top:0;bottom:0;z-index:25;display:flex;--bt-lc-clear:var(--dsh-frame-top-clearance,0px);background:var(--bt-leftcol-fill,var(--bt-sidebar));border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:calc(var(--bt-lc-clear) + 6px) 12px 6px;color:var(--bt-ink);font-family:var(--bt-font)}
+html[data-platform=darwin] .bt-leftcol{border-right:none}
 .bt-leftcol{animation:bt-leftcol-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-leftcol[data-leaving]{transform:translateX(-100%);transition:transform ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing};pointer-events:none}
 @keyframes bt-leftcol-in{from{transform:translateX(-100%)}}
@@ -16970,12 +16965,6 @@ body[data-ds-dark-theme] .bt-q.bt-q-settled[data-expandable]:not([data-open]):ho
 .bt-send:disabled{opacity:.35;cursor:default}
 .bt-error{padding:0 14px 10px;color:var(--bt-danger);font-size:12px}
 
-/* Side panels keep their content clear of the Windows caption buttons. A host may set the
-   chrome top to 0 so that dialog masks also cover the caption band; the panel then reaches
-   the top edge, its own surface under the buttons, and the band over it still drags the
-   window. Where the chrome top already clears the title bar the band is 0. */
-html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel){--bt-caption-band:calc(var(--dsh-windows-titlebar-height,0px) - var(--dsh-frame-chrome-top,0px));padding-top:var(--bt-caption-band)}
-html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::before{content:"";position:absolute;top:0;left:0;right:0;height:var(--bt-caption-band);-webkit-app-region:drag}
 .bt-pane{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:var(--bt-font)}
 .bt-dialog{flex:1;display:flex;flex-direction:column;min-width:0}
 .bt-dialog .bt-head{height:62px}
@@ -17300,32 +17289,21 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 /* Shell chrome reshaped for the team view. Selectors use stable data attributes where the
    shell offers them and CSS-module name suffixes elsewhere. */
 [class*="_newSession"],nav[class*="_panelList"],[class*="_logoRow"]>[class*="_brand"],[class*="_logoRow"]:not(:has([class*="_toggle"])){display:none!important}
-/* An open sidebar uses the team's own top row; under a Windows title bar the shell's
-   logo row stays, flattened to nothing. */
-html:not([data-windows-titlebar]) :not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
-html[data-windows-titlebar] :not([class*="_collapsed"])>[class*="_logoRow"]{height:0!important;margin:0!important}
-html[data-windows-titlebar] .bt-side-collapse{display:none}
+:not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
 /* The sidebar switch is always the team view's own, so the shell's is hidden wherever it
    sits: in the logo row, or in the top strip of a macOS desktop window. The strip stays,
    as the window's drag area. Left showing, the shell's toggle expands the shell sidebar
    first, and pulling it back afterwards is a visible flash of the shell's column; its
    tooltip also casts a shadow across the rail's edge. */
 [class*="_logoRow"]>[class*="_toggle"],[class*="_topStrip"]>[class*="_toggle"]{display:none!important}
-/* Under a Windows title bar our own switch takes the shell's place in the band. A host
-   whose window controls stand at the band's left (the macOS traffic lights) sets
-   --bt-caption-start to the room they take. */
-html[data-windows-titlebar] .bt-title-toggle{position:fixed;left:calc(12px + var(--bt-caption-start,0px));top:calc((var(--dsh-windows-titlebar-height,0px) - 28px) / 2);width:28px;height:28px;z-index:30;-webkit-app-region:no-drag;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;padding:0;background:transparent;color:var(--bt-ink);cursor:pointer;font-family:var(--bt-font)}
-html[data-windows-titlebar] .bt-title-toggle:hover{background:var(--bt-hover)}
 /* Elsewhere the switch shows only while the column is hidden, where the column's
    own top row had it. */
-html:not([data-windows-titlebar]) .bt-title-toggle{position:fixed;left:12px;top:calc(var(--dsh-frame-top-clearance,0px) + 6px);z-index:30}
+.bt-title-toggle{position:fixed;left:12px;top:calc(var(--dsh-frame-top-clearance,0px) + 6px);z-index:30}
 /* The footer ends in the Bot row: the whale's settings seat, then the account menu
    when no plugin holds that seat. Every other plugin's entry takes a whole row above
    it, in the shell's order, so none of them squeezes the Bot row. */
 [class*="_footArea"]{grid-template-columns:auto minmax(0,1fr);grid-auto-flow:row dense;align-items:center;gap:4px 9px;padding:8px 6px 6px!important}
-/* DSH hides the footer of a collapsed sidebar under a Windows title bar; the grid
-   stays out of that one place. */
-html:not([data-windows-titlebar]) [class*="_footArea"],:not([class*="_collapsed"])>[class*="_footArea"]{display:grid!important}
+[class*="_footArea"]{display:grid!important}
 [class*="_footArea"]>[class*="_footerActions"],[class*="_footArea"]>[class*="_footerActions"]>div{display:contents!important}
 [class*="_footArea"]>[class*="_footerActions"]>div>*{grid-column:1/-1}
 [class*="_footArea"]>[class*="_settingsArea"]{grid-column:1;order:1;width:auto!important}
@@ -20240,7 +20218,7 @@ var COMPUTER_CSS = `
 .bt-cstep-shot-open img{max-height:280px;max-width:480px}
 `;
 
-// node_modules/deep-view/src/react/ui.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/react/ui.js
 var import_react13 = require("react");
 var FallbackMarkdown = ({ text }) => (0, import_react13.createElement)("span", null, String(text ?? ""));
 var ViewUi = (0, import_react13.createContext)({ t: (key) => key, Markdown: FallbackMarkdown });
@@ -20307,7 +20285,7 @@ function useOptionKeys2(count, onPick, ownRef) {
   return count > 0 && listening <= 1;
 }
 
-// node_modules/deep-view/src/core/formula.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/core/formula.js
 var FUNCTIONS = {
   min: { args: [1, Infinity], run: (...values) => Math.min(...values.map(num)) },
   max: { args: [1, Infinity], run: (...values) => Math.max(...values.map(num)) },
@@ -20588,7 +20566,7 @@ function evaluate(tree, lookup) {
   }
 }
 
-// node_modules/deep-view/src/core/views.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/core/views.js
 var LAYOUT = ["stack", "row"];
 var DISPLAY = ["text", "metric", "table", "chart", "progress", "callout", "sources", "html"];
 var INPUT_TYPES = ["slider", "choice", "toggle", "number"];
@@ -21220,7 +21198,7 @@ function validateForm(node, values) {
   return { fields };
 }
 
-// node_modules/deep-view/src/react/chart.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/react/chart.js
 var import_react14 = require("react");
 var PALETTE = ["var(--dv-accent)", "var(--dv-ink-tangerine)", "var(--dv-ink-green)", "var(--dv-ink-violet)", "var(--dv-ink-sky)", "var(--dv-ink-rose)", "var(--dv-ink-yellow)", "var(--dv-ink-cyan)", "var(--dv-ink-magenta)"];
 var colorAt = (index) => PALETTE[index % PALETTE.length];
@@ -21659,7 +21637,7 @@ var CHART_CSS = `
 @media (prefers-reduced-motion:reduce){.dv-chart-mark,.dv-chart-dot{transition:none}.dv-chart-tip{animation:none}}
 `;
 
-// node_modules/deep-view/src/react/frame.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/react/frame.js
 var import_react15 = require("react");
 var THEME_VARS = [
   ["--view-ink", "--bt-ink", "--dv-ink"],
@@ -21741,7 +21719,7 @@ var HTML_CSS = `
 .dv-view-frame-stopped{margin:0;font-size:13px;line-height:18px;color:var(--dv-ink-2)}
 `;
 
-// node_modules/deep-view/src/react/card.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/react/card.js
 var import_react16 = require("react");
 var mdLabels2 = (ui2) => ({ code: { copyLabel: ui2.t("Copy"), copiedLabel: ui2.t("Copied") }, footnotes: ui2.t("Footnotes") });
 var TONES2 = ["good", "warn", "bad"];
@@ -22483,7 +22461,7 @@ ${CHART_CSS}
 ${HTML_CSS}
 `;
 
-// node_modules/deep-view/src/react/styles.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/react/styles.js
 var THEME_CSS = `
 body{
 --dv-ink:var(--dsw-alias-label-primary);
@@ -22581,10 +22559,10 @@ button.dv-q-opt:active{background:var(--dv-active)}
 @media (prefers-reduced-motion:reduce){.dv-q,.dv-view-bare,.dv-q-submit,.dv-menu,.dv-q-check{animation:none}}
 `;
 
-// node_modules/deep-view/src/react/index.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/react/index.js
 var DEEP_VIEW_CSS = THEME_CSS + QUESTION_CSS + WIDGET_CSS;
 
-// node_modules/deep-view/src/core/reply.js
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/deep-view/src/core/reply.js
 var REPLY_KIND = "user-question-reply";
 var REPLY_SOURCE_KIND = "deep-view-reply";
 function viewCardText(args) {
@@ -30531,7 +30509,7 @@ var dshCollapsed = () => {
   const column = document.querySelector('[class*="_sidebarCol"]');
   return column ? column.closest("[data-sidebar-collapsed]") !== null : null;
 };
-var collapsedTrackWidth = () => document.documentElement.hasAttribute("data-windows-titlebar") || document.documentElement.dataset.platform === "darwin" ? 0 : 56;
+var collapsedTrackWidth = () => document.documentElement.dataset.platform === "darwin" ? 0 : 56;
 var room = { rule: null, selector: "" };
 var roomRule = () => {
   const live = room.rule?.parentStyleSheet?.ownerNode?.isConnected;
@@ -31155,12 +31133,11 @@ function LeftColumn({ mode, width, onGrip, leaving, children }) {
 }
 function TitleToggle({ hidden, onToggle }) {
   if (typeof document === "undefined") return null;
-  const titlebar = document.documentElement.hasAttribute("data-windows-titlebar");
-  if (!titlebar && !hidden) return null;
-  const label = t(hidden ? "Expand sidebar" : "Collapse sidebar");
+  if (!hidden) return null;
+  const label = t("Expand sidebar");
   return (0, import_react_dom6.createPortal)((0, import_react37.createElement)("button", {
     type: "button",
-    className: titlebar ? "bt-title-toggle" : "bt-round bt-title-toggle",
+    className: "bt-round bt-title-toggle",
     "aria-label": label,
     title: label,
     onClick: onToggle
@@ -34022,7 +33999,7 @@ var CONNECTORS_PAGE_CSS = `
 @media (prefers-reduced-motion:reduce){.bt-app[data-fresh]::after,.bt-app[data-fresh] .bt-app-icon,.bt-app[data-fresh] .bt-app-btn-done{animation:none}}
 `;
 
-// node_modules/qrcode-generator/dist/qrcode.mjs
+// ../../../../../Users/blank/wangliang/gitcode/DS-Bot/ds-bot/node_modules/qrcode-generator/dist/qrcode.mjs
 var qrcode = function(typeNumber, errorCorrectionLevel) {
   const PAD0 = 236;
   const PAD1 = 17;
@@ -38658,10 +38635,8 @@ function installSettingsShell(ctx, { face, actions, ui: ui2, held }) {
         aliases: ["settings", "preferences"],
         defaults: {
           "desktop:macos": { code: "Comma", modifiers: ["primary"] },
-          "desktop:windows": { code: "Comma", modifiers: ["primary"] },
           "desktop:linux": { code: "Comma", modifiers: ["primary"] },
-          "web:macos": { code: "Comma", modifiers: ["primary", "alt"] },
-          "web:windows": { code: "Comma", modifiers: ["primary", "alt"] }
+          "web:macos": { code: "Comma", modifiers: ["primary", "alt"] }
         },
         regions: ["page", "editable", "terminal"],
         modals: ["settings"],

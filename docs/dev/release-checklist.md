@@ -1,16 +1,16 @@
 # 发版前真机检查
 
-CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 DPI、安装方式、Desktop 和 Web 同时开这些，只有真机能测。每次发版前，维护者在 Windows 上做一遍；改动涉及 macOS 时，在 macOS 上也做一遍。
+CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 DPI、安装方式、Desktop 和 Web 同时开这些，只有真机能测。每次发版前，在受影响的 macOS 或 Linux 环境验证。
 
 每一项记「通过 / 不通过 / 备注」。不通过的截图，抄下错误原文，开 Issue。结果贴在 Release PR 的评论里。
 
 ## 准备
 
-- Windows 10 / 11 x64，或 macOS（Apple 芯片）。
+- macOS 或 Linux。
 - 官方的 DSH Desktop，版本和 README 里写的一致（现在是 `0.2.2-rc.1`）。只从 DeepSeek Harness 官方渠道下载。
 - 要发的包：在 `ds-bot/` 里运行 `npm pack`，得到 `ds-bot-<版本>.tgz`。
 - 一个能用的模型（DeepSeek API key 或账号）。测试里要填的密钥都用**假值**。
-- 想保留现有数据，先备份数据目录：Windows 是 `C:\Users\<用户名>\.dsh\`，macOS 是 `~/.dsh/`。最好用一台没有自己团队数据的机器或账户来测。
+- 想保留现有数据，先备份数据目录：`~/.dsh/`。最好用一台没有自己团队数据的机器或账户来测。
 
 ## 1. 安装 DSH Desktop
 
@@ -29,19 +29,19 @@ CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 
 | 2.3 | npm（发布后） | 填 `ds-bot`；再用「中国大陆镜像源」装一次 | 两种安装源都能装，版本是新版 | |
 | 2.4 | GitHub（发布后，需要 Git） | 填 `github:Fei2411/DS-Bot#v<版本>&path:/ds-bot` | 能装；没装 Git 时记下错误信息 | |
 | 2.5 | 命令行 | 应用菜单 → 管理 dsh 命令 → 安装；退出 Desktop；新开终端运行 `dsh --version`、`dsh plugin --profile desktop add <tgz 路径>` | 能装；重启 Desktop 后生效 | |
-| 2.6 | 重启 | 完全退出（Windows：托盘图标 → 退出；macOS：⌘Q）再打开 | 团队界面出现 | |
+| 2.6 | 重启 | 完全退出（macOS：⌘Q）再打开 | 团队界面出现 | |
 | 2.7 | 恢复（可选） | 故意装坏一次，看恢复对话框里的「禁用第三方插件」 | 能回到普通 DSH | |
 
 已知的坑：
 
-- 以前用 `link:` 按路径装过、之后又移动或删除了源码目录：DSH 卸载插件时不删 profile 里 `node_modules/ds-bot` 这个失效的链接，再装 `.tgz` 会报没有写入权限（详情里是 `EPERM … rename … node_modules\ds-bot`）。退出 Desktop，只删掉这个链接，再装一次。Windows：`cmd /c rmdir "%USERPROFILE%\.dsh\profiles\desktop\node_modules\ds-bot"`。这是 DSH 的问题，正常安装的用户不会遇到。
-- 2.5 要用 Desktop 自己装的 `dsh`。npm 全局装的 `dsh` 改不了 Desktop 的 profile（`profile "desktop" is managed exclusively by the Electron application`）。两个都装了时，先用 `where.exe dsh`（macOS：`which -a dsh`）看用的是哪一个。
+- 以前用 `link:` 按路径装过、之后又移动或删除了源码目录：DSH 卸载插件时不删 profile 里 `node_modules/ds-bot` 这个失效的链接，再装 `.tgz` 会报没有写入权限（详情里是 `EPERM … rename … node_modules/ds-bot`）。退出 Desktop，只删掉这个链接，再装一次。这是 DSH 的问题，正常安装的用户不会遇到。
+- 2.5 要用 Desktop 自己装的 `dsh`。npm 全局装的 `dsh` 改不了 Desktop 的 profile（`profile "desktop" is managed exclusively by the Electron application`）。两个都装了时，先用 `which -a dsh`看用的是哪一个。
 
 ## 3. 窗口外框
 
 | # | 检查 | 期望 | 结果 |
 |---|---|---|---|
-| 3.1 | 窗口按钮（Windows 右上角，macOS 左上角） | 都能点；没有被插件的按钮、地球按钮、抽屉盖住 | |
+| 3.1 | 窗口按钮（按桌面环境显示） | 都能点；没有被插件的按钮、地球按钮、抽屉盖住 | |
 | 3.2 | 打开右侧详情抽屉或 Bot 浏览器后再看 3.1 | 按钮仍然能点；面板让出标题栏 | |
 | 3.3 | 拖动区 | 按住顶部空白处能拖动窗口；双击能最大化 / 还原 | |
 | 3.4 | 顶部的标题、搜索、新建按钮 | 能点，不会变成拖动 | |
@@ -99,10 +99,10 @@ CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 
 |---|---|---|---|
 | 8.1 | 在一个 Bot 的私聊里说「用 request_secret 要一个叫 TEST_TOKEN 的密钥」 | 出现密钥卡片；输入内容被遮住 | |
 | 8.2 | 填一个 8 位以上的假值，选「只给这个 Bot」，保存 | 卡片变成已保存；对话里看不到值 | |
-| 8.3 | 让 Bot 在终端里打印这个变量（Windows：`echo $env:DSH_SECRET_TEST_TOKEN`；macOS：`echo $DSH_SECRET_TEST_TOKEN`） | 工具结果里是 `[secret:TEST_TOKEN]`，不是原值 | |
+| 8.3 | 让 Bot 在终端里打印这个变量（macOS：`echo $DSH_SECRET_TEST_TOKEN`） | 工具结果里是 `[secret:TEST_TOKEN]`，不是原值 | |
 | 8.4 | 再要一个 `TEST_PIN`，填 4 位假数字，让 Bot 打印 `pin` 加这个变量 | 能保存；结果是 `pin [secret:TEST_PIN]`；别处含这 4 位数字的长数字不受影响 | |
 | 8.5 | 设置 → Secrets | 列出 TEST_TOKEN；能改范围、换值、删除 | |
-| 8.6 | 看数据目录里的 `bot/secrets.json` 的权限（Windows：右键 → 属性 → 安全；macOS：`ls -l`） | 记下哪些用户能读 | |
+| 8.6 | 看数据目录里的 `bot/secrets.json` 的权限（macOS：`ls -l`） | 记下哪些用户能读 | |
 
 ## 9. Bot 浏览器
 

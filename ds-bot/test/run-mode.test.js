@@ -624,11 +624,9 @@ test('the sign-in check gives only yes, no or unknown', async (t) => {
     return path
   }
   const check = { args: [] }
-  if (process.platform !== 'win32') {
-    assert.equal(await probeSignIn(script('in', 'Logged in using ChatGPT'), check), true)
-    assert.equal(await probeSignIn(script('out', 'Not logged in.'), check), false)
-    assert.equal(await probeSignIn(script('odd', 'token: secret-value'), check), null)
-  }
+  assert.equal(await probeSignIn(script('in', 'Logged in using ChatGPT'), check), true)
+  assert.equal(await probeSignIn(script('out', 'Not logged in.'), check), false)
+  assert.equal(await probeSignIn(script('odd', 'token: secret-value'), check), null)
   assert.equal(await probeSignIn(join(dir, 'missing'), check), null)
   assert.equal(await probeSignIn('x', undefined), null)
   // A credential file says yes; its absence says nothing; its content never leaves.

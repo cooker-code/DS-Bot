@@ -91,8 +91,6 @@ const freshHome = (t, state = seed()) => {
   return home
 }
 const stateOf = home => savedTeam(home)
-// The team file is written in the background, and Windows may hold it busy for a
-// moment: the retry waits on the clock, which the tests mock.
 const settleState = async (t, home, check) => {
   const deadline = performance.now() + 3000
   while (!check() && performance.now() < deadline) {

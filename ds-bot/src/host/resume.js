@@ -143,8 +143,6 @@ export function install(rt) {
     // write the file once per change.
     if (due) return
     due = true
-    // Written in place: a rename over the file fails on Windows while anything reads
-    // it, and a torn write only loses what one restart would pick up.
     writing = writing.then(async () => {
       due = false
       const snapshot = latest

@@ -39,7 +39,7 @@ describe('office skill provider', () => {
     const [candidate] = (await provider.list()).filter(s => s.name === 'office-tools')
     const skill = await provider.get(candidate)
     assert.match(skill.content, /officeTools/)
-    assert.match(skill.content, /PowerShell/)
+    assert.match(skill.content, /in Bash/)
   })
 
   test('office skill routes to office-tools, native Office tools, and fallback operation skills', async () => {

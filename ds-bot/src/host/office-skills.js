@@ -39,7 +39,7 @@ function runtimeBlock() {
   const { node } = officeNode()
   const paths = node === undefined
     ? `The commands need a standalone Node. Call the \`load_workspace_dependencies\` tool and use its \`node\` value; if that tool is not in the catalog, these commands are unavailable here.`
-    : `Run the commands as \`"${node}" "${cli}" …\` in Bash, or \`& "${node}" "${cli}" …\` in PowerShell.`
+    : `Run the commands as \`"${node}" "${cli}" …\` in Bash.`
   return `\n\n## Office tools\n\n${JSON.stringify({ officeTools: { node, cli } }, undefined, 2)}\n\n${paths}`
 }
 

@@ -113,7 +113,7 @@ test('a reader that takes over writing reads the book again first', async (t) =>
   assert.deepEqual(parseBook(readFileSync(writer.file('group-r1'), 'utf8')).map(record => record.seq), [1, 2, 3])
 })
 
-test('a write that does not reach the disk is reported to whoever waits for it', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, async (t) => {
+test('a write that does not reach the disk is reported to whoever waits for it', { skip: process.getuid?.() === 0 }, async (t) => {
   const { rt, home } = host(t)
   mkdirSync(join(home, 'ledger'), { recursive: true })
   chmodSync(join(home, 'ledger'), 0o500)

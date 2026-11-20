@@ -19,7 +19,7 @@ function createSource(initial) {
 }
 
 // Just enough of a webview: attributes, listeners, navigation state. capturePage only
-// records a call: the plugin must never make one (it crashes the app renderer on Windows).
+// records a call: the plugin must never make one.
 function fakeWebview() {
   const listeners = {}
   const element = {

@@ -8,11 +8,8 @@ import { fileURLToPath } from 'node:url'
 export const SCRIPT_TIMEOUT = 20_000
 const CHILD = fileURLToPath(new URL('./script-child.js', import.meta.url))
 
-// The child sees none of the host's environment (keys, tokens, DSH_HOME). Windows needs
-// SystemRoot to start a process. An Electron host passes its Node mode to the child.
 function childEnv() {
   const env = {}
-  if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot
   if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = '1'
   return env
 }
@@ -38,7 +35,6 @@ export function runIsolatedScript(body, helpers, { timeout = SCRIPT_TIMEOUT } = 
         env: childEnv(),
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
         serialization: 'json',
-        windowsHide: true,
       })
     } catch (error) {
       end(reject, new Error(`Could not start the script: ${error?.message ?? error}`))

@@ -47,7 +47,6 @@ DSH 会继承启动它的进程的普通环境变量。若外层进程已经是�
 
 ## 注意事项
 
-- 生成的 Python 命令在源模板中使用 `python3`，并在 `trellis init` / `trellis update` 时替换为检测到的 Windows 启动器。
 - 角色派发提示必须以 `Active task: <task path>` 开头。这个精确任务路径是子 Agent 的主要上下文来源；子 Agent 不能全局猜测。
 - 每次 `dsh --profile headless` 调用都会创建新的 DSH 会话。不要期待活动任务指针跨越独立的 headless 调用而保留；应在同一会话中完成工作流，或显式恢复返回的 session id。
 - 可选配套插件由 <https://github.com/SajoLuo/dsh-trellis> 单独维护。

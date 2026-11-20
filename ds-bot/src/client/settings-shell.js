@@ -460,10 +460,8 @@ export function installSettingsShell(ctx, { face, actions, ui, held }) {
         aliases: ['settings', 'preferences'],
         defaults: {
           'desktop:macos': { code: 'Comma', modifiers: ['primary'] },
-          'desktop:windows': { code: 'Comma', modifiers: ['primary'] },
           'desktop:linux': { code: 'Comma', modifiers: ['primary'] },
           'web:macos': { code: 'Comma', modifiers: ['primary', 'alt'] },
-          'web:windows': { code: 'Comma', modifiers: ['primary', 'alt'] },
         },
         regions: ['page', 'editable', 'terminal'],
         modals: ['settings'],

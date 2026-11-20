@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { install } from '../src/host/changes.js'
 
-// A Windows-style event record, as the Session log hands it over.
 const event = (seq, turn) => ({ seq, type: 'workspace/changes', data: { turn } })
 
 const summaryOf = (turn, files) => ({

@@ -10,7 +10,7 @@ Bot 已经能在自己的浏览器里干活，但很多事在用户电脑上的�
 
 驱动用 DSH 的，DS Bot 不自己写。DSH 的电脑操作提供方只负责「看」和「点」，它明确把三件事留给调用方：
 
-1. **权限按谁管。** DSH 的应用授权按会话记，Bot 一换段、一进群就要重新问；长期授权对整个 profile 生效，不分 Bot。Windows 上用的 Cua Driver 提供方在同一进程里运行，不经过任何授权。
+1. **权限按谁管。** DSH 的应用授权按会话记，Bot 一换段、一进群就要重新问；长期授权对整个 profile 生效，不分 Bot。Linux 上用的 Cua Driver 提供方在同一进程里运行，不经过任何授权。
 2. **共用一个桌面。** 多个会话同时操作同一个桌面，由调用方协调。
 3. **看得见、能接管。** 提供方不画指示器，也没有接管和交还。
 
@@ -25,7 +25,7 @@ macOS 的系统权限（辅助功能、屏幕录制）认的是应用的签名�
 - 设置里新增「电脑操控」页，顶上一个总开关，默认关。
 - 打开后，DS Bot 自己加载 DSH 的提供方，所有 Bot 共用这一个：
   - macOS：`@deepseek-ai/dsh-experimental-cua-macos`。
-  - Windows、Linux：`@deepseek-ai/dsh-experimental-computer-use-cua-driver-native`。
+  - Linux：`@deepseek-ai/dsh-experimental-computer-use-cua-driver-native`。
 - 关掉后卸载提供方，所有 Bot 的电脑工具一起撤下；档位和应用授权保留。
 - 开关和提供方状态都在这一页：
   - macOS 显示辅助功能和屏幕录制的状态，各有一个「去授权」按钮，由提供方打开系统设置并显示拖放引导。权限缺失时，Bot 的调用失败并说明要用户授权，不重试。
@@ -56,7 +56,7 @@ macOS 的系统权限（辅助功能、屏幕录制）认的是应用的签名�
 
 ### Bot 不能碰的应用
 
-- DS Bot 自己、DSH Desktop、`DSH Computer Use.app`、系统设置、钥匙串访问和「密码」应用，Windows 的「设置」和凭据管理器。
+- DS Bot 自己、DSH Desktop、`DSH Computer Use.app`、系统设置、钥匙串访问和「密码」应用。
 - 选中这些应用时直接拒绝，用户也不能授权。这样 Bot 不能点自己的审批卡，也不能给自己加权限。
 
 ### 多个 Bot 和用户共用一个桌面
@@ -90,7 +90,6 @@ macOS 的系统权限（辅助功能、屏幕录制）认的是应用的签名�
 ## 已知限制
 
 - 插件版在 DSH Web 里时，DSH 的界面是浏览器里的一个标签页。DS Bot 没法只保护一个标签页，Bot 若被授权使用这个浏览器，就能点到 DSH 的界面。可以限制 Bot 操作该浏览器的权限。
-- Windows：Chromium、Electron 类应用在后台常常收不到输入，要前台；以管理员身份运行的应用拒绝操作。Cua Driver 和引擎在同一进程，它崩溃时引擎一起退出。
 - Linux：支持 X11，Wayland 受限；不在屏幕上画 Bot 的鼠标。
 - macOS：要 macOS 14 及以上；后台输入依赖系统的非公开接口，系统更新后可能失效。
 - 租约只协调 DS Bot 的 Bot；别的程序、DS Bot 之外的 DSH 会话照样能动同一个桌面。

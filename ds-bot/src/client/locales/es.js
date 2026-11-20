@@ -2118,7 +2118,6 @@ export const DSH_ES = {
     'app.warp': 'Warp',
     'app.iterm': 'iTerm2',
     'app.kitty': 'kitty',
-    'app.windowsterminal': 'Windows Terminal',
     'app.gitbash': 'Git Bash',
     'app.gnometerminal': 'GNOME Terminal',
     'app.konsole': 'Konsole',

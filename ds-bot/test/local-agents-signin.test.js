@@ -248,9 +248,7 @@ test('Antigravity uses only a positive macOS Keychain lookup as sign-in evidence
   const unavailable = t.mock.fn((_file, _args, options) => spawn(join(process.execPath, 'missing'), [], options))
   assert.equal(await probeSignIn(agy, signedIn, { platform: 'darwin', spawnKeychain: unavailable }), null)
 
-  for (const platform of ['linux', 'win32']) {
-    assert.equal(await probeSignIn(agy, signedIn, { platform, spawnKeychain: hit }), null)
-  }
+  assert.equal(await probeSignIn(agy, signedIn, { platform: 'linux', spawnKeychain: hit }), null)
   assert.equal(hit.mock.callCount(), 1)
 })
 
@@ -272,11 +270,6 @@ test('probeSignIn parses JSON status, auth error phrases, and credential file fa
     const file = join(root, name)
     writeFileSync(file, `#!/usr/bin/env node\n${body}\n`)
     chmodSync(file, 0o755)
-    if (process.platform === 'win32') {
-      const cmd = `${file}.cmd`
-      writeFileSync(cmd, `@ECHO off\r\n"${process.execPath}" "${file}" %*\r\n`)
-      return cmd
-    }
     return file
   }
   const okJson = makeScript('ok.mjs', 'console.log(JSON.stringify({ loggedIn: true }))')

@@ -32,7 +32,7 @@ Installing another version of DS Bot does not help.
 
 **Why:** before it loads a plugin, DeepSeek Harness checks each plugin row of the profile. This message means a row has the id `bot` but no package name. DS Bot adds its own row with the name `ds-bot`, so the row without a name most likely comes from a file in the profile folder, such as an override `- id: bot` in `cordis.patch.yml` that no longer matches DS Bot's row. We could not reproduce this, so we do not know yet how such a row is left behind.
 
-**What to do:** the profile folder is `~/.dsh/profiles/web/` (Windows: `C:\Users\<user>\.dsh\profiles\web\`), or `profiles/web/` in `DSH_HOME` when it is set. For Desktop, use `profiles/desktop/` instead.
+**What to do:** the profile folder is `~/.dsh/profiles/web/`, or `profiles/web/` in `DSH_HOME` when it is set. For Desktop, use `profiles/desktop/` instead.
 
 1. Quit DSH.
 2. Open `cordis.patch.yml` in the profile folder. Look for a row with `id: bot` that has no `name: ds-bot` line, and remove that row. Keep a copy of the file first.

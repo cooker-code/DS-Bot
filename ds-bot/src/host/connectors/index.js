@@ -588,11 +588,10 @@ export function install(rt) {
 
   const importFiles = () => {
     const home = homedir()
-    const appData = platform() === 'win32' ? (process.env.APPDATA ?? join(home, 'AppData', 'Roaming')) : null
     const files = [
-      { source: 'claude', key: 'mcpServers', path: platform() === 'darwin' ? join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json') : platform() === 'win32' ? join(appData, 'Claude', 'claude_desktop_config.json') : join(home, '.config', 'Claude', 'claude_desktop_config.json') },
+      { source: 'claude', key: 'mcpServers', path: platform() === 'darwin' ? join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json') : join(home, '.config', 'Claude', 'claude_desktop_config.json') },
       { source: 'cursor', key: 'mcpServers', path: join(home, '.cursor', 'mcp.json') },
-      { source: 'vscode', key: 'servers', path: platform() === 'darwin' ? join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json') : platform() === 'win32' ? join(appData, 'Code', 'User', 'mcp.json') : join(home, '.config', 'Code', 'User', 'mcp.json') },
+      { source: 'vscode', key: 'servers', path: platform() === 'darwin' ? join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json') : join(home, '.config', 'Code', 'User', 'mcp.json') },
     ]
     return files
   }

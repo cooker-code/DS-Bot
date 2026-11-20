@@ -1,9 +1,6 @@
 # Shell interpreters require LF line endings.
 *.sh text eol=lf
 
-# Windows shims as npm and pnpm write them, with CRLF.
-ds-bot/test/fixtures/windows-shims/** -text
-
 # Trellis: append-only developer journals should merge cleanly across
 # parallel sessions/worktrees — each session only appends a new block, so
 # there is nothing to actually conflict on.

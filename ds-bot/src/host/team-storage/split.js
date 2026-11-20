@@ -211,7 +211,6 @@ const equalTeam = (a, b) =>
   sameKeys(a.rooms, b.rooms) &&
   Object.keys(a.rooms ?? {}).every((id) => sameRoom(a.rooms[id], b.rooms[id]))
 function fsync(path) {
-  if (process.platform === 'win32') return // SQLite FULL syncs file contents; directory handles are not portable on Windows.
   const fd = openSync(path, 'r')
   try {
     fsyncSync(fd)

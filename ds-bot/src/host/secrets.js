@@ -380,7 +380,7 @@ export function install(rt) {
     const names = scope.map(id => rt.botOf(id)?.name).filter(Boolean)
     return names.length === 0 ? 'no Bot' : names.join(', ')
   }
-  const usage = name => `$${envName(name)} in bash, or $env:${envName(name)} in PowerShell`
+  const usage = name => `$${envName(name)} in bash`
 
   async function tell(botId, text) {
     if (rt.botOf(botId) === undefined) return

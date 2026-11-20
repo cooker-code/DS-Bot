@@ -704,8 +704,7 @@ const threeBots = () => {
   return seed
 }
 const callsOf = (agents, id) => agents.get(id)?.calls ?? []
-// What state.json holds once the saves made so far are done: a save waits for the earlier
-// ones, and a read while one renames the file over makes that save fail on Windows.
+// Wait for the pending saves before inspecting state.
 const worksIn = async ({ call, home }) => {
   await call('set-prefs', {})
   return savedTeam(home).works ?? {}
@@ -1672,7 +1671,7 @@ test('a merged request that does not go out leaves the delivered text in the dia
 })
 
 // The book is written before the message goes out: one it cannot keep is not sent.
-test('a message between Bots that the book cannot keep is not sent', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, async (t) => {
+test('a message between Bots that the book cannot keep is not sent', { skip: process.getuid?.() === 0 }, async (t) => {
   const { agentOf, tool, exchanges, home, stop } = await start(team())
   t.after(stop)
   mkdirSync(join(home, 'ledger'), { recursive: true })

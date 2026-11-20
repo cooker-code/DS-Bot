@@ -25,7 +25,7 @@ export function cleanText(text, { redact = value => value, home = homedir() } = 
   let out = redactCredentials(redact(String(text ?? '')))
   if (home && home.length > 1) {
     out = out.replace(new RegExp(quote(home), 'g'), '~')
-    // JSON and Windows paths spell the same folder with doubled or forward slashes.
+    // Redact escaped path spellings in diagnostic records, too.
     const slashes = home.replace(/\\/g, '/')
     if (slashes !== home) out = out.replace(new RegExp(quote(slashes), 'g'), '~')
     const doubled = home.replace(/\\/g, '\\\\')

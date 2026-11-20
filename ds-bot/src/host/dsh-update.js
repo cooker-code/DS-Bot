@@ -143,10 +143,10 @@ export function install(rt) {
     if (status.kind !== 'npm') throw new Error('This DSH updates with its app')
     const chosen = target
     Object.assign(status, { phase: 'installing', error: null })
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    const npm = 'npm'
     const args = ['install', '-g', `${DSH_PACKAGE}@${chosen.version}`]
     const runner = rt.dshSpawn ?? ((command, argv, options) => spawn(command, argv, options))
-    running = runner(npm, args, { windowsHide: true })
+    running = runner(npm, args)
     let output = ''
     running.stdout?.on?.('data', chunk => { output = `${output}${chunk}`.slice(-4000) })
     running.stderr?.on?.('data', chunk => { output = `${output}${chunk}`.slice(-4000) })

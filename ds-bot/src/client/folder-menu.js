@@ -4,7 +4,7 @@ import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, FolderIcon, PencilIcon } 
 import { Caret, useAnchoredMenu } from './model-menu.js'
 import { t } from './i18n.js'
 
-// The last segment of a host path, Windows or POSIX; a root keeps its own spelling.
+// The last segment of a host path, as shown in the folder picker; a root keeps its own spelling.
 export const folderName = path => String(path).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || String(path)
 
 const Tick = ({ on }) => h('span', { className: 'bt-model-tick', 'aria-hidden': true }, on ? h(CheckIcon) : null)

@@ -116,9 +116,7 @@ test('protected apps match by id, name and executable', () => {
     { name: 'DSH Computer Use Dev' },
     { name: 'DeepSeek Harness' },
     { name: 'Keychain Access' },
-    { name: 'Credential Manager' },
     { path: '/Applications/DSH Computer Use.app/Contents/MacOS/dsh-cua-native' },
-    { path: 'C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe' },
   ]) assert.equal(isProtectedApp(app), true, JSON.stringify(app))
   assert.equal(isProtectedApp({ name: 'Notes' }), false)
   assert.equal(isProtectedApp({ id: 'com.apple.Notes' }), false)
@@ -430,23 +428,6 @@ test('a plain Session is refused on the provider DS Bot mounted', async (t) => {
   assert.equal((await gateOf(ctx)('plain', 'cua', { method: 'click', params: {} })).kind, 'deny')
 })
 
-test('Windows Bots that can operate apps are told how input really lands', async (t) => {
-  const { ctx, home, rt } = setup()
-  const platform = Object.getOwnPropertyDescriptor(process, 'platform')
-  t.after(async () => { Object.defineProperty(process, 'platform', platform); await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
-  Object.defineProperty(process, 'platform', { ...platform, value: 'win32' })
-  const services = { loader: { import: async name => ({ name }) }, agents: { list: () => [] } }
-  ctx.get = name => services[name]
-  withProvider(ctx, services)
-  await rt.load()
-  await rt.computerEndpoint('set-enabled', { enabled: true })
-  await rt.computerEndpoint('provider-retry', {})
-  const text = () => ctx.sections.get('computer-use:ds-bot').text({ agent: { id: 'w1' } })
-  assert.match(text(), /If the text field supports set_value/)
-  await rt.computerEndpoint('set-level', { botId: 'w1', level: 'view' })
-  assert.doesNotMatch(text(), /set_value/)
-})
-
 test('the helper is protected by its real bundle id', async () => {
   const { isProtectedApp } = await import('../src/host/computer/index.js')
   assert.equal(isProtectedApp({ id: 'com.deepseek.harness.computer-use' }), true)
@@ -654,7 +635,7 @@ test('Stop all stops only Bots that hold a lease, are in-flight, or are bot/wait
   assert.deepEqual([...stopped].sort(), ['w1'])
 })
 
-test('the Windows path also asks consent for observe calls on a known app', async (t) => {
+test('the Linux provider also asks consent for observe calls on a known app', async (t) => {
   const { ctx, home, rt } = setup()
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
   await rt.load()

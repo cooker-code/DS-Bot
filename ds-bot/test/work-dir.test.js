@@ -37,7 +37,6 @@ const TEAM = {
 // ctx.get finds, such as the sandbox policy and approvals.
 // `locked`: another dsh holds the team, so this one only shows it.
 async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, locked = false, root: rootDir } = {}) {
-  // The native realpath, as fs/promises uses: on Windows the JS one keeps 8.3 short names.
   const root = rootDir ?? realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-work-dir-')))
   mkdirSync(root, { recursive: true })
   const dsh = join(root, 'dsh')
@@ -775,7 +774,7 @@ test('members share their group workspace across aliases and retain distinct sam
   const other = join(root, 'other', 'project')
   mkdirSync(other, { recursive: true })
   const alias = join(root, 'alias')
-  symlinkSync(project, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  symlinkSync(project, alias, 'dir')
   const [a, b, c] = await Promise.all([project, alias, other].map(dir => rt.createSession('Member', { dir, groupMember: true })))
   const workspaces = ctx.workspaceRegistry.list().filter(w => w.title === 'project')
   assert.equal(workspaces.length, 2)
@@ -914,7 +913,7 @@ test('the team workspace holds no DeepSeek Harness data, apart from the plugin\'
   assert.match(await error('relative'), /full path/)
   assert.equal(existsSync(join(dsh, 'inside')), false)
   // A folder to be made under a link into the data is refused before anything is made.
-  symlinkSync(dsh, join(root, 'dsh-link'), process.platform === 'win32' ? 'junction' : 'dir')
+  symlinkSync(dsh, join(root, 'dsh-link'), 'dir')
   assert.match(await error(join(root, 'dsh-link', 'new')), /holds DeepSeek Harness data/)
   assert.equal(existsSync(join(dsh, 'new')), false)
   assert.equal(state().workspaceId, 'w1')
@@ -924,11 +923,11 @@ test('the team workspace holds no DeepSeek Harness data, apart from the plugin\'
   // The default replaced by a link into the data, to all of it or a part, is refused.
   await call('team-workspace', { path: join(root, 'moved') })
   rmSync(team, { recursive: true, force: true })
-  symlinkSync(home, team, process.platform === 'win32' ? 'junction' : 'dir')
+  symlinkSync(home, team, 'dir')
   assert.match(await error(team), /holds DeepSeek Harness data/)
   rmSync(team, { recursive: true, force: true })
   mkdirSync(join(dsh, 'profiles'))
-  symlinkSync(join(dsh, 'profiles'), team, process.platform === 'win32' ? 'junction' : 'dir')
+  symlinkSync(join(dsh, 'profiles'), team, 'dir')
   assert.match(await error(team), /holds DeepSeek Harness data/)
   assert.equal(state().workspaceId, 'w-new')
 })
@@ -1169,7 +1168,7 @@ test('while another dsh has the team open, a Bot cannot leave its working folder
 })
 
 // The trimmed path names no folder, so a check of it would let DSH move out unchecked.
-test('the folder is checked as DSH gets it, spaces and all', { skip: process.platform === 'win32' && 'Windows drops trailing spaces from names' }, async (t) => {
+test('the folder is checked as DSH gets it, spaces and all', async (t) => {
   const { service } = folderService()
   const { services } = approvalServices('allowed-once')
   const { ctx, agentOf, root, state, stop } = await start({ services: { ...services, workingDirectory: service } })

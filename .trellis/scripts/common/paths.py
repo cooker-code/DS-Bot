@@ -284,7 +284,7 @@ def normalize_task_ref(task_ref: str) -> str:
     """Normalize a task ref for stable runtime storage.
 
     Stored refs should prefer repo-relative POSIX paths like
-    `.trellis/tasks/03-27-my-task`, even on Windows. Absolute paths are preserved
+    `.trellis/tasks/03-27-my-task`. Absolute paths are preserved
     unless they can later be converted back to repo-relative form by callers.
     """
     normalized = task_ref.strip()
