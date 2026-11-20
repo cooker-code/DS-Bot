@@ -131,37 +131,32 @@ const menuItem = (node, key) => {
   return [...(button?.children.flat(Infinity).find(child => child?.props?.items)?.props?.items ?? [])].find(item => item.key === key)
 }
 
-test('the drawer `···` lists browser, a side chat, and the column tabs', () => {
-  const picks = { openBrowser: 0, newSideChat: 0, newTerminal: 0, openFiles: 0 }
-  const actions = {
-    ...Object.fromEntries(Object.keys(picks).map(name => [name, () => { picks[name] += 1 }])),
-    canOpenTerminal: () => true,
-    canOpenFiles: () => true,
-  }
-  const browseRoster = { ...roster, browser: true }
-  const withBrowser = drawer('a', actions, browseRoster)
-  assert.deepEqual(menuKeys(withBrowser), ['browser', 'side', 'sep', 'terminal', 'files'])
-  for (const key of ['browser', 'side', 'terminal', 'files']) {
-    const action = { browser: 'openBrowser', side: 'newSideChat', terminal: 'newTerminal', files: 'openFiles' }[key]
-    menuItem(withBrowser, key).onPick()
-    assert.equal(picks[action], 1, `${key} runs ${action}`)
-  }
-})
-
 test('a bot in a window without a browser still gets Side chat in the `···`', () => {
   assert.deepEqual(menuKeys(drawer('a', {})), ['side'])
 })
 
-test('a group keeps only the column tabs, and nothing when they are absent', () => {
-  const actions = { canOpenTerminal: () => true, canOpenFiles: () => true, newTerminal: () => {}, openFiles: () => {} }
-  assert.deepEqual(menuKeys(drawer('g', actions)), ['terminal', 'files'])
-  let opened = 0
-  const withBrowser = drawer('g', { ...actions, canOpenSidebarBrowser: () => true, openSidebarBrowser: () => { opened += 1 } })
-  assert.deepEqual(menuKeys(withBrowser), ['terminal', 'files', 'sidebar-browser'])
-  menuItem(withBrowser, 'sidebar-browser').onPick()
-  assert.equal(opened, 1)
-  assert.equal(moreButton(drawer('g', {})), null)
-  assert.equal(moreButton(drawer('g', { canOpenTerminal: () => false })), null)
+test('the group menu follows the host guide and opens the chosen kind for the room', () => {
+  const entries = [
+    { providerId: 'files', kind: 'files', id: 'new', title: () => '文件' },
+    { providerId: 'extension', kind: 'diagnostics', id: 'new', title: () => '会话数据诊断' },
+  ]
+  const picks = []
+  const actions = {
+    sidebarGuide: { getSnapshot: () => entries, subscribe: () => () => {} },
+    openConversationTab: (...args) => picks.push(args),
+  }
+  const group = drawer('g', actions)
+  const keys = entries.map(entry => JSON.stringify([entry.providerId, entry.id]))
+  assert.deepEqual(menuKeys(group), keys)
+  assert.equal(menuItem(group, keys[1]).label, '会话数据诊断')
+  menuItem(group, keys[1]).onPick()
+  assert.deepEqual(picks, [['diagnostics', 'g']])
+  const privateChat = drawer('a', { ...actions, openBrowser() {} }, { ...roster, browser: true })
+  assert.deepEqual(menuKeys(privateChat), ['browser', 'side', 'sep', ...keys])
+  menuItem(privateChat, keys[1]).onPick()
+  assert.deepEqual(picks[1], ['diagnostics', 'a'])
+  entries.length = 0
+  assert.equal(moreButton(drawer('g', actions)), null)
 })
 
 test('a non-team surface shows no `···`', () => {

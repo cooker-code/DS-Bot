@@ -935,8 +935,46 @@ export function apply(ctx) {
   actions.newTerminal = () => openSidebarTab('terminal')
   actions.canOpenFiles = () => canOpenSidebarTab('files')
   actions.openFiles = () => openSidebarTab('files')
-  actions.canOpenSidebarBrowser = () => canOpenSidebarTab('browser')
-  actions.openSidebarBrowser = () => openSidebarTab('browser')
+  const sidebarGuide = createSource([])
+  actions.sidebarGuide = sidebarGuide
+  ctx.inject(['sidebarRight', 'sidebarRightTabs'], scope => {
+    scope.effect(() => {
+      const tabs = scope.sidebarRightTabs
+      const update = () => sidebarGuide.set(tabs.guide())
+      const off = tabs.subscribe(update)
+      update()
+      return () => { off(); sidebarGuide.set([]) }
+    }, 'ds-bot: conversation sidebar guide')
+  })
+  actions.openConversationTab = async (kind, conversationId) => {
+    try {
+      const sidebar = ctx.get('sidebarRight')
+      const target = partFor(conversationId)
+      if (sidebar.mounted.getSnapshot() !== target) {
+        await new Promise((resolve, reject) => {
+          const finish = error => {
+            off()
+            clearTimeout(timer)
+            if (error) reject(error)
+            else resolve()
+          }
+          const check = () => {
+            if (sidebar.mounted.getSnapshot() === target) finish()
+          }
+          const off = sidebar.mounted.subscribe(check)
+          const timer = setTimeout(() => finish(new Error(t('The conversation workspace is not open yet. Try again.'))), 5000)
+          try { actions.openSession(conversationId); check() } catch (error) { finish(error) }
+        })
+        // The sidebar publishes its Session before React commits that Session's pane.
+        await new Promise(resolve => requestAnimationFrame(resolve))
+      }
+      if (sidebar.mounted.getSnapshot() !== target) throw new Error(t('The conversation workspace is not open yet. Try again.'))
+      sidebar.openTab(kind)
+      actions.closePanel()
+    } catch (error) {
+      actions.reportError(error, 'right-sidebar')
+    }
+  }
 
   // The drawer and DSH's right column never share the window: whichever the
   // user asked for last wins. The column's state is read off the frame's

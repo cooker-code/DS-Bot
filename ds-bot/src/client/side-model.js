@@ -154,19 +154,3 @@ export function stripMenuKeys({ canBrowse, canTerminal, canFiles }) {
   if (tail.length > 0) keys.push('sep')
   return [...keys, ...tail]
 }
-
-// The details `···` menu keys, in order. A group gets only the tail group; a
-// non-team surface gets nothing, and the button hides.
-export function drawerMenuKeys({ bot, room, canBrowse, canTerminal, canFiles, canSidebarBrowser }) {
-  const keys = []
-  if (bot === true && canBrowse === true) keys.push('browser')
-  if (bot === true) keys.push('side')
-  const tail = []
-  if (bot === true || room === true) {
-    if (canTerminal === true) tail.push('terminal')
-    if (canFiles === true) tail.push('files')
-    if (room === true && canSidebarBrowser === true) tail.push('sidebar-browser')
-  }
-  if (keys.length > 0 && tail.length > 0) keys.push('sep')
-  return [...keys, ...tail]
-}

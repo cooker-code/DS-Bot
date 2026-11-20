@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
-import { drawerMenuKeys, panelHasStrip, stripMenuKeys } from '../src/client/side-model.js'
+import { panelHasStrip, stripMenuKeys } from '../src/client/side-model.js'
 
 // The strip shows whenever the Bot has a browser tab or a side chat; side chats
 // need no browser bridge, so DSH Web gets them too.
@@ -21,16 +21,6 @@ test('the strip `···` offers a browser tab only where the browser works', () 
   assert.deepEqual(stripMenuKeys({ canBrowse: false, canTerminal: false, canFiles: false }), ['side'])
   assert.deepEqual(stripMenuKeys({ canBrowse: false, canTerminal: true, canFiles: false }),
     ['side', 'sep', 'terminal'])
-})
-
-test('the details `···` hides when it would be empty', () => {
-  assert.deepEqual(drawerMenuKeys({ bot: true, canBrowse: true, canTerminal: true, canFiles: true }),
-    ['browser', 'side', 'sep', 'terminal', 'files'])
-  assert.deepEqual(drawerMenuKeys({ bot: true, canBrowse: false, canTerminal: false, canFiles: false }), ['side'])
-  assert.deepEqual(drawerMenuKeys({ bot: false, room: true, canBrowse: false, canTerminal: true, canFiles: true }),
-    ['terminal', 'files'])
-  assert.deepEqual(drawerMenuKeys({ bot: false, room: true, canBrowse: false, canTerminal: false, canFiles: false }), [])
-  assert.deepEqual(drawerMenuKeys({ bot: false, room: false, canBrowse: false, canTerminal: true, canFiles: true }), [])
 })
 
 // The `···` popover, bundled once and rendered with a minimal React stand-in;

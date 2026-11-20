@@ -1,10 +1,9 @@
-import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { isMainOf } from './sources.js'
 import { HEADER, currentPart, runStatsOf, stripHeader, usageOf } from './text.js'
-import { AlertIcon, PlusIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
+import { AlertIcon, PlusIcon, PlugIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
 import { botState, BotMark, BotAvatar } from './mark.js'
 import { GlobeIcon, Favicon, PanelMenu, menuItemFor } from './browser-pane.js'
-import { drawerMenuKeys } from './side-model.js'
 import { useEscape } from './overlay-hooks.js'
 import { GroupContext, MemberContext, useGroupContext } from './group-context.js'
 import { BotSettingsForm, InlineText } from './bot-settings.js'
@@ -40,6 +39,8 @@ const TAB_LABELS = { details: 'Details', browser: 'Browser', computer: 'Computer
 
 const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } }
 const shortUrl = url => String(url ?? '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+const emptyGuide = []
+const noGuide = { getSnapshot: () => emptyGuide, subscribe: () => () => {} }
 const EMPTY_TABS = { ids: [], active: null }
 
 // The Bot's permission preset, from the presets DeepSeek Harness offers.
@@ -352,6 +353,8 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
   const isMainBot = isMainOf(roster, owner?.id)
   const [tab, setTab] = useState('details')
   const room = roster.roomsById[sessionId]
+  const guide = (room || owner) && actions.sidebarGuide ? actions.sidebarGuide : noGuide
+  const entries = useSyncExternalStore(guide.subscribe, guide.getSnapshot)
   // The info pane swaps its overview for the Bot or group settings view in place.
   const [view, setView] = useState(room && startTab?.startsWith('task/') ? { taskId: startTab.slice(5) } : startTab === 'settings' && (owner || room) ? 'settings' : 'overview')
   const [editing, setEditing] = useState(Boolean(startRenaming && (roster.byId[sessionId] || roster.roomsById[sessionId])))
@@ -399,16 +402,22 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
         bot ? h(BotSettingsForm, { bot, roster, actions, run }) : h(GroupSettingsForm, { room, roster, actions, run, onDeleted: close })),
     ]
   }
-  // The `···` button holds Browser, a new side chat, and DSH's right-column
-  // tabs; it hides when none of them applies.
-  const more = drawerMenuKeys({
-    bot: bot !== undefined,
-    room: room !== undefined,
-    canBrowse: bot !== undefined && roster.browser === true && actions.openBrowser !== undefined,
-    canTerminal: actions.canOpenTerminal?.() === true,
-    canFiles: actions.canOpenFiles?.() === true,
-    canSidebarBrowser: actions.canOpenSidebarBrowser?.() === true,
-  }).map(key => menuItemFor(key, actions, sessionId))
+  const more = []
+  if (bot) {
+    if (roster.browser === true && actions.openBrowser) {
+      more.push({ ...menuItemFor('browser', actions, sessionId), label: t('Bot browser') })
+    }
+    more.push({ ...menuItemFor('side', actions, sessionId), label: t('Bot side chat') })
+    if (entries.length) more.push({ sep: true })
+  }
+  for (const entry of entries) {
+    more.push({
+      key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
+      icon: entry.icon ?? PlugIcon,
+      label: entry.title(),
+      onPick: () => actions.openConversationTab(entry.kind, room?.id ?? sessionId),
+    })
+  }
   const top = h('div', { className: 'bt-drawer-top', 'data-move': side },
     bot || room ? h('button', { type: 'button', className: 'bt-round', 'aria-label': bot ? t('Edit Bot') : t('Group settings'), title: bot ? t('Edit Bot') : t('Group settings'), 'data-info-row': 'settings', onClick: () => setView('settings') }, h(GearIcon)) : null,
     more.length > 0 ? h('span', { 'data-info-row': 'more' }, h(PanelMenu, { items: more, className: 'bt-round', 'aria-label': t('More') })) : null,

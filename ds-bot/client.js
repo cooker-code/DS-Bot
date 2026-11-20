@@ -14133,6 +14133,9 @@ var ZH = {
   "New browser tab": "新建浏览器页",
   Terminal: "终端",
   Files: "文件树",
+  "The conversation workspace is not open yet. Try again.": "会话工作区尚未打开，请重试。",
+  "Bot browser": "Bot 专属浏览器",
+  "Bot side chat": "Bot 侧边对话",
   "Close side chat": "关闭侧边对话",
   "Delete side chat": "删除侧边对话",
   "Ask without interrupting": "不打断当前工作，顺便问一句",
@@ -40287,19 +40290,6 @@ function stripMenuKeys({ canBrowse, canTerminal, canFiles }) {
   if (tail.length > 0) keys.push("sep");
   return [...keys, ...tail];
 }
-function drawerMenuKeys({ bot, room: room2, canBrowse, canTerminal, canFiles, canSidebarBrowser }) {
-  const keys = [];
-  if (bot === true && canBrowse === true) keys.push("browser");
-  if (bot === true) keys.push("side");
-  const tail = [];
-  if (bot === true || room2 === true) {
-    if (canTerminal === true) tail.push("terminal");
-    if (canFiles === true) tail.push("files");
-    if (room2 === true && canSidebarBrowser === true) tail.push("sidebar-browser");
-  }
-  if (keys.length > 0 && tail.length > 0) keys.push("sep");
-  return [...keys, ...tail];
-}
 
 // src/client/side-chat.js
 var import_react57 = require("react");
@@ -40468,7 +40458,7 @@ var SIDE_CSS = `
 .bt-side-input:focus{border-color:var(--bt-accent)}
 .bt-side-input:disabled{opacity:.6}
 .bt-pmenu{position:relative;display:inline-flex;flex:none}
-.bt-pmenu-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:172px;padding:6px;border-radius:12px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);display:flex;flex-direction:column;gap:2px;transform-origin:top right;animation:bt-pop-drop .18s cubic-bezier(.16,1,.3,1),bt-fade .14s ease-out}
+.bt-pmenu-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:172px;max-height:65vh;overflow-y:auto;padding:6px;border-radius:12px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);display:flex;flex-direction:column;gap:2px;transform-origin:top right;animation:bt-pop-drop .18s cubic-bezier(.16,1,.3,1),bt-fade .14s ease-out}
 .bt-pmenu-pop[data-leaving]{animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
 .bt-pmenu-item{display:flex;align-items:center;gap:9px;width:100%;min-width:0;padding:7px 10px;border:0;border-radius:8px;background:none;color:var(--bt-ink);font:inherit;font-size:12px;line-height:17px;text-align:left;cursor:pointer}
 .bt-pmenu-item:hover{background:var(--bt-hover)}
@@ -43565,6 +43555,9 @@ var hostOf = (url) => {
   }
 };
 var shortUrl = (url) => String(url ?? "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
+var emptyGuide = [];
+var noGuide = { getSnapshot: () => emptyGuide, subscribe: () => () => {
+} };
 var EMPTY_TABS = { ids: [], active: null };
 function PermissionRow({ bot, roster, actions, run: run2 }) {
   const catalog = roster.permissions;
@@ -44026,6 +44019,8 @@ function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, a
   const isMainBot = isMainOf(roster, owner?.id);
   const [tab, setTab] = (0, import_react73.useState)("details");
   const room2 = roster.roomsById[sessionId];
+  const guide = (room2 || owner) && actions.sidebarGuide ? actions.sidebarGuide : noGuide;
+  const entries2 = (0, import_react73.useSyncExternalStore)(guide.subscribe, guide.getSnapshot);
   const [view, setView] = (0, import_react73.useState)(room2 && startTab?.startsWith("task/") ? { taskId: startTab.slice(5) } : startTab === "settings" && (owner || room2) ? "settings" : "overview");
   const [editing, setEditing] = (0, import_react73.useState)(Boolean(startRenaming && (roster.byId[sessionId] || roster.roomsById[sessionId])));
   const [draftName, setDraftName] = (0, import_react73.useState)(roster.byId[sessionId]?.name ?? (roster.roomsById[sessionId]?.named ? roster.roomsById[sessionId].name : ""));
@@ -44081,14 +44076,22 @@ function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, a
       )
     ];
   }
-  const more = drawerMenuKeys({
-    bot: bot !== void 0,
-    room: room2 !== void 0,
-    canBrowse: bot !== void 0 && roster.browser === true && actions.openBrowser !== void 0,
-    canTerminal: actions.canOpenTerminal?.() === true,
-    canFiles: actions.canOpenFiles?.() === true,
-    canSidebarBrowser: actions.canOpenSidebarBrowser?.() === true
-  }).map((key) => menuItemFor(key, actions, sessionId));
+  const more = [];
+  if (bot) {
+    if (roster.browser === true && actions.openBrowser) {
+      more.push({ ...menuItemFor("browser", actions, sessionId), label: t("Bot browser") });
+    }
+    more.push({ ...menuItemFor("side", actions, sessionId), label: t("Bot side chat") });
+    if (entries2.length) more.push({ sep: true });
+  }
+  for (const entry of entries2) {
+    more.push({
+      key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
+      icon: entry.icon ?? PlugIcon,
+      label: entry.title(),
+      onPick: () => actions.openConversationTab(entry.kind, room2?.id ?? sessionId)
+    });
+  }
   const top = (0, import_react73.createElement)(
     "div",
     { className: "bt-drawer-top", "data-move": side },
@@ -44292,7 +44295,7 @@ function PanelMenu({ items, className, "aria-label": label }) {
           setOpen(false);
           item.onPick();
         }
-      }, (0, import_react74.createElement)(item.icon), (0, import_react74.createElement)("span", null, item.label)))
+      }, (0, import_react74.createElement)(item.icon, { size: 15 }), (0, import_react74.createElement)("span", null, item.label)))
     ) : null
   );
 }
@@ -44309,8 +44312,6 @@ function menuItemFor(key, actions, subject) {
       return { key, icon: SideIcon, label: t("Side chat"), onPick: report(() => actions.newSideChat(subject)) };
     case "terminal":
       return { key, icon: TerminalIcon, label: t("Terminal"), onPick: report(() => actions.newTerminal()) };
-    case "sidebar-browser":
-      return { key, icon: GlobeIcon2, label: t("Browser"), onPick: report(() => actions.openSidebarBrowser()) };
     case "files":
       return { key, icon: FolderIcon, label: t("Files"), onPick: report(() => actions.openFiles()) };
     default:
@@ -47927,8 +47928,53 @@ function apply(ctx) {
   actions.newTerminal = () => openSidebarTab("terminal");
   actions.canOpenFiles = () => canOpenSidebarTab("files");
   actions.openFiles = () => openSidebarTab("files");
-  actions.canOpenSidebarBrowser = () => canOpenSidebarTab("browser");
-  actions.openSidebarBrowser = () => openSidebarTab("browser");
+  const sidebarGuide = createSource([]);
+  actions.sidebarGuide = sidebarGuide;
+  ctx.inject(["sidebarRight", "sidebarRightTabs"], (scope) => {
+    scope.effect(() => {
+      const tabs = scope.sidebarRightTabs;
+      const update2 = () => sidebarGuide.set(tabs.guide());
+      const off = tabs.subscribe(update2);
+      update2();
+      return () => {
+        off();
+        sidebarGuide.set([]);
+      };
+    }, "ds-bot: conversation sidebar guide");
+  });
+  actions.openConversationTab = async (kind, conversationId) => {
+    try {
+      const sidebar = ctx.get("sidebarRight");
+      const target = partFor(conversationId);
+      if (sidebar.mounted.getSnapshot() !== target) {
+        await new Promise((resolve2, reject) => {
+          const finish = (error) => {
+            off();
+            clearTimeout(timer);
+            if (error) reject(error);
+            else resolve2();
+          };
+          const check = () => {
+            if (sidebar.mounted.getSnapshot() === target) finish();
+          };
+          const off = sidebar.mounted.subscribe(check);
+          const timer = setTimeout(() => finish(new Error(t("The conversation workspace is not open yet. Try again."))), 5e3);
+          try {
+            actions.openSession(conversationId);
+            check();
+          } catch (error) {
+            finish(error);
+          }
+        });
+        await new Promise((resolve2) => requestAnimationFrame(resolve2));
+      }
+      if (sidebar.mounted.getSnapshot() !== target) throw new Error(t("The conversation workspace is not open yet. Try again."));
+      sidebar.openTab(kind);
+      actions.closePanel();
+    } catch (error) {
+      actions.reportError(error, "right-sidebar");
+    }
+  };
   ctx.effect(() => {
     const sidebar = ctx.get("sidebarRight");
     if (!sidebar) return void 0;
