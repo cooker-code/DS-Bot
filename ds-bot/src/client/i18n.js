@@ -11,6 +11,7 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Member": "成员",
   "Archive 1 discussion": "归档所选 1 轮",
   "Archived discussions": "已归档的讨论",
   "Archive earlier discussions": "归档此轮之前的讨论",
