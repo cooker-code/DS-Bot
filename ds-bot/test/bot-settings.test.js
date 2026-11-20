@@ -99,22 +99,44 @@ test('Escape drops the typed text, still reports the edit done, and the saved va
   assert.deepEqual(log, [['done']])
 })
 
-test('the preview receives each unsaved draft and goes back to the saved text on Escape', () => {
-  let preview
-  const log = editing({
-    label: 'Group notice', value: 'Original', multiline: true,
-    renderField: (input, text) => { preview = text; return input },
-  }, (api) => {
-    for (const next of ['## Friday', '**Release**', '']) {
-      api.type(next)
-      assert.equal(api.props().value, next)
-      assert.equal(preview, next)
-    }
-    api.key('Escape')
-    assert.equal(api.props().value, 'Original')
-    assert.equal(preview, 'Original')
-  })
-  assert.deepEqual(log, [['done']])
+test('Markdown settings have exclusive read and edit modes and retain a refused draft for retry', async () => {
+  const setting = settings(bot).find(node => node.type.name === 'MarkdownSetting')
+  const original = react.useState
+  const cells = []
+  let slot = 0
+  react.useState = initial => {
+    const i = slot++
+    if (!(i in cells)) cells[i] = initial
+    return [cells[i], next => { cells[i] = next }]
+  }
+  const writes = []
+  const render = () => {
+    slot = 0
+    const field = setting.type({ ...setting.props, value: 'Original', onSave: text => { writes.push(text); return writes.length > 1 } })
+    return walk(field.type(field.props))
+  }
+  const button = label => render().find(node => node.type === 'button' && node.props.children.includes(label))
+  const input = () => render().find(node => node.type === 'textarea')
+  try {
+    assert.equal(input(), undefined)
+    assert.equal(button('Save'), undefined)
+    button('Edit').props.onClick()
+    assert.equal(button('Edit'), undefined)
+    assert.equal(render().some(node => node.props.text === 'Original'), false)
+    input().props.onChange({ target: { value: '## New' } })
+    assert.equal(input().props.onBlur, undefined)
+    await button('Save').props.onClick()
+    assert.equal(input().props.value, '## New')
+    await button('Save').props.onClick()
+    assert.deepEqual(writes, ['## New', '## New'])
+    assert.equal(input(), undefined)
+    button('Edit').props.onClick()
+    button('Cancel').props.onClick()
+    assert.ok(button('Edit'))
+    assert.equal(writes.length, 2)
+  } finally {
+    react.useState = original
+  }
 })
 
 test('an unchanged or untouched field saves nothing but still reports done', () => {

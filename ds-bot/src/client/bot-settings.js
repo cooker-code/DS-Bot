@@ -13,8 +13,8 @@ import { BotComputerCard } from './computer.js'
 import { AvatarLibraryPanel, avatarImage } from './avatar-library.js'
 import { useMemoryCount } from './memory-panel.js'
 import { SPRING_SHAPE, SPRING_TAP, spring, useGlide, useLinger } from './motion.js'
-import { MarkdownText } from './dsh-primitives.js'
-import { mdLabels, t } from './i18n.js'
+import { MarkdownSetting } from './markdown-field.js'
+import { t } from './i18n.js'
 
 const capitalize = word => word[0].toUpperCase() + word.slice(1)
 
@@ -22,7 +22,7 @@ const capitalize = word => word[0].toUpperCase() + word.slice(1)
 // saved value back. A required field never saves empty. Where the field sits in a page
 // other than Settings, `className` styles it, `autoFocus` puts the caret at the end of
 // the text on mount, and `onDone` runs when the edit ends, saved or not.
-export function InlineText({ label, value, placeholder, required = false, maxLength, multiline = false, className, autoFocus = false, onSave, onDone, renderField }) {
+export function InlineText({ label, value, placeholder, required = false, maxLength, multiline = false, className, autoFocus = false, onSave, onDone }) {
   const [draft, setDraft] = useState(null)
   const reverting = useRef(false)
   const field = useRef(null)
@@ -53,7 +53,7 @@ export function InlineText({ label, value, placeholder, required = false, maxLen
     }
   }
   const text = draft ?? value ?? ''
-  const input = h(multiline ? 'textarea' : 'input', {
+  return h(multiline ? 'textarea' : 'input', {
     ref: field, className: className ?? (multiline ? 'bt-bs-input bt-bs-area' : 'bt-bs-input'), value: text, placeholder, maxLength, required, 'aria-label': label, spellCheck: false,
     onChange: event => setDraft(event.target.value),
     onBlur: commit,
@@ -62,7 +62,6 @@ export function InlineText({ label, value, placeholder, required = false, maxLen
       if (event.key === 'Enter' && !multiline && !event.nativeEvent.isComposing) event.currentTarget.blur()
     },
   })
-  return renderField ? renderField(input, text) : input
 }
 
 // One labelled card row with its control on the right, or below when `stack`.
@@ -70,16 +69,6 @@ export function Row({ label, hint, stack = false, children }) {
   return h('label', { className: stack ? 'bt-set-row bt-bs-row bt-bs-stack' : 'bt-set-row bt-bs-row' },
     h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, label), hint ? h('span', { className: 'bt-set-hint' }, hint) : null),
     children)
-}
-
-// The preview follows the same draft as the field, including an Escape that discards it.
-export function MarkdownSetting({ title, hint, ...field }) {
-  const preview = t('Markdown preview')
-  return h(InlineText, { ...field, multiline: true, renderField: (input, text) => h(Fragment, null,
-    h(Row, { label: title, hint, stack: true }, input),
-    text.trim() ? h('section', { className: 'bt-set-row bt-bs-stack bt-bs-preview', 'aria-label': preview },
-      h('span', { className: 'bt-bs-label' }, preview),
-      h(MarkdownText, { text, labels: mdLabels(), variant: 'compact' })) : null) })
 }
 
 export function Card({ title, children }) {
@@ -264,7 +253,7 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
         onChange: value => save({ private: value }),
       })),
     h(Card, { title: t('Instructions') },
-      h(MarkdownSetting, { key: bot.id, title: t('What this Bot does'), hint: t('Its job on the team. Part of the Bot\'s system prompt.'),
+      h(MarkdownSetting, { key: bot.id, settings: true, readOnly: roster.readOnly, title: t('What this Bot does'), hint: t('Its job on the team. Part of the Bot\'s system prompt.'),
         label: t('Instructions'), value: bot.instructions, placeholder: t('What this Bot is responsible for…'), onSave: instructions => save({ instructions }) })),
     h(BotCapabilitiesCard, { bot, roster, actions, run, Card, SwitchRow }),
     h(BotComputerCard, { bot, roster, actions, run, Card, Row }),
@@ -316,7 +305,6 @@ label.bt-bs-row{cursor:text}
 .bt-bs-input:focus{background:var(--bt-main);border-color:var(--bt-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--bt-accent) 22%,transparent);text-align:left}
 .bt-bs-input::placeholder{color:var(--bt-ink-3)}
 .bt-bs-stack{flex-direction:column;align-items:stretch;gap:8px}
-.bt-bs-preview{min-width:0;overflow-x:auto;overflow-wrap:anywhere}
 .bt-bs-area{flex:none;width:auto;min-height:112px;height:auto;margin:0 -6px -4px;padding:8px;line-height:19px;text-align:left;resize:vertical;background:var(--bt-hover)}
 .bt-bs-area:hover{background:var(--bt-active)}
 .bt-bs-danger .bt-bs-label{color:var(--bt-danger)}

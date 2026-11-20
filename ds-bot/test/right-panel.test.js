@@ -228,8 +228,11 @@ const hostStrings = (node, out = []) => {
   return out
 }
 const editable = (patch, actions = {}) => drawer('a', actions, { ...roster, byId: { a: { ...bot, ...patch } } })
-const aboutOf = (tree) => { const [about] = named(tree, 'About'); return about.type(about.props) }
-const fieldOf = about => about.children.find(child => child?.props?.onSave)
+const markdownSetting = tree => named(tree, 'MarkdownSetting')[0] ?? named(tree, 'MarkdownSetting', true)[0]
+const readSetting = setting => {
+  const field = setting.type(setting.props)
+  return field.type(field.props)
+}
 
 test('the drawer label is a field that saves the Bot role, like the Settings page', async () => {
   const saved = []
@@ -248,18 +251,17 @@ test('a refused save of the label or the instructions does not throw out of the 
   const tree = editable({ role: 'Writer', instructions: '' }, { updateBot: () => Promise.reject(new Error('refused')) })
   const [label] = named(tree, 'BotLabel')
   await label.type(label.props).props.onSave('Editor')
-  await fieldOf(aboutOf(tree)).props.onSave('Drafts notes.')
+  await markdownSetting(tree).props.onSave('Drafts notes.')
 })
 
-test('a Bot without instructions gets a field in the drawer, not a way into Settings', async () => {
+test('empty instructions start in reading mode and save to the selected Bot', async () => {
   const saved = []
   const tree = editable({ instructions: undefined }, { updateBot: (id, patch) => { saved.push(JSON.stringify([id, patch])); return Promise.resolve() } })
   assert.equal(hostStrings(tree).some(text => text.includes('Bot settings')), false)
-  const field = fieldOf(aboutOf(tree))
-  assert.equal(field.props.multiline, true)
+  const field = markdownSetting(tree)
+  assert.ok(buttonsOf(readSetting(field)).some(button => textOf(button) === 'Edit'))
   assert.equal(field.props.label, 'Instructions')
   assert.equal(field.props.placeholder, 'What this Bot is responsible for…')
-  assert.equal(field.props.autoFocus, false)
   assert.equal(field.props.value, '')
   const instructions = '## Writing\n\n- Draft **release notes**.'
   await field.props.onSave(instructions)
@@ -268,24 +270,23 @@ test('a Bot without instructions gets a field in the drawer, not a way into Sett
 
 test('a Bot renders its Markdown instructions with a separate edit button for keyboard users', () => {
   const instructions = '## Writing\n\n- Draft **notes** from the [brief](https://example.org/brief).'
-  const read = aboutOf(editable({ instructions }))
-  assert.equal(fieldOf(read), undefined)
+  const read = readSetting(markdownSetting(editable({ instructions })))
   const text = read.children.find(child => child?.props?.className === 'bt-about')
   assert.equal(text.props.role, undefined)
-  assert.equal(typeof text.props.onClick, 'function')
+  assert.equal(text.props.onClick, undefined)
   const [markdown] = named(text, 'MarkdownText')
   assert.equal(markdown.props.text, instructions)
   assert.equal(markdown.props.variant, 'compact')
   assert.ok(buttonsOf(read).some(button => textOf(button) === 'Edit'))
 })
 
-test('the drawer renders the complete group notice as read-only Markdown', () => {
+test('the drawer renders the complete group notice as editable Markdown', () => {
   const notice = '## Release\n\n- **Review** the [plan](https://example.org/plan).\n- Keep `[taskId]` in the notice.'
   const noticeRoster = { ...roster, roomsById: { g: { ...room, notice } } }
   const tree = drawer('g', {}, noticeRoster)
-  const [about] = named(tree, 'About', true)
-  assert.equal(about.props.onSave, undefined)
-  const shown = about.type(about.props)
+  const about = markdownSetting(tree)
+  assert.equal(typeof about.props.onSave, 'function')
+  const shown = readSetting(about)
   const text = shown.children.find(child => child?.props?.className === 'bt-about')
   assert.equal(text.props.role, undefined)
   assert.equal(text.props['data-editable'], undefined)
@@ -297,13 +298,13 @@ test('the drawer renders the complete group notice as read-only Markdown', () =>
 test('the Bot label and instructions are keyed by Bot id and stay read-only when another dsh holds the team', () => {
   const writable = editable({ role: 'Writer', instructions: 'Drafts notes.' })
   assert.equal(named(writable, 'BotLabel')[0].props.key, 'role:a')
-  assert.equal(named(writable, 'About')[0].props.key, 'about:a')
+  assert.equal(markdownSetting(writable).props.key, 'about:a')
 
   const locked = drawer('a', {}, { ...roster, readOnly: 'Another dsh holds this team.', byId: { a: { ...bot, role: 'Writer', instructions: 'Drafts notes.' } } })
   assert.equal(named(locked, 'BotLabel').length, 0)
-  const [about] = named(locked, 'About')
+  const about = markdownSetting(locked)
   assert.equal(about.props.onSave, undefined)
-  const read = about.type(about.props)
+  const read = readSetting(about)
   assert.equal(named(read, 'MarkdownText')[0].props.text, 'Drafts notes.')
   assert.equal(buttonsOf(read).length, 0)
 })

@@ -4,7 +4,8 @@ import { workspacePolicies, workspacePolicyOf } from '../shared/project-workspac
 import { isMainOf } from './sources.js'
 import { PlusIcon, ChevronRightIcon } from './icons.js'
 import { AdminStar, BotAvatar, BotMark, RoomAvatar } from './mark.js'
-import { Card, Row, InlineText, MarkdownSetting, SwitchRow } from './bot-settings.js'
+import { Card, Row, InlineText, SwitchRow } from './bot-settings.js'
+import { MarkdownSetting } from './markdown-field.js'
 import { Segmented } from './motion.js'
 import { FolderMenu } from './folder-menu.js'
 import { PermissionPicker } from './permission-picker.js'
@@ -115,7 +116,7 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
     h(Card, { title: t('Profile') },
       h(Row, { label: t('Name'), hint: t('Leave it empty to name the group after its members.') },
         h(InlineText, { label: t('Group name'), value: room.named ? room.name : '', placeholder: t('Name after members'), maxLength: 60, onSave: name => update({ name }) })),
-      h(MarkdownSetting, { key: room.id, title: t('Notice'), hint: t('Every member reads it before speaking in this group.'),
+      h(MarkdownSetting, { key: room.id, settings: true, readOnly: roster.readOnly, title: t('Notice'), hint: t('Every member reads it before speaking in this group.'),
         label: t('Group notice'), value: room.notice, maxLength: 2000,
         placeholder: t('Group goals, notices and background…'), onSave: notice => update({ notice }) })),
     h(Card, { title: t('Who answers') },
@@ -149,7 +150,6 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
       const change = patch => update({ memberSetting: { botId: member.id, ...patch } })
       return h('details', { key: member.id, className: 'bt-set-row bt-bs-stack' },
         h('summary', null, member.name),
-        h(Row, { label: t('Instructions'), stack: true }, h('span', null, member.instructions || t('No instructions'))),
         h(Row, { label: t('Model') }, h('select', { 'aria-label': t('Model'), value: setting.model ?? '',
           onChange: e => change({ model: e.target.value || null }) },
           h('option', { value: '' }, t('Use Bot default')),

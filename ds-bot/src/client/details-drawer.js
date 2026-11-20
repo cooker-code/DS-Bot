@@ -12,7 +12,7 @@ import { ModelMenu, modelOf } from './model-menu.js'
 import { FolderMenu } from './folder-menu.js'
 import { MemoryRow } from './memory-panel.js'
 import { ScheduleSummary } from './schedules.js'
-import { useGlide, useMorph } from './motion.js'
+import { useGlide } from './motion.js'
 import { MemberApprovals, MemberState, StopMemberWork, StopRoomWork, useMemberWork, workState } from './member-status.js'
 import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
@@ -21,8 +21,8 @@ import { ProjectTaskDetail } from './project-task-detail.js'
 import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
 import { ComputerView } from './computer.js'
-import { MarkdownText } from './dsh-primitives.js'
-import { dateLocale, mdLabels, t } from './i18n.js'
+import { MarkdownSetting } from './markdown-field.js'
+import { dateLocale, t } from './i18n.js'
 
 function transcriptOf(list, id, name, hiddenTurns = []) {
   const outline = list.projectionsBySession?.[id]?.values?.turnOutline ?? list.byId[id]?.projectionValues?.turnOutline
@@ -136,33 +136,6 @@ function BotLabel({ bot, actions, run }) {
   return h(InlineText, { label: t('Label'), value: role, placeholder: t('Add a label'), maxLength: 24, className: 'bt-drawer-role-input', onSave: save })
 }
 
-// About: a Bot's instructions or a group's notice in the overview, folded to five lines.
-// With `onSave` the Bot's text is edited in place: a click turns it into a field, and an
-// empty one is a field already.
-function About({ text, title = 'About', label, placeholder, onSave }) {
-  const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [shown, save] = useSaved(text, next => onSave(next))
-  const long = shown.split('\n').length > 5 || shown.length > 240
-  const body = useRef(null)
-  useMorph(body, open)
-  const field = onSave !== undefined && (editing || shown === '')
-  const editText = (event) => {
-    if (event.target.closest('a, button, input, summary, [role="button"]') || window.getSelection()?.toString()) return
-    setEditing(true)
-  }
-  return h('div', null,
-    h('div', { className: 'bt-about-heading bt-section-title' }, t(title),
-      onSave && !field ? h('button', { type: 'button', className: 'bt-mini', onClick: () => setEditing(true) }, t('Edit')) : null),
-    field
-      ? h(InlineText, { label, value: shown, multiline: true, placeholder, autoFocus: editing, className: 'bt-input bt-input-area', onSave: save, onDone: () => setEditing(false) })
-      : h('div', {
-          ref: body, className: 'bt-about', 'data-open': open || !long || undefined,
-          ...(onSave ? { 'data-editable': '', onClick: editText } : {}),
-        }, h(MarkdownText, { text: shown, labels: mdLabels(), variant: 'compact' })),
-    long && !field ? h('button', { type: 'button', className: 'bt-more', 'aria-expanded': open, onClick: () => setOpen(value => !value) }, open ? t('Show less') : t('Show more')) : null)
-}
-
 // A group's face in its details: its first members side by side, each on a disc that
 // cuts into the one before, and how many more there are.
 const PILE_MAX = 4
@@ -195,7 +168,7 @@ function MemberRow({ member, entry, room, roster, actions, stats }) {
 
 // A group's overview: what members read, who is in it, who answers, and what it
 // remembers. Changes are made in its settings.
-function GroupOverview({ room, roster, actions, run, usage, useWork, openSettings, openTask, returnId, taskFilter: [statuses, onStatusesChange] }) {
+function GroupOverview({ room, roster, actions, run, usage, useWork, openTask, returnId, taskFilter: [statuses, onStatusesChange] }) {
   const members = room.members.map(id => roster.byId[id]).filter(Boolean)
   const readings = useGroupContext(room, actions)
   const stats = Object.fromEntries(members.map(member => {
@@ -204,9 +177,9 @@ function GroupOverview({ room, roster, actions, run, usage, useWork, openSetting
   }))
   const { entries } = useMemberWork(room, useWork)
   return [
-    room.notice
-      ? h(About, { key: 'notice', title: 'Notice', text: room.notice })
-      : h('button', { key: 'notice', type: 'button', className: 'bt-more', onClick: openSettings }, t('Add a notice in group settings')),
+    h(MarkdownSetting, { key: 'notice:' + room.id, fold: true, title: t('Notice'), value: room.notice, label: t('Group notice'),
+      maxLength: 2000, placeholder: t('Group goals, notices and background…'), readOnly: roster.readOnly,
+      onSave: notice => run(actions.updateRoom(room.id, { notice })) }),
     h(GroupTodos, { key: 'todos', room, actions }),
     h('button', { key: 'archive', type: 'button', className: 'bt-more', onClick: () => actions.openArchive(room.id, 'library') }, t('Archived discussions')),
     h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
@@ -466,7 +439,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
       tabs.map(key => h('button', { key, type: 'button', role: 'tab', className: 'bt-tab', 'aria-selected': tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))) : null,
     h('div', { key: `body:${tab}`, className: 'bt-drawer-body', 'data-move': move },
       errorLine,
-      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, run, usage, useWork, taskFilter, returnId: returnTask.current, openTask: taskId => { returnTask.current = taskId; setView({ taskId }) }, openSettings: () => setView('settings') }) : null,
+      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, run, usage, useWork, taskFilter, returnId: returnTask.current, openTask: taskId => { returnTask.current = taskId; setView({ taskId }) } }) : null,
       bot && tab === 'computer' ? h(ComputerView, { bot, actions, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [
         h(RunStats, { key: 'stats', bot, part, running, actions }),
@@ -482,9 +455,9 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h('div', { className: 'bt-section-title' }, t('Working folder')),
           h(FolderMenu, { value: bot.workDir, actions, run, wide: true, onPick: workDir => run(actions.updateBot(bot.id, { workDir })) })),
         roster.readOnly
-          ? (bot.instructions ? h(About, { key: `about:${bot.id}`, text: bot.instructions }) : null)
-          : h(About, {
-              key: `about:${bot.id}`, text: bot.instructions ?? '', label: t('Instructions'), placeholder: t('What this Bot is responsible for…'),
+          ? (bot.instructions ? h(MarkdownSetting, { key: `about:${bot.id}`, fold: true, title: t('About'), value: bot.instructions }) : null)
+          : h(MarkdownSetting, {
+              key: `about:${bot.id}`, fold: true, title: t('About'), value: bot.instructions ?? '', label: t('Instructions'), placeholder: t('What this Bot is responsible for…'),
               onSave: instructions => run(actions.updateBot(bot.id, { instructions })),
             }),
         roster.memory === false ? null : h(MemoryRow, { key: 'memory', owner: { id: bot.id, name: bot.name }, actions }),

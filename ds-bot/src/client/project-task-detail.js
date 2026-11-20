@@ -1,16 +1,14 @@
 import { TASK_STATUS } from './task-board.js'
 import { TaskReply } from './task-reply.js'
-import { createElement as h, Fragment, useEffect, useId, useRef, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
-import { MarkdownText } from './dsh-primitives.js'
+import { MarkdownField } from './markdown-field.js'
 import { ChevronLeftIcon, CloseIcon } from './icons.js'
 import { TaskWorkspace } from './task-workspace.js'
 import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
-import { mdLabels, t } from './i18n.js'
+import { t } from './i18n.js'
 
 function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
-  const id = useId()
-  const editButton = useRef(null)
   const picker = useRef(null)
   const [draft, setDraft] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -18,7 +16,6 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
   const finish = () => {
     setDraft(null)
     setError('')
-    requestAnimationFrame(() => editButton.current?.focus())
   }
   const save = async () => {
     setBusy(true)
@@ -49,36 +46,19 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
   ...(draft?.files ?? []).map((file, index) => h(TaskImage, { key: 'file-' + index, file, label: file.name,
     disabled: busy || readOnly, onRemove: () => setDraft({ ...draft, files: draft.files.filter(other => other !== file) }) }))]
   const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length)
-  return h('section', { 'aria-labelledby': id, onKeyDown: event => {
-    if (draft && event.key === 'Escape' && !event.nativeEvent.isComposing) {
-      event.stopPropagation()
-      if (!busy) finish()
-    }
-  } },
-    h('div', { className: 'bt-project-field-head' },
-      h('h3', { id, className: 'bt-section-title' }, label),
-      !readOnly && !draft ? h('button', { ref: editButton, type: 'button', className: 'bt-mini',
-        onClick: () => setDraft({ original: value, text: value, removed: [], files: [] }) }, t('Edit')) : null),
-    draft ? h('textarea', { className: 'bt-input bt-input-area', autoFocus: true, 'aria-labelledby': id, value: draft.text,
-      readOnly: busy || readOnly, maxLength, onChange: event => setDraft({ ...draft, text: event.target.value }),
-      onPaste: event => {
-        const files = Array.from(event.clipboardData.files)
-        if (files.length) { event.preventDefault(); addFiles(files) }
-      } })
-      : value ? h('div', { className: 'bt-project-markdown' }, h(MarkdownText, { text: value, labels: mdLabels(), variant: 'compact' }))
-        : visible.length ? null : '—',
-    gallery,
-    draft ? h(Fragment, null,
-      h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
-        addFiles(Array.from(event.target.files))
-        event.target.value = ''
-      } }),
-      h('div', { className: 'bt-task-actions' },
-        h('button', { type: 'button', className: 'bt-soft-sm', disabled: busy || readOnly || !changed || (required && !draft.text.trim()),
-          onClick: save }, busy ? t('Saving…') : t('Save')),
-        h('button', { type: 'button', className: 'bt-mini', disabled: busy || readOnly, onClick: () => picker.current?.click() }, t('Add image')),
-        h('button', { type: 'button', className: 'bt-mini', disabled: busy, onClick: finish }, t('Cancel'))),
-      error ? h('p', { className: 'bt-error', role: 'alert' }, error) : null) : null)
+  return h(MarkdownField, { title: label, value, placeholder: visible.length ? null : '—', maxLength,
+    draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
+    onEdit: readOnly ? undefined : () => setDraft({ original: value, text: value, removed: [], files: [] }),
+    onChange: text => setDraft({ ...draft, text }), onSave: save, onCancel: finish,
+    onPaste: event => {
+      const files = Array.from(event.clipboardData.files)
+      if (files.length) { event.preventDefault(); addFiles(files) }
+    },
+    tools: h('button', { type: 'button', className: 'bt-mini', disabled: busy || readOnly, onClick: () => picker.current?.click() }, t('Add image')),
+  }, gallery, draft ? h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
+    addFiles(Array.from(event.target.files))
+    event.target.value = ''
+  } }) : null)
 }
 
 export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip, onBack, close }) {
