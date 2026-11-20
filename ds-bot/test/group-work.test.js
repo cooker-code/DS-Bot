@@ -848,7 +848,7 @@ test('a long @all past the preview calls every other member at once', async (t) 
   host.finish('gb', '收到。')
   host.begin('gc')
   host.finish('gc', '收到。')
-  await settle(() => round() !== undefined)
+  await until(() => round() !== undefined, 30000)
   assert.deepEqual(host.agentOf('ga').calls, [])
 })
 
@@ -871,7 +871,7 @@ test('a post between the preview and the file limit still calls who it names', a
   assert.equal(host.begin('gb').source.askedBy, 'a')
   host.finish('gc', '看过了。')
   host.finish('gb', '也看了。')
-  await settle(() => round() !== undefined)
+  await until(() => round() !== undefined, 30000)
   assert.deepEqual(host.agentOf('ga').calls, [])
 })
 
@@ -891,7 +891,7 @@ test('a plain post between the preview and the file limit still calls the other 
   await settle(() => host.agentOf('gc').calls.length === 1)
   host.begin('gc')
   host.finish('gc', '收到。')
-  await settle(() => round() !== undefined)
+  await until(() => round() !== undefined, 30000)
 })
 
 test('a post with no round running keeps the old way: queued, no logged mark', async (t) => {

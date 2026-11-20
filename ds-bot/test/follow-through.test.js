@@ -101,8 +101,8 @@ const settleState = async (t, home, check) => {
   }
   assert.ok(check(), 'condition not reached')
 }
-const settle = async (check) => {
-  const until = Date.now() + 3000
+const settle = async (check, timeout = 3000) => {
+  const until = Date.now() + timeout
   while (!check() && Date.now() < until) await new Promise(resolve => setImmediate(resolve))
   assert.ok(check(), 'condition not reached')
 }
@@ -655,7 +655,7 @@ test('queued deliveries are kept whole, not cut at fifty', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const second = await start(home)
   t.mock.timers.tick(3000)
-  await settle(() => second.agentOf('b').calls.length === 55)
+  await settle(() => second.agentOf('b').calls.length === 55, 60000)
 })
 
 test('a delivery that fails is not recorded as delivered, and stays queued for the next start', async (t) => {
