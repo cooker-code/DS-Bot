@@ -110,7 +110,8 @@ export async function inspectRecovery(rt, room, card, args, actor) {
   checkOwner(room, actor, args.ownerId)
   const node = card.plans.at(-1).nodes[b.node - 1]
   requirements(card, node, round, args.ownerId)
-  const oldSession = b.session ?? rt.chatOf(round.ownerId), nextSession = rt.chatOf(args.ownerId)
+  const oldSession = b.session ?? round.executionSession ?? rt.chatOf(round.ownerId)
+  const nextSession = await rt.memberSession(room, args.ownerId)
   const [old, next] = await Promise.all([rt.resolveAgent(oldSession), rt.resolveAgent(nextSession)])
   const sourceDir = b.workDir ?? rt.sessionFolder(old.session)
   const targetDir = rt.sessionFolder(next.session)
@@ -124,7 +125,7 @@ export async function inspectRecovery(rt, room, card, args, actor) {
     artifacts, commits,
     completed: b.completed, remaining: b.remaining, checkpointArtifact: b.checkpointArtifact }
   return { facts: { ...facts, inspection: digest(facts) }, validate() {
-    if (!stopped() || rt.chatOf(args.ownerId) !== nextSession || rt.sessionFolder(next.session) !== targetDir) throw new Error('The original execution or candidate folder changed. Inspect the worktrees again.')
+    if (!stopped() || rt.roomOf(room.id)?.sessions?.[args.ownerId] !== nextSession || rt.sessionFolder(next.session) !== targetDir) throw new Error('The original execution or candidate folder changed. Inspect the worktrees again.')
   } }
 }
 
@@ -142,7 +143,7 @@ export async function checkProjectStart(rt, card, round, session) {
   if (decision) {
     if (digest(actual) !== digest(decision.targetTree)) throw new Error('The working tree differs from the approved recovery.')
     const previous = card.rounds[round.planNode.previousRound - 1]
-    const writerSession = previous.planNode.session ?? rt.chatOf(previous.ownerId)
+    const writerSession = previous.planNode.session ?? previous.executionSession ?? rt.chatOf(previous.ownerId)
     if (writerSession !== session && (actual.root ?? actual.dir) === (decision.sourceTree.root ?? decision.sourceTree.dir)) {
       const writer = await rt.resolveAgent(writerSession)
       if (!idleWriter(rt, writer, writerSession, previous.dispatchId)) throw new Error('The original writer is not confirmed idle in the shared worktree.')

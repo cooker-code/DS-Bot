@@ -791,7 +791,9 @@ export function install(rt) {
   // answers the user's last message, which is not sent again. A greeting on its way, or
   // a turn under way in the Bot's chat, answers already: a turn on top answers twice.
   async function resumeBot(bot, target) {
-    const sessionId = rt.chatOf(bot.id)
+    const card = target && rt.roomOf(target.roomId)?.projectCards?.[target.taskId]
+    const round = card?.rounds[target.round - 1]
+    const sessionId = round?.planNode?.session ?? round?.executionSession ?? rt.chatOf(bot.id)
     const stale = () => Object.assign(new Error('This failed assignment is no longer current.'), { code: 'bot/stale' })
     if (!target && await rt.releaseKickoff(bot)) return
     if (rt.greetingOut?.(bot.id) || live.get(sessionId)?.turn !== undefined) {
@@ -799,8 +801,6 @@ export function install(rt) {
       return
     }
     const failure = bot.failures?.[sessionId]
-    const card = target && rt.roomOf(target.roomId)?.projectCards?.[target.taskId]
-    const round = card?.rounds[target.round - 1]
     if (target && (!round || !round.dispatchId || round.ownerId !== bot.id || round.failedAt !== target.failedAt || round.result)) throw stale()
     if (failure || target) {
       const events = target

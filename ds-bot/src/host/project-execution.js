@@ -10,7 +10,11 @@ export function dispatchedRound(rt, sessionId, source) {
   if (!source?.taskId || !source.exchangeId || source.kind !== SOURCE_KIND) return
   const room = source.roomId && rt.roomOf ? rt.roomOf(source.roomId) : projectRoomForCard(rt, source.taskId)
   const card = room?.projectCards?.[source.taskId]
-  const round = card?.rounds.find(r => r.dispatchId === source.exchangeId && r.ownerId === rt.chatOwners.get(sessionId))
+  const member = rt.groupOwners?.get(sessionId) ?? rt.pastOwners?.get(sessionId)
+  if (member && member.roomId !== room?.id) return
+  const owner = member?.botId ?? rt.chatOwners.get(sessionId)
+  const round = card?.rounds.find(r => r.dispatchId === source.exchangeId && r.ownerId === owner &&
+    (!r.executionSession || r.executionSession === sessionId))
   if (!round || (source.roomId && source.roomId !== room.id)) return
   if (card.plans?.length ? !currentBinding(card, round) : round !== card.rounds.at(-1)) return
   return { room, card, round }
@@ -41,7 +45,7 @@ export async function reconcileProjectRounds(rt, bootAt) {
   for (const room of Object.values(rt.state.rooms)) for (const card of Object.values(room.projectCards ?? {})) {
     for (const round of card.rounds ?? []) {
       if (!currentBinding(card, round) || round.planNode.block || round.result || !round.startedAt || round.startedAt > bootAt) continue
-      const session = round.planNode.session ?? rt.chatOf(round.ownerId)
+      const session = round.planNode.session ?? round.executionSession ?? rt.chatOf(round.ownerId)
       const entry = rt.live.get(session)
       if (entry?.turn !== undefined && entry.info?.exchangeId === round.dispatchId) continue
       // A live DSH turn can outlast a plugin reload. Adopt only its own
@@ -209,21 +213,27 @@ export async function restoreFailedProjects(rt, remember) {
   await rt.load()
   if (rt.readOnly() !== undefined) return
   for (const bot of Object.values(rt.state.bots)) {
-    const sessionId = rt.chatOf(bot.id)
+    const chat = rt.chatOf(bot.id)
+    const sessions = new Set(bot.failures?.[chat] ? [chat] : [])
+    for (const room of Object.values(rt.state.rooms)) for (const card of Object.values(room.projectCards ?? {})) {
+      for (const round of card.rounds ?? []) if (round.ownerId === bot.id && round.startedAt && !round.submittedAt)
+        sessions.add(round.planNode?.session ?? round.executionSession ?? rt.chatOf(bot.id))
+    }
+    for (const sessionId of sessions) await restoreSession(bot, sessionId)
+  }
+
+  async function restoreSession(bot, sessionId) {
     const failure = bot.failures?.[sessionId]
-    const unfinished = Object.values(rt.state.rooms).some(room => Object.values(room.projectCards ?? {}).some(card =>
-      card.rounds?.some(round => round.ownerId === bot.id && round.startedAt && !round.submittedAt)))
-    if (!failure && !unfinished) continue
     const agent = await rt.resolveAgent(sessionId)
-    if (agent.status === 'running') continue
+    if (agent.status === 'running') return
     const before = agent.session.seq
     const rows = await inspectedTurn(rt, sessionId, undefined, true)
     const end = rows.findLast(e => e.type === 'turn/end')
-    if (end?.data.reason?.kind !== 'error' || before !== agent.session.seq || agent.status === 'running') continue
+    if (end?.data.reason?.kind !== 'error' || before !== agent.session.seq || agent.status === 'running') return
     const source = rows.find(e => e.type === 'user/message' && dispatchedRound(rt, sessionId, e.data.source))?.data.source
     const dispatch = dispatchedRound(rt, sessionId, source)
     if (failure?.turn !== end.data.turn) {
-      if (!dispatch || dispatch.round.result) continue
+      if (!dispatch || dispatch.round.result) return
       remember?.(sessionId, end.data.turn, end.data.reason.error, agent.session)
     }
     const pending = pendingAfterFailure(rows.findLast(e => e.type === 'todo/write')?.data.todos)

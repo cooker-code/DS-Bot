@@ -303,7 +303,7 @@ export function install(rt) {
       if (projectRoom && source?.intakeId && !projectRoom.projectCards[key]?.intakes.includes(source.intakeId)) refuse('Attach this intake to its card before sending.')
       if (key?.startsWith('intake-')) refuse('Identify the persistent card before assigning work.')
       const message = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
-      if (cardDispatch && (!key || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a private card handoff with taskId, current card_round, reply_to=user and request_id.')
+      if (cardDispatch && (!key || args.reply_to !== 'user' || !name || !Number.isSafeInteger(args.card_round) || args.card_round < 1)) refuse('Send a project card handoff with taskId, current card_round, reply_to=user and request_id.')
       const handoff = cardDispatch ? developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom?.projectCards?.[key], target.id, args.card_round) : undefined
       let text = tagged(key, message)
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
@@ -371,7 +371,8 @@ export function install(rt) {
         // The part of the sender's own chat this request comes from: its answer goes back
         // to that part's thread.
         const fromPart = callerPart(exec).fromPart
-        const chat = coordinator ? await rt.memberSession(projectRoom, target.id) : rt.chatOf(target.id)
+        const projectRecipient = Boolean(handoff || coordinator)
+        const chat = projectRecipient ? await rt.memberSession(projectRoom, target.id) : rt.chatOf(target.id)
         const agent = await rt.resolveAgent(chat)
         const status = rt.statusOf(target.id)
         // A request it has not read yet, sent for the same work, takes this one in, so
@@ -396,7 +397,7 @@ export function install(rt) {
         else if (!toUser) rt.openWork(exchangeId, { ...scopeFields(key), from: sender.id, to: target.id, parent: work, ...(room ? { fromRoom: room.id } : {}), ...(fromPart ? { fromPart } : {}) })
         try {
           if (handoff) developmentHandoff(rt, exec.agent?.id, projectRoom, projectRoom.projectCards[key], target.id, args.card_round)
-          await rt.deliver({ ...scopeFields(key), ...(projectRoom ? { roomId: projectRoom.id } : {}), ...(coordinator ? { sessionId: chat } : {}), ...callerRoom(exec), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, images: handoff?.images ?? (joins ? before.images : []), files: [...long.files, ...(handoff?.files ?? []), ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+          await rt.deliver({ ...scopeFields(key), ...(projectRoom ? { roomId: projectRoom.id } : {}), ...(projectRecipient ? { sessionId: chat } : {}), ...(handoff ? { cardRound: args.card_round } : {}), ...callerRoom(exec), fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, images: handoff?.images ?? (joins ? before.images : []), files: [...long.files, ...(handoff?.files ?? []), ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
         } catch (error) {
           // The delivery stays noted for the next start while its Bot exists
           // (resume.js), and the resent request still answers up the tree, so the
@@ -404,14 +405,7 @@ export function install(rt) {
           if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)
           throw error
         }
-        if (handoff) {
-          // A node on the same card may have advanced while delivery was in flight.
-          const delivered = rt.roomOf(projectRoom.id)?.projectCards?.[key]?.rounds[args.card_round - 1]
-          if (delivered?.dispatchId !== exchangeId) throw new Error('The dispatched round is no longer available.')
-          delivered.sentAt ??= Date.now()
-          await rt.save({ required: true })
-        }
-        const sent = coordinator && toUser
+        const sent = projectRecipient && toUser
           ? `Delivered to ${target.name} in "${projectRoom.name}". It can report the result to this group.`
           : toUser
           ? `Delivered to ${target.name}. It will answer the user in its own chat; nothing comes back to you, so point the user to ${target.name}'s chat instead of relaying.`
@@ -938,6 +932,8 @@ export function install(rt) {
     async execute(args, exec) {
       await rt.load()
       const id = exec.agent?.id
+      if (rt.groupOwners.has(id) && rt.live?.get(id)?.info?.taskId)
+        return 'Use project_task clarify with the taskId and your question so the user can answer in this group.'
       if (rt.groupOwners.has(id)) return 'Question cards only work in your own chat. In a group, ask in your message instead.'
       if (!rt.chatOwners.has(id)) return `Only Bots on the team can use ask_user. Use ${BLOCKING_QUESTION_TOOL} if it is available in this session, or ask the user in your reply.`
       const options = (Array.isArray(args.options) ? args.options : [])

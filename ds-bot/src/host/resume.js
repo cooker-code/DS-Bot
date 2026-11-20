@@ -253,6 +253,15 @@ export function install(rt) {
     if (bot === undefined) return
     const text = resumeText(record)
     const trigger = record.trigger
+    if (trigger?.taskId && trigger.exchangeId) {
+      const room = trigger.roomId ? rt.roomOf(trigger.roomId) : projectRoomForCard(rt, trigger.taskId)
+      const card = room?.projectCards?.[trigger.taskId]
+      const round = card?.rounds.find(r => r.dispatchId === trigger.exchangeId && r.ownerId === bot.id)
+      if (round?.planNode) {
+        await interruptProject(rt, room, card, round, 'restart', 'The host restarted during this dispatch.')
+        return
+      }
+    }
     if (record.roomId !== undefined) {
       const room = rt.roomOf(record.roomId)
       if (room === undefined || !room.members.includes(bot.id)) return
@@ -274,15 +283,6 @@ export function install(rt) {
     // foreground chat when that part is a background one. A part gone since (archived and
     // dropped) falls back to the Bot's current chat.
     const ownPart = rt.selfOf(sessionId) === bot.id && rt.isBotSession(sessionId) ? { sessionId } : {}
-    if (trigger?.taskId && trigger.exchangeId) {
-      const room = trigger.roomId ? rt.roomOf(trigger.roomId) : projectRoomForCard(rt, trigger.taskId)
-      const card = room?.projectCards?.[trigger.taskId]
-      const round = card?.rounds.find(r => r.dispatchId === trigger.exchangeId && r.ownerId === bot.id)
-      if (round?.planNode) {
-        await interruptProject(rt, room, card, round, 'restart', 'The host restarted during this dispatch.')
-        return
-      }
-    }
     if (scopeOf(trigger) && trigger.audience === 'user' && trigger.role === 'request') {
       const room = rt.roomOf(trigger.roomId)
       const dispatch = room?.projectCards?.[trigger.taskId]?.rounds.some(round => round.dispatchId === trigger.exchangeId && round.ownerId === bot.id)

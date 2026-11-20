@@ -82,7 +82,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, cardRound, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -164,6 +164,14 @@ export function install(rt) {
       if (earlier === -1) state.exchanges.push(entry)
       else if (merged) state.exchanges[earlier] = entry
       void rt.save().catch(() => {})
+    }
+    if (cardRound !== undefined) {
+      // The group may have advanced to another session or round during delivery.
+      const round = rt.roomOf(roomId)?.projectCards?.[taskId]?.rounds[cardRound - 1]
+      if (round?.dispatchId !== exchangeId || round.ownerId !== toId) throw new Error('The dispatched round is no longer available.')
+      round.executionSession = targetSessionId
+      round.sentAt ??= Date.now()
+      await rt.save({ required: true })
     }
     return exchangeId
   }

@@ -1,6 +1,6 @@
 # 项目工作、会话与运行操作
 
-这些操作和设置共用同一通道，有些会启动工作、发消息或终止执行。查看一个项目的进度用 `project-task-list`，从列表取 `taskId` 再读明细。全队视图在 `state.rooms[].projectCards` 使用同一套摘要。Bot 会话中的 `project_task` 使用该 Bot 的身份和派工资格。[通道处理器](../../../../ds-bot/src/host/channel.js)
+这些操作和设置共用同一通道，有些会启动工作、发消息或终止执行。查看一个项目的进度用 `project-task-list`，从列表取 `taskId` 再读明细。全队视图在 `state.rooms[].projectCards` 使用同一套摘要。Bot 会话中的 `project_task` 使用该 Bot 的身份和派工资格。正式派工交给负责成员在任务所属群的当前会话，新派工可在 `project-task-detail` 返回的 `rounds[].executionSession` 查看实际收件会话 ID，开工核对该轮工作树。阻塞恢复核对原执行会话和候选负责人的本群会话。[通道处理器](../../../../ds-bot/src/host/channel.js)
 
 ## 群、task 与工作树
 
