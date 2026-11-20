@@ -75,7 +75,7 @@ import { installMotionRest } from './motion-rest.js'
 import { agentSessionToReuse, singleFlight } from './agent-new.js'
 import { TextSelectionAction, ANNOTATION_CSS } from './text-annotation.js'
 
-export const inject = ['sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
+export const inject = ['remote.session', 'sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
 
 export function apply(ctx) {
   ctx.effect(() => installLocale(ctx.get('locale')), 'ds-bot: interface copy')
@@ -587,6 +587,10 @@ export function apply(ctx) {
       if (openReview === undefined) { actions.notice(t('This window cannot open the change review')); return }
       openChangesReview(changes)
     },
+    memberHistory: (sessionId, beforeSeq, signal) => ctx.get('remote.session').page({
+      address: { kind: 'session', sessionId }, maxMessages: 50,
+      ...(beforeSeq === undefined ? {} : { beforeSeq }),
+    }, signal),
     learningAnswer: (id, approve) => after(call('learning-answer', { id, approve })),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.

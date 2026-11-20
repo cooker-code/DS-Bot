@@ -399,7 +399,7 @@ test('one activity-sorted list names each private or group part by owner and num
     { id: 'data', name: 'Data', memberSessions: { a: [{ id: 'd-now', number: 1, current: true }] } },
   ]
   const rendered = sessions.type({ ...sessions.props, rooms, running: { 'd-now': true },
-    actions: { ...sessions.props.actions, openSession: id => opened.push(id) },
+    openMember: (member, label) => opened.push([member.id, label]),
     useSessions: hook({ byId: Object.fromEntries(['a', 'g-old', 'g-now', 'd-now'].map((id, i) =>
       [id, { createdAt: 1000, updatedAt: 2000 + i }])) }) })
   assert.equal(named(rendered, 'section').length, 0)
@@ -415,6 +415,6 @@ test('one activity-sorted list names each private or group part by owner and num
   assert.match(textOf(rows[0]), /Running/)
   assert.doesNotMatch(textOf(rows[2]), /Current|Running/)
   for (const row of rows.slice(0, 3)) row.props.onClick()
-  assert.deepEqual(opened, ['data', 'eng', 'eng'])
+  assert.deepEqual(opened, [['d-now', 'Data-1'], ['g-now', 'Engineering-2'], ['g-old', 'Engineering-1']])
   assert.equal(rows[3].props.disabled, true)
 })

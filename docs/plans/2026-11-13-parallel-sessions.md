@@ -29,8 +29,8 @@ not quietly fall back to the two-view shape.
 - The details panel shows one list ordered by the session's last activity. Each
   row uses the group name and part number (such as `Design-2`) or the Bot's
   own name and private session number (such as `Chief-1`). Current and earlier
-  parts both show their creation and last activity times. A group row opens
-  its group conversation. New session and Edit manage the Bot's private sessions.
+  parts both show their creation and last activity times. A group row opens that member’s selected session transcript in the details panel.
+  Viewing a current or archived part leaves the group delivery session in place. New session and Edit manage the Bot's private sessions.
 - **Edit** shows a checkbox on each private row. **Delete** shows the selected count and
   asks for confirmation. Cancel returns to the selection. Confirm removes the
   selected sessions from the Bot and archives their DSH history. Running sessions
