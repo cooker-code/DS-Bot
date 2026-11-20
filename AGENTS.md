@@ -48,12 +48,27 @@ dev/bench.sh smoke 3096 8796 stop
 
 每次修改 DS Bot 插件代码（含上游移植），完成构建和针对性验证后，将本次工作区版本同步到本机已安装 DS Bot 的日用 DSH profile。先核对安装方式：链接安装核对实际指向和构建产物；本地包安装用当前源码运行 `npm pack`，通过 `dsh plugin --profile <name> add <本地包路径>` 更新。部署本地测试版本时按下节发版，并核对实际安装内容。交付时分别说明哪些 profile 已更新、是否已在运行实例中加载；需要重启才能生效时说明，避免中断正在进行的会话。运行测试仍使用隔离的测试 profile。仅改文档或仓库技能时无需重装。
 
+#### Desktop 本地包安装报 ERR_PNPM_NO_MATCHING_VERSION
+
+2026-11-20 更新 DS Bot 时，`npm pack` 已成功，失败发生在 `dsh plugin --profile desktop add`。安装本地包也会解析该 profile 的其他插件依赖。Desktop 固定使用 `@lsfcy/dsh-composer-predictions@0.1.3`，当时安装日志指向的 `registry.npmmirror.com` 缺少该版本，而 npm 官方源已有该版本。
+
+遇到同一报错，先看日志中缺少的包、精确版本和实际访问的源，对照 npm 官方源的版本清单。确认是镜像缺版本后，复用已打好的包，将官方源作为本次 pnpm 调用的显式参数。本机实测仅设置 `npm_config_registry` 后，DSH 仍使用原镜像。
+
+在 `ds-bot/` 下执行以下命令，`pkg` 为本次 `npm pack` 生成的 tarball 绝对路径：
+
+```sh
+dsh plugin --profile desktop --config.registry=https://registry.npmjs.org/ add "$pkg" &&
+  cmp client.js "$HOME/.dsh/profiles/desktop/node_modules/ds-bot/client.js"
+```
+
+此参数只对本次命令生效。同版本重装后，用上面的 `cmp` 核对已安装的客户端产物；运行中的窗口是否加载新版另行确认。
+
 ### 本地二次开发发版
 
 - 每次将新版本部署到本机 DSH 进行测试，就触发一次二开发版。打包或更新链接安装前先确定版本号。单独运行构建、单元测试或隔离冒烟测试不触发发版。
 - 前三段沿用上游版本，第四段是本地发布序号，从 1 开始。以当前上游 `0.3.8` 为例，首版为 `0.3.8.1`。后续每次取该上游版本已使用的最大序号加 1，`0.3.8.9` 的下一版为 `0.3.8.10`，序号无上限。npm 包要求兼容语义化版本，包清单和锁文件中的本包版本使用对应的 `0.3.8-local.1`，发布记录和拉取请求使用四段版本号。
 - 每次发版在根目录 [local-changelog.md](local-changelog.md) 顶部新增一条记录，写明四段版本号、发布日期和相对上一版的实际变更。版本号、发布记录和对应代码一并进入该版本的拉取请求（PR）。
-- 本地部署测试通过后，每个版本向二开仓库 `origin` 的 `master` 分支提交一个 PR，启用自动合并，并核实最终已合入 `master`。目标分支缺失或平台未允许自动合并时，报告具体阻塞，保留本次版本和记录。
+- 本地二开发版先将任务分支合入 `dev`，在 `dev` 上验证并交付验收。验收通过后，发布 PR 以二开仓库的主分支 `origin/main` 为目标。
 
 ### 本地验证
 
@@ -83,7 +98,7 @@ dev/bench.sh smoke 3096 8796 stop
 
 - 首次修改代码、文档或配置前，在实际工作目录核对当前分支。禁止在 `main`、`master` 上直接开发或提交。当前在这两个分支时，先切到 `dev` 或独立工作分支。`dev` 允许直接开发和本地提交。保留已有改动；共享目录或含无关改动时，为新任务建立独立工作树。紧急修复从 `main` 切出 `fix/hot-<name>`。
 - 项目群中，主 Bot 在派发写入任务前核对并绑定任务分支及工作目录。执行 Bot 在首次写入前核对实际目录和分支与分配一致，并遵守上一条。群已建好合规工作树时直接复用；若分配到了 `main`、`master` 或错误目录，交由主 Bot 更正任务分配后继续。
-- 日常任务需要独立工作分支时，从最新的 `dev` 切出，按 `fix/<issue>-<name>`、`feat/<issue>-<name>`、`docs/<name>` 或 `chore/<name>` 命名。禁止以 `dev/` 作为分支名前缀。日常开发的拉取请求以 `dev` 为目标分支。上游版本发布和紧急修复以 `main` 为目标。本地二开发版按上节规则向 `origin/master` 提交 PR。
+- 日常任务需要独立工作分支时，从最新的 `dev` 切出，按 `fix/<issue>-<name>`、`feat/<issue>-<name>`、`docs/<name>` 或 `chore/<name>` 命名。禁止以 `dev/` 作为分支名前缀。日常开发的拉取请求以 `dev` 为目标分支。上游版本发布和紧急修复以 `main` 为目标。本地二开发版的合并、验收和发布顺序见「本地二次开发发版」。
 - 使用 `scripts/merge-dev.sh` 更新工作分支。脚本会合并 `origin/dev`。如果 `ds-bot/client.js` 有冲突，脚本会采用 dev 分支的版本，再重新构建。禁止对已推送的分支执行变基（rebase），也禁止强制推送。
 - 填写拉取请求模板，用 `Fixes #<number>` 关联 Issue。修复缺陷时，写明修复了哪个问题。在 Changelog 栏填写用户可见的变化，常规贡献由维护者在发版时汇总到 `CHANGELOG.md`。本地同步上游时，按 sync-upstream 技能更新该文件的本地插件章节。
 - 带有 `maintainer` 标签的 Issue 或拉取请求留给维护者处理。禁止接手已分配给他人的 Issue。
