@@ -128,9 +128,13 @@ export const projectCardSummary = (card, taskId = card.id) => {
   }
 }
 
-// The edited document covers the messages present at save time. An intake linked
-// later can have an earlier sequence number and must still appear as a supplement.
 export function projectRequirement(room, card, sources) {
+  const original = sources.find(line => line.intakeId === card.intakes?.[0]) ?? sources[0]
+  return card.goal ?? (original && taskMessage(original.text, room).body) ?? card.title ?? ''
+}
+
+// Workers still need later instructions, even when the requirement itself has not changed.
+export function projectWorkContext(room, card, sources) {
   const covered = new Set(card.requirementSources)
   const parts = sources.filter(line => !covered.has(line.seq)).map(line => taskMessage(line.text, room).body)
   if (card.goal !== undefined) parts.unshift(card.goal)
@@ -237,7 +241,7 @@ export function developmentHandoff(rt, session, room, card, owner, number) {
   const lines = projectSources(rt, room, card.intakes, card.id)
   if (!lines.length) throw new Error('Original project intake not found.')
   const previous = !round.planNode && card.rounds.at(-2)?.result
-  const requirement = card.goal === undefined ? lines.map(line => line.text).join('\n\n') : projectRequirement(room, card, lines)
+  const requirement = card.goal === undefined ? lines.map(line => line.text).join('\n\n') : projectWorkContext(room, card, lines)
   const legacyWorkspace = !round.planNode && round.workspace
   const folder = legacyWorkspace && 'Before starting, use working_directory to enter ' + legacyWorkspace.workDir + ' on branch ' + legacyWorkspace.workRef + '.'
   const text = [card.title, requirement, folder, previous && 'Previous delivery: ' + previous, round.planNode && nodeHandoff(card, round), 'Handoff: ' + round.plan, 'Acceptance: ' + card.acceptance].filter(Boolean).join('\n\n')

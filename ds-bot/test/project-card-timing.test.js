@@ -251,7 +251,7 @@ test('task detail shows only the three fields and switches to a read-only requir
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskWorkspace'])
   const show = () => { hook = 3; return fields[0].type(fields[0].props).props }
   const latest = show()
-  assert.equal(latest.value, '1. First。\n2. Second。')
+  assert.equal(latest.value, '1. First。Second。')
   assert.equal(latest.headerControl.props.value, 1)
   latest.headerControl.props.onChange({ target: { value: '0' } })
   assert.equal(show().value, '1. Earlier request')

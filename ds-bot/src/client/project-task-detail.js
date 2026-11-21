@@ -9,7 +9,7 @@ import { t } from './i18n.js'
 // Preserve authored Markdown blocks. Plain legacy notes can be listed without changing their saved text.
 function taskList(text) {
   if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\||\d+[.)] )/m.test(text)) return text
-  return text.split(/\n+|(?<=[。；])(?=\S)/u).map(line => line.trim().replace(/^[-*+]\s+/, '')).filter(Boolean)
+  return text.split(/\n+/).map(line => line.trim().replace(/^[-*+]\s+/, '')).filter(Boolean)
     .map((line, index) => (index + 1) + '. ' + line).join('\n')
 }
 

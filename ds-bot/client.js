@@ -40405,6 +40405,7 @@ var TASK_CSS = `
 .bt-project-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-project-field-head>.bt-section-title{margin:0}
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}
+.bt-project-detail .bt-project-markdown ol{padding-inline-start:3.5em;list-style-position:outside}
 .bt-project-markdown img,.bt-task-image img{max-width:100%;height:auto}
 .bt-task-image{display:grid;justify-items:start;gap:4px;margin-top:8px}
 .bt-task-image img{display:block;border-radius:8px}
@@ -43628,7 +43629,7 @@ function TaskImage({ roomId, taskId, image, file, label, onRemove, disabled }) {
 var import_react75 = require("react");
 function taskList(text) {
   if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\||\d+[.)] )/m.test(text)) return text;
-  return text.split(/\n+|(?<=[。；])(?=\S)/u).map((line) => line.trim().replace(/^[-*+]\s+/, "")).filter(Boolean).map((line, index) => index + 1 + ". " + line).join("\n");
+  return text.split(/\n+/).map((line) => line.trim().replace(/^[-*+]\s+/, "")).filter(Boolean).map((line, index) => index + 1 + ". " + line).join("\n");
 }
 function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
   const [version, setVersion] = (0, import_react75.useState)(null);

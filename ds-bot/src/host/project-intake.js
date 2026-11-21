@@ -1,5 +1,5 @@
 import { assistantId } from './project-assistant.js'
-import { relatedTaskGuidance, cardForIntake, intakeContext, intakeLines, projectCardSummary, projectImages, projectRequirement, projectSources } from './project-tasks.js'
+import { relatedTaskGuidance, cardForIntake, intakeContext, intakeLines, projectCardSummary, projectImages, projectWorkContext, projectSources } from './project-tasks.js'
 import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { taskMessage } from '../shared/task-message.js'
 import { taskRoom } from './task-routing.js'
@@ -128,7 +128,7 @@ export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
     const text = [
       `Project ${project}, group "${room.name}", user intake ${intakeId}. Handle it in your session for this group.`,
       ...(context.length ? ['Recent public conversation (context only): ' + JSON.stringify(context)] : []),
-      'When accepting new work, write plan (the clarified requirement) and acceptance as two separate, concise Markdown numbered lists in the user’s language. Put one requested outcome per requirement and one observable pass condition per criterion. Preserve explicit constraints. Supply both fields when delegating or creating the first plan.',
+      'When accepting new work, write plan (the clarified requirement) and acceptance as two separate, concise Markdown numbered lists in the user’s language. Put one requested outcome per requirement and one observable pass condition per criterion. Use one item for one user-visible change. Combine examples, formatting details and constraints with the outcome they qualify. Keep dispatch, branches, test procedure and release instructions in the execution plan. Include only what the user will see or can verify in the two lists. Supply both fields when delegating or creating the first plan.',
       'Classify the latest message before accepting work. Explicit task references identify existing cards. When the user directs A to be linked to B, immediately call project_task relate with taskId=A and parentTaskId=B, then reply. Resolve a named target using list; ask only if the target or direction is ambiguous. A comparison or question about two cards does not request linking them.',
       'For unquoted messages first use the recent conversation and existing cards to identify the subject. Branch instructions, corrections, confirmations, progress questions and stop requests belong to the existing work. Use attach for a supplement and answer or act on that card. For an ambiguous subject ask the specific question in the group. Accept new work only if it introduces a distinct deliverable with its own verifiable acceptance condition.',
       'Answer the user in the group at the earliest step that can give a useful answer. For a new independently verifiable deliverable, call project_task reply with acceptWork=true and classificationReason in the first step, including for requested read-only investigation. Name the specific change and what you will check, in the user’s language, before composing the plan, inspecting branches or dispatching. For a question, give the actual answer; for an unassigned inquiry use project_task chat with message and reason together. If the user asks for a verified cause, check the necessary evidence first, then publish the finding and its basis. If essential human context is missing, ask the precise question. Skip generic acknowledgments and unverified claims. Continue the work in this same turn after replying; do not repeat the opening in post_to_group.',
@@ -153,7 +153,7 @@ export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
       ]),
       ...(input.taskReference ? ['The user selected this existing card. Respond to their latest message below. For a question, answer using project_task reply and leave the plan and dispatch unchanged. A selection alone only identifies the subject: ask what the user needs. Continue work only when requested. Latest message:\n' + taskMessage(input.text, room).body] : []),
       ...original.flatMap(line => (line.images || []).map(image => `Group #${line.seq} image: ${image.name || ''} ${image.attachmentId || image.id || ''}`)),
-      ...(card?.goal !== undefined ? ['Current requirement:\n' + projectRequirement(room, card, original)]
+      ...(card?.goal !== undefined ? ['Current requirement and subsequent messages:\n' + projectWorkContext(room, card, original)]
         : original.map(line => `Group message #${line.seq}\n${line.text}`)),
     ].join('\n\n')
     return rt.deliver({

@@ -434,7 +434,8 @@ test('project detail edits persist Markdown per field and keep the original inta
 
   log(first, 'Follow-up')
   room.projectCards.card.intakes.push(later)
-  assert.deepEqual(await read(), { requirement: requirement + '\n\nEarlier unlinked message\n\nFollow-up', acceptance })
+  assert.deepEqual(await read(), { requirement, acceptance })
+  assert.ok(handoff().includes('Earlier unlinked message') && handoff().includes('Follow-up'))
   const full = (await host.call('project-task-detail', target)).value
   assert.deepEqual(full.requirementHistory, [{ text: 'Original **request**', images: [] }])
   assert.deepEqual(host.saved().rooms.r1.projectCards.card.requirementHistory, full.requirementHistory)
