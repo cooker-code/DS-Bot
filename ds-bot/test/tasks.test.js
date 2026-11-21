@@ -436,6 +436,8 @@ test('project detail edits persist Markdown per field and keep the original inta
   room.projectCards.card.intakes.push(later)
   assert.deepEqual(await read(), { requirement: requirement + '\n\nEarlier unlinked message\n\nFollow-up', acceptance })
   const full = (await host.call('project-task-detail', target)).value
+  assert.deepEqual(full.requirementHistory, [{ text: 'Original **request**', images: [] }])
+  assert.deepEqual(host.saved().rooms.r1.projectCards.card.requirementHistory, full.requirementHistory)
   assert.deepEqual(full.requirements.map(line => line.text), [`[${later}] Earlier unlinked message`, `[${first}] Original **request**`, `[${first}] Follow-up`])
   assert.equal((await host.call('update-project-task-text', { ...target, roomId: 'missing', field: 'acceptance', previous: acceptance, value: 'Wrong room' })).error.code, 'GROUP_CONTEXT_REQUIRED')
 })
@@ -473,4 +475,9 @@ test('task fields show original annotation images and save separate pictures for
   assert.equal((await edit('acceptance', 'Compare', 'Compare', { removeImages: [acceptanceImage.attachmentId] })).ok, true)
   assert.equal((await host.call('project-task-detail', { ...target, imageId: acceptanceImage.attachmentId })).error.code, 'bot/not-found')
   assert.deepEqual((await read()).fieldImages.requirement, [requirementImage])
+  await edit('requirement', 'Revised', 'Revised', { removeImages: [requirementImage.attachmentId] })
+  const history = (await host.call('project-task-detail', target)).value.requirementHistory
+  assert.deepEqual(history.map(entry => entry.text), [text, 'Revised', 'Revised'])
+  assert.deepEqual(history.at(-1).images, [original, requirementImage])
+  assert.equal(await read({ imageId: requirementImage.attachmentId }), 'data:image/png;base64,Aw==')
 })

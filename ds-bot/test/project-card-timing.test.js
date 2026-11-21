@@ -58,7 +58,9 @@ test('the project board counts saved cards, hiding unassigned intakes while keep
 test('a task needing clarification opens its detail without showing the explanation in the list', () => {
   const card = { taskId: 'a', title: 'Start time', status: 'clarify', clarification: 'Confirm the time format.' }
   const opened = []
-  const board = TaskBoard({ room: { projectCards: [card] }, roster: {}, actions: {}, onOpen: id => opened.push(id) })
+  const props = { room: { projectCards: [card] }, roster: {}, actions: {}, onOpen: id => opened.push(id) }
+  assert.equal(find(TaskBoard(props), n => n.props?.card === card), undefined)
+  const board = TaskBoard({ ...props, statuses: new Set(['clarify']) })
   const list = find(board, n => n.props?.className === 'bt-task-list')
   assert.equal(find(list, n => n.children.includes(card.clarification)), undefined)
   const component = find(list, n => n.props?.card === card)
@@ -225,4 +227,35 @@ test('the card distinguishes a recorded dev merge from completed post-merge chec
   task.rounds[0].result = 'Targeted checks passed'
   task.rounds[0].submittedAt = 30
   assert.deepEqual(row(task).labels, ['Awaiting review'])
+})
+
+test('task detail shows only the three fields and switches to a read-only requirement snapshot', async () => {
+  const { outputFiles } = await build({
+    entryPoints: [fileURLToPath(new URL('../src/client/project-task-detail.js', import.meta.url))],
+    bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
+  })
+  const history = [{ text: 'Earlier request', images: [] }]
+  const detail = { requirement: 'First。Second。', acceptance: '1. Check output', requirementHistory: history }
+  const state = [detail]
+  let hook = 0
+  const runtime = { ...react, useState(initial) {
+    const slot = hook++
+    if (!(slot in state)) state[slot] = initial
+    return [state[slot], value => { state[slot] = value }]
+  } }
+  const module = { exports: {} }
+  runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => runtime })
+  const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
+  const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
+  const fields = body.children[0].children[1].children
+  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskWorkspace'])
+  const show = () => { hook = 3; return fields[0].type(fields[0].props).props }
+  const latest = show()
+  assert.equal(latest.value, '1. First。\n2. Second。')
+  assert.equal(latest.headerControl.props.value, 1)
+  latest.headerControl.props.onChange({ target: { value: '0' } })
+  assert.equal(show().value, '1. Earlier request')
+  assert.equal(show().onEdit, undefined)
+  show().headerControl.props.onChange({ target: { value: '1' } })
+  assert.equal(typeof show().onEdit, 'function')
 })

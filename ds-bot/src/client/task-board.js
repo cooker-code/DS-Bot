@@ -30,16 +30,18 @@ const BOARD_STATES = {
 }
 
 const statusKeys = Object.keys(BOARD_STATES)
+const defaultStatuses = new Set(statusKeys.filter(status => status !== 'clarify'))
 
 function TaskStatusFilter({ statuses, onChange, disabled }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu('start')
   const label = t('Filter tasks by status')
-  const all = statuses === null
+  const selected = statuses ?? defaultStatuses
+  const all = selected.size === statusKeys.length
   const toggle = status => {
-    const next = new Set(statuses ?? statusKeys)
+    const next = new Set(selected)
     if (next.has(status)) next.delete(status)
     else next.add(status)
-    onChange(next.size === statusKeys.length ? null : next)
+    onChange(next)
   }
   const option = (key, text, checked, onClick) => h('button', {
     key, type: 'button', role: 'menuitemcheckbox', 'aria-checked': checked, autoFocus: key === 'all', onClick,
@@ -56,9 +58,9 @@ function TaskStatusFilter({ statuses, onChange, disabled }) {
       'data-leaving': leaving || undefined, onBlur: e => {
         if (e.relatedTarget && e.relatedTarget !== button.current && !e.currentTarget.contains(e.relatedTarget)) close()
       } },
-      option('all', t('Select all'), all || (statuses.size > 0 ? 'mixed' : false), () => onChange(all ? new Set() : null)),
+      option('all', t('Select all'), all || (selected.size > 0 ? 'mixed' : false), () => onChange(all ? new Set() : new Set(statusKeys))),
       h('div', { className: 'bt-menu-sep', role: 'separator' }),
-      statusKeys.map(status => option(status, t(TASK_STATUS[status]), all || statuses.has(status), () => toggle(status)))),
+      statusKeys.map(status => option(status, t(TASK_STATUS[status]), selected.has(status), () => toggle(status)))),
     document.body) : null)
 }
 
@@ -245,7 +247,7 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
   const deleting = useRef(false)
   const editButton = useRef(null), deleteButton = useRef(null)
   const editing = selection !== null
-  const matches = task => statuses === null || statuses.has(task.status)
+  const matches = task => statuses === null ? task.status !== 'clarify' : statuses.has(task.status)
   const all = Object.entries(room.tasks ?? {}).filter(([, task]) => matches(task)).sort(([, a], [, b]) => a.startedAt - b.startedAt)
   const open = all.filter(([, task]) => OPEN.includes(task.status))
   const cards = (room.projectCards ?? []).filter(matches).sort((a, b) => b.updatedAt - a.updatedAt)

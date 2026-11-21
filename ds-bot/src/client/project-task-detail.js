@@ -1,5 +1,3 @@
-import { TASK_STATUS } from './task-board.js'
-import { TaskReply } from './task-reply.js'
 import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
 import { MarkdownField } from './markdown-field.js'
@@ -8,7 +6,23 @@ import { TaskWorkspace } from './task-workspace.js'
 import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
 import { t } from './i18n.js'
 
-function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+// Preserve authored Markdown blocks. Plain legacy notes can be listed without changing their saved text.
+function taskList(text) {
+  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\||\d+[.)] )/m.test(text)) return text
+  return text.split(/\n+|(?<=[。；])(?=\S)/u).map(line => line.trim().replace(/^[-*+]\s+/, '')).filter(Boolean)
+    .map((line, index) => (index + 1) + '. ' + line).join('\n')
+}
+
+function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+  const [version, setVersion] = useState(null)
+  const snapshot = version === null ? undefined : versions?.[version]
+  const currentVersion = versions?.length ?? 0
+  if (snapshot) {
+    value = snapshot.text
+    sourceImages = snapshot.images
+    images = []
+    readOnly = true
+  }
   const picker = useRef(null)
   const [draft, setDraft] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -46,7 +60,13 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
   ...(draft?.files ?? []).map((file, index) => h(TaskImage, { key: 'file-' + index, file, label: file.name,
     disabled: busy || readOnly, onRemove: () => setDraft({ ...draft, files: draft.files.filter(other => other !== file) }) }))]
   const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length)
-  return h(MarkdownField, { title: label, value, placeholder: visible.length ? null : '—', maxLength,
+  return h(MarkdownField, { title: label, value: taskList(value),
+    headerControl: versions && h('select', { className: 'bt-select', 'aria-label': t('Requirement version'),
+      disabled: !!draft, value: snapshot ? version : currentVersion, onChange: event => {
+        const selected = Number(event.target.value)
+        setVersion(selected === currentVersion ? null : selected)
+      } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index }, 'v' + (index + 1)))),
+    placeholder: visible.length ? null : '—', maxLength,
     draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
     onEdit: readOnly ? undefined : () => setDraft({ original: value, text: value, removed: [], files: [] }),
     onChange: text => setDraft({ ...draft, text }), onSave: save, onCancel: finish,
@@ -61,9 +81,7 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
   } }) : null)
 }
 
-export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip, onBack, close }) {
-  const [savingAcceptance, setSavingAcceptance] = useState(false)
-  const [replying, setReplying] = useState(false)
+export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = useState()
   const [error, setError] = useState('')
   const [attempt, retry] = useState(0)
@@ -100,38 +118,7 @@ export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          !readOnly && room.taskManagementEnabled !== false ? replying ? h(TaskReply, { room, initialId: taskId, close: () => setReplying(false) })
-            : h('button', { type: 'button', className: 'bt-soft', onClick: () => setReplying(true) }, t('Continue this task')) : null,
-          h('label', { className: 'bt-set-row' }, h('input', { type: 'checkbox', checked: !!detail.humanAcceptanceRequired,
-            disabled: savingAcceptance || readOnly || !!detail.humanReview || detail.status === 'done' || !detail.supportsHumanAcceptance,
-            onChange: async event => {
-              setSavingAcceptance(true)
-              try {
-                const required = await call('set-task-human-acceptance', { roomId: room.id, taskId, required: event.target.checked })
-                setDetail(current => ({ ...current, humanAcceptanceRequired: required }))
-              } catch (failure) { setError(failure.message) }
-              finally { setSavingAcceptance(false) }
-            } }), t('Require human acceptance')),
-          h('p', null, t(detail.validatingMerge ? 'Merged into dev, validating' : TASK_STATUS[detail.status] ?? detail.status), ' · ',
-            (detail.owners?.length ? detail.owners : detail.ownerId ? [detail.ownerId] : []).map(id => roster?.byId[id]?.name ?? id).join(', ') || t('Unassigned')),
-          detail.clarification ? h('p', null, detail.clarification) : null,
-          detail.classificationReason ? h('p', null, t('Classification reason'), ' · ', detail.classificationReason) : null,
-          detail.plans?.at(-1)?.nodes.map(node => h('div', { className: 'bt-set-row', key: node.no },
-            h('span', null, node.title, ' · ', roster?.byId[node.ownerId]?.name ?? node.ownerId,
-              node.round ? ' · ' + t('Round {number}', { number: node.round }) : '',
-              detail.rounds[node.round - 1]?.planNode?.block?.reason ? ' · ' + detail.rounds[node.round - 1].planNode.block.reason : ''),
-            ...[['fixedOwner', 'Fixed owner'], ['independentReview', 'Independent review']].map(([field, label]) =>
-              h('label', { key: field }, h('input', { type: 'checkbox', checked: Boolean(node[field]),
-                disabled: readOnly || savingAcceptance || !!detail.rounds.length || !!detail.humanReview,
-                onChange: async event => {
-                  setSavingAcceptance(true)
-                  try {
-                    await call('set-task-node-constraint', { roomId: room.id, taskId, version: detail.version, node: node.no, field, value: event.target.checked })
-                    retry(n => n + 1)
-                  } catch (failure) { setError(failure.message) }
-                  finally { setSavingAcceptance(false) }
-                } }), t(label))))),
-          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement,
+          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory ?? [],
             sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),

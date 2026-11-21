@@ -12931,6 +12931,7 @@ var ZH = {
   "Link task": "关联任务",
   "Choose a task": "选择任务",
   "Task reply": "补充此任务",
+  "Requirement version": "需求版本",
   "Continue this task": "继续此任务",
   "Require human acceptance": "需要人工终验",
   "Classification reason": "受理依据",
@@ -26420,6 +26421,7 @@ function MarkdownField({
   disableSave,
   onPaste,
   children,
+  headerControl,
   tools,
   error
 }) {
@@ -26453,6 +26455,7 @@ function MarkdownField({
         (0, import_react27.createElement)("span", { className: settings ? "bt-bs-label" : "bt-section-title", role: "heading", "aria-level": 3 }, title),
         hint ? (0, import_react27.createElement)("span", { className: "bt-set-hint" }, hint) : null
       ),
+      headerControl,
       !editing && onEdit ? (0, import_react27.createElement)("button", { ref: edit, type: "button", className: "bt-mini", onClick: () => {
         if (autoSize) previewHeight.current = body.current?.offsetHeight ?? 0;
         onEdit();
@@ -39771,15 +39774,17 @@ var BOARD_STATES = {
   cancelled: "The task was cancelled."
 };
 var statusKeys = Object.keys(BOARD_STATES);
+var defaultStatuses = new Set(statusKeys.filter((status) => status !== "clarify"));
 function TaskStatusFilter({ statuses, onChange, disabled }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu("start");
   const label = t("Filter tasks by status");
-  const all = statuses === null;
+  const selected = statuses ?? defaultStatuses;
+  const all = selected.size === statusKeys.length;
   const toggle = (status) => {
-    const next = new Set(statuses ?? statusKeys);
+    const next = new Set(selected);
     if (next.has(status)) next.delete(status);
     else next.add(status);
-    onChange(next.size === statusKeys.length ? null : next);
+    onChange(next);
   };
   const option = (key, text, checked, onClick) => (0, import_react58.createElement)(
     "button",
@@ -39829,9 +39834,9 @@ function TaskStatusFilter({ statuses, onChange, disabled }) {
             if (e.relatedTarget && e.relatedTarget !== button.current && !e.currentTarget.contains(e.relatedTarget)) close();
           }
         },
-        option("all", t("Select all"), all || (statuses.size > 0 ? "mixed" : false), () => onChange(all ? /* @__PURE__ */ new Set() : null)),
+        option("all", t("Select all"), all || (selected.size > 0 ? "mixed" : false), () => onChange(all ? /* @__PURE__ */ new Set() : new Set(statusKeys))),
         (0, import_react58.createElement)("div", { className: "bt-menu-sep", role: "separator" }),
-        statusKeys.map((status) => option(status, t(TASK_STATUS[status]), all || statuses.has(status), () => toggle(status)))
+        statusKeys.map((status) => option(status, t(TASK_STATUS[status]), selected.has(status), () => toggle(status)))
       ),
       document.body
     ) : null
@@ -40105,7 +40110,7 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
   const deleting = (0, import_react58.useRef)(false);
   const editButton = (0, import_react58.useRef)(null), deleteButton = (0, import_react58.useRef)(null);
   const editing = selection !== null;
-  const matches2 = (task) => statuses === null || statuses.has(task.status);
+  const matches2 = (task) => statuses === null ? task.status !== "clarify" : statuses.has(task.status);
   const all = Object.entries(room2.tasks ?? {}).filter(([, task]) => matches2(task)).sort(([, a], [, b]) => a.startedAt - b.startedAt);
   const open = all.filter(([, task]) => OPEN.includes(task.status));
   const cards = (room2.projectCards ?? []).filter(matches2).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -43621,7 +43626,20 @@ function TaskImage({ roomId, taskId, image, file, label, onRemove, disabled }) {
 
 // src/client/project-task-detail.js
 var import_react75 = require("react");
-function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+function taskList(text) {
+  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\||\d+[.)] )/m.test(text)) return text;
+  return text.split(/\n+|(?<=[。；])(?=\S)/u).map((line) => line.trim().replace(/^[-*+]\s+/, "")).filter(Boolean).map((line, index) => index + 1 + ". " + line).join("\n");
+}
+function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+  const [version, setVersion] = (0, import_react75.useState)(null);
+  const snapshot = version === null ? void 0 : versions?.[version];
+  const currentVersion = versions?.length ?? 0;
+  if (snapshot) {
+    value = snapshot.text;
+    sourceImages = snapshot.images;
+    images = [];
+    readOnly = true;
+  }
   const picker = (0, import_react75.useRef)(null);
   const [draft, setDraft] = (0, import_react75.useState)(null);
   const [busy, setBusy] = (0, import_react75.useState)(false);
@@ -43674,7 +43692,17 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
   const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length);
   return (0, import_react75.createElement)(MarkdownField, {
     title: label,
-    value,
+    value: taskList(value),
+    headerControl: versions && (0, import_react75.createElement)("select", {
+      className: "bt-select",
+      "aria-label": t("Requirement version"),
+      disabled: !!draft,
+      value: snapshot ? version : currentVersion,
+      onChange: (event) => {
+        const selected = Number(event.target.value);
+        setVersion(selected === currentVersion ? null : selected);
+      }
+    }, Array.from({ length: currentVersion + 1 }, (_, index) => (0, import_react75.createElement)("option", { key: index, value: index }, "v" + (index + 1)))),
     placeholder: visible.length ? null : "—",
     maxLength,
     draft: draft?.text,
@@ -43698,9 +43726,7 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
     event.target.value = "";
   } }) : null);
 }
-function ProjectTaskDetail({ room: room2, card, roster, readOnly, move, hasStrip, onBack, close }) {
-  const [savingAcceptance, setSavingAcceptance] = (0, import_react75.useState)(false);
-  const [replying, setReplying] = (0, import_react75.useState)(false);
+function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = (0, import_react75.useState)();
   const [error, setError] = (0, import_react75.useState)("");
   const [attempt, retry] = (0, import_react75.useState)(0);
@@ -43748,67 +43774,13 @@ function ProjectTaskDetail({ room: room2, card, roster, readOnly, move, hasStrip
         detail ? (0, import_react75.createElement)(
           import_react75.Fragment,
           null,
-          !readOnly && room2.taskManagementEnabled !== false ? replying ? (0, import_react75.createElement)(TaskReply, { room: room2, initialId: taskId, close: () => setReplying(false) }) : (0, import_react75.createElement)("button", { type: "button", className: "bt-soft", onClick: () => setReplying(true) }, t("Continue this task")) : null,
-          (0, import_react75.createElement)("label", { className: "bt-set-row" }, (0, import_react75.createElement)("input", {
-            type: "checkbox",
-            checked: !!detail.humanAcceptanceRequired,
-            disabled: savingAcceptance || readOnly || !!detail.humanReview || detail.status === "done" || !detail.supportsHumanAcceptance,
-            onChange: async (event) => {
-              setSavingAcceptance(true);
-              try {
-                const required = await call("set-task-human-acceptance", { roomId: room2.id, taskId, required: event.target.checked });
-                setDetail((current) => ({ ...current, humanAcceptanceRequired: required }));
-              } catch (failure) {
-                setError(failure.message);
-              } finally {
-                setSavingAcceptance(false);
-              }
-            }
-          }), t("Require human acceptance")),
-          (0, import_react75.createElement)(
-            "p",
-            null,
-            t(detail.validatingMerge ? "Merged into dev, validating" : TASK_STATUS[detail.status] ?? detail.status),
-            " · ",
-            (detail.owners?.length ? detail.owners : detail.ownerId ? [detail.ownerId] : []).map((id) => roster?.byId[id]?.name ?? id).join(", ") || t("Unassigned")
-          ),
-          detail.clarification ? (0, import_react75.createElement)("p", null, detail.clarification) : null,
-          detail.classificationReason ? (0, import_react75.createElement)("p", null, t("Classification reason"), " · ", detail.classificationReason) : null,
-          detail.plans?.at(-1)?.nodes.map((node) => (0, import_react75.createElement)(
-            "div",
-            { className: "bt-set-row", key: node.no },
-            (0, import_react75.createElement)(
-              "span",
-              null,
-              node.title,
-              " · ",
-              roster?.byId[node.ownerId]?.name ?? node.ownerId,
-              node.round ? " · " + t("Round {number}", { number: node.round }) : "",
-              detail.rounds[node.round - 1]?.planNode?.block?.reason ? " · " + detail.rounds[node.round - 1].planNode.block.reason : ""
-            ),
-            ...[["fixedOwner", "Fixed owner"], ["independentReview", "Independent review"]].map(([field, label]) => (0, import_react75.createElement)("label", { key: field }, (0, import_react75.createElement)("input", {
-              type: "checkbox",
-              checked: Boolean(node[field]),
-              disabled: readOnly || savingAcceptance || !!detail.rounds.length || !!detail.humanReview,
-              onChange: async (event) => {
-                setSavingAcceptance(true);
-                try {
-                  await call("set-task-node-constraint", { roomId: room2.id, taskId, version: detail.version, node: node.no, field, value: event.target.checked });
-                  retry((n) => n + 1);
-                } catch (failure) {
-                  setError(failure.message);
-                } finally {
-                  setSavingAcceptance(false);
-                }
-              }
-            }), t(label)))
-          )),
           (0, import_react75.createElement)(TaskField, {
             roomId: room2.id,
             taskId,
             label: t("Requirement"),
             readOnly,
             value: detail.requirement,
+            versions: detail.requirementHistory ?? [],
             sourceImages: detail.sourceImages,
             images: detail.fieldImages?.requirement,
             onSave: (...args) => save("requirement", ...args)

@@ -60,6 +60,7 @@ const ZH = {
   "Link task": "关联任务",
   "Choose a task": "选择任务",
   "Task reply": "补充此任务",
+  'Requirement version': '需求版本',
   "Continue this task": "继续此任务",
   "Require human acceptance": "需要人工终验",
   "Classification reason": "受理依据",

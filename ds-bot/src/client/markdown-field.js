@@ -3,7 +3,7 @@ import { MarkdownText } from './dsh-primitives.js'
 import { mdLabels, t } from './i18n.js'
 
 export function MarkdownField({ title, label = title, hint, value = '', placeholder, maxLength,
-  settings, autoSize, draft, onEdit, onChange, onSave, onCancel, busy, disableSave, onPaste, children, tools, error }) {
+  settings, autoSize, draft, onEdit, onChange, onSave, onCancel, busy, disableSave, onPaste, children, headerControl, tools, error }) {
   const previewHeight = useRef(0)
   const body = useRef(null)
   const edit = useRef(null)
@@ -24,6 +24,7 @@ export function MarkdownField({ title, label = title, hint, value = '', placehol
       h('span', { className: 'bt-set-copy' },
         h('span', { className: settings ? 'bt-bs-label' : 'bt-section-title', role: 'heading', 'aria-level': 3 }, title),
         hint ? h('span', { className: 'bt-set-hint' }, hint) : null),
+      headerControl,
       !editing && onEdit ? h('button', { ref: edit, type: 'button', className: 'bt-mini', onClick: () => {
         if (autoSize) previewHeight.current = body.current?.offsetHeight ?? 0
         onEdit()

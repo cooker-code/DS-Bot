@@ -46,13 +46,13 @@ function intakeCard(room, receipt, reason, title) {
   return card
 }
 
-async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq) {
+async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq, document) {
   await rt.save({ required: true, mutate() {
     if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
     const existing = cardForIntake(room, intakeId)
     if (existing) {
       if (delegatedSeq && delegatedSeq > (existing.delegatedSeq ?? 0)) {
-        const updated = { ...existing, delegatedSeq }
+        const updated = { ...existing, ...(existing.goal === undefined && !existing.plans?.length ? document : {}), delegatedSeq }
         delete updated.clarification
         room.projectCards[existing.id] = updated
         return () => { room.projectCards[existing.id] = existing }
@@ -63,7 +63,7 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq) {
     if (!receipt || room.deletedTaskIntakes?.includes(intakeId)) throw new Error('This intake is unavailable.')
     const previous = { ...receipt }
     const card = intakeCard(room, receipt, field(reason, 'the independently verifiable outcome for this new task', 4000), title)
-    if (delegatedSeq) card.delegatedSeq = delegatedSeq
+    if (delegatedSeq) Object.assign(card, document, { delegatedSeq })
     return () => {
       delete room.projectCards[card.id]
       delete receipt.reason
@@ -148,7 +148,8 @@ export function projectImages(card, sources) {
 
 export async function readProjectImage(rt, room, card, taskId, imageId, signal) {
   const sources = projectSources(rt, room, card.intakes ?? [], taskId)
-  const ref = projectImages(card, sources).find(image => (image.attachmentId ?? image.id) === imageId)
+  const available = [...projectImages(card, sources), ...(card.requirementHistory ?? []).flatMap(entry => entry.images)]
+  const ref = available.find(image => (image.attachmentId ?? image.id) === imageId)
   if (!ref) throw Object.assign(new Error('Image unavailable'), { code: 'bot/not-found' })
   const stored = await rt.ctx.get('attachments').readImage(ref.attachmentId ? ref : { ...ref, attachmentId: imageId }, signal)
   return 'data:' + stored.ref.mediaType + ';base64,' + Buffer.from(stored.data).toString('base64')
@@ -163,7 +164,7 @@ export function projectCardDetail(rt, room, card, taskId = card.id, textOnly = f
   if (textOnly) return text
   const checkout = taskCheckout(card)
   return {
-    ...projectCardSummary(card, taskId), supportsHumanAcceptance: Boolean(card.plans), ...(checkout && { taskWorkspace: checkout }), ...(card.workspace && { selectedWorkspace: card.workspace }), ...text, ...(card.humanReview ? { humanReview: card.humanReview } : {}), rounds: card.rounds ?? [],
+    ...projectCardSummary(card, taskId), requirementHistory: card.requirementHistory ?? [], supportsHumanAcceptance: Boolean(card.plans), ...(checkout && { taskWorkspace: checkout }), ...(card.workspace && { selectedWorkspace: card.workspace }), ...text, ...(card.humanReview ? { humanReview: card.humanReview } : {}), rounds: card.rounds ?? [],
     ...(card.plans?.length ? { plans: card.plans.map(plan => ({ ...plan, nodes: nodeViews(card, plan) })) } : {}),
     ...(card.previousReviews?.length ? { previousReviews: card.previousReviews } : {}),
     requirements: sources.map(({ seq, text, images, files }) => ({ seq, text, images, files })),
@@ -198,6 +199,9 @@ export async function updateProjectTaskText(rt, { roomId, taskId, field: key, pr
       ? { goal: value, requirementSources: sources.map(line => line.seq) } : { acceptance: value })
     if (!isDeepStrictEqual(images, beforeImages)) changes.fieldImages = { ...card.fieldImages, [key]: images }
     if (!Object.keys(changes).length) return
+    if (key === 'requirement') changes.requirementHistory = [...(card.requirementHistory ?? []), {
+      text: current, images: uniqueImages([...sources.flatMap(line => line.images ?? []), ...beforeImages]),
+    }]
     const updatedAt = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)
     if (card.plans?.length) changes.fieldEditTimes = { ...card.fieldEditTimes, [key]: updatedAt }
     room.projectCards[taskId] = { ...card, ...changes, updatedAt }
@@ -261,8 +265,8 @@ export function install(rt) {
       parentTaskId: { type: 'string', description: 'For relate, the existing primary project card in this group. The child keeps its ID and history.' },
       ownerId: { type: 'string', description: 'Group member ID for assign or handoff.' },
       title: { type: 'string', description: 'Short title for a new card.' },
-      plan: { type: 'string', description: 'Work and planned handoffs through final user acceptance.' },
-      acceptance: { type: 'string', description: 'How the user can verify the result.' },
+      plan: { type: 'string', description: 'For first plan and delegation, the clarified requirement as a concise numbered list. For assignment or handoff, instructions for the next owner.' },
+      acceptance: { type: 'string', description: 'Concise numbered list of observable conditions the user can verify.' },
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
       commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
@@ -319,7 +323,7 @@ export function install(rt) {
         const acceptance = field(args.acceptance, 'acceptance conditions', 2000)
         const lines = projectSources(rt, room, linked?.intakes ?? [intakeId], linked?.id, original.seq)
         const owners = members.filter(bot => bot.id !== actor && bot.id !== assistant)
-        await acceptWork(rt, room, intakeId, args.classificationReason || goal, args.title, original.seq)
+        await acceptWork(rt, room, intakeId, args.classificationReason || goal, args.title, original.seq, { goal, acceptance, requirementSources: lines.map(line => line.seq) })
         if (handoffOnReply) {
           const message = field(args.message, 'the answer for the group', 4000)
           await rt.replyToProjectIntake(room, rt.botOf(actor), original, message)
@@ -651,6 +655,10 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (card && card.plans?.length && (card.title !== title || card.acceptance?.trim() !== acceptance)) throw new Error('This card has different details.')
       card ??= { id: randomUUID(), title, acceptance, intakes: [receipt.id], rounds: [] }
       if (!card.plans?.length) {
+        if (card.goal === undefined && args.plan?.trim()) {
+          card.goal = field(args.plan, 'the clarified requirement', 4000)
+          card.requirementSources = projectSources(rt, room, card.intakes, card.id, source?.intakeSeq).map(line => line.seq)
+        }
         card.title = title
         card.acceptance = acceptance
         delete card.clarification
