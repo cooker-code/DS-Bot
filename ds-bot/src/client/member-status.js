@@ -6,16 +6,14 @@ import { t } from './i18n.js'
 
 // -------------------------------------------------------------------------
 // What a group's members are doing: above the group's composer, one capsule for the
-// members at work or waiting for an approval; above a Bot's own composer, one for the
-// groups it is at work in; and per member in the details panel, where the approvals
+// members at work or waiting for an approval; and per member in the details panel, where the approvals
 // their group turns wait on are answered.
 
 const NO_WORK = { bots: {}, rooms: {}, approvals: [] }
 const FACES_MAX = 3
 const DOCK_EXIT_MS = 160
 
-// Only work in this group counts here; work elsewhere shows on the Bot's own chat
-// (its 'in {group}' capsule and sidebar group tag), not in every group it is in (#473).
+// Only work in this group counts here (#473).
 export function memberWork(room, work = NO_WORK) {
   const here = work.rooms?.[room.id] ?? []
   return room.members.map((id) => {
@@ -37,15 +35,6 @@ export function busyMembers(room, work, roster) {
 const dockMembers = busy => busy.filter(entry => !(entry.state === 'work' && entry.here && entry.doing.speaking === true))
 
 export const workState = doing => (doing?.switching ? 'thinking' : toolState(doing?.tool ?? ''))
-
-// The groups a Bot is at work in.
-export function botGroupWork(botId, work, roster) {
-  return Object.entries(work.rooms ?? {}).flatMap(([roomId, entries]) => {
-    const entry = entries.find(item => item.botId === botId)
-    const room = roster.roomsById[roomId]
-    return entry && room ? [{ room, doing: entry, since: entry.since }] : []
-  })
-}
 
 export function summaryText(busy) {
   const asks = busy.filter(entry => entry.state === 'ask')
@@ -73,18 +62,7 @@ function dockModel(sessionId, roster, work) {
       waiting, doing,
     }
   }
-  const bot = roster.byId[sessionId]
-  // A running own chat has its activity row.
-  if (!bot || (work.bots?.[bot.id] !== undefined && work.bots[bot.id].roomId === undefined)) return null
-  const groups = botGroupWork(bot.id, work, roster)
-  if (groups.length === 0) return null
-  const [first] = groups
-  return {
-    open: { session: first.room.id },
-    faces: [{ id: bot.id, ask: false, state: workState(first.doing) }],
-    waiting: '',
-    doing: `${t('in {name}', { name: first.room.name })} · ${workPhrase(first.doing)}…${groups.length > 1 ? ` +${groups.length - 1}` : ''}`,
-  }
+  return null
 }
 
 function Face({ bot, ask, state }) {
@@ -100,8 +78,7 @@ function useFitWidth(inner, key) {
   return width
 }
 
-// Above the composer, one capsule for everything at work: it opens the group's details,
-// or from a Bot's own chat the group it is at work in.
+// The group composer's capsule opens the group's details.
 export function MemberDock({ sessionId, useRoster, useWork, actions }) {
   const roster = useRoster(value => value)
   const work = useWork(value => value)
@@ -110,10 +87,10 @@ export function MemberDock({ sessionId, useRoster, useWork, actions }) {
   const model = kept ? JSON.parse(kept) : null
   const inner = useRef(null)
   const width = useFitWidth(inner, kept)
-  if (!model) return null
+  if (!model || !roster.roomsById[sessionId]) return null
   const faces = model.faces.map(face => ({ ...face, bot: roster.byId[face.id] })).filter(face => face.bot)
   const label = [model.waiting, model.doing].filter(Boolean).join(' · ')
-  const open = () => (model.open.details ? actions.showDetails(model.open.details) : actions.openSession(model.open.session))
+  const open = () => actions.showDetails(model.open.details)
   return h('div', { className: 'bt-mw-dock', 'data-leaving': leaving || undefined },
     h('button', { type: 'button', className: 'bt-mw-pill', 'aria-label': label, onClick: open, disabled: leaving, style: width ? { width } : undefined },
       h('span', { ref: inner, className: 'bt-mw-pill-in' },

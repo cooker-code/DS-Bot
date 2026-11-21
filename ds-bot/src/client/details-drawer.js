@@ -16,7 +16,6 @@ import { useGlide } from './motion.js'
 import { MemberApprovals, MemberState, StopMemberWork, StopRoomWork, useMemberWork, workState } from './member-status.js'
 import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
-import { MemberHistory } from './member-history.js'
 import { MembersSection } from './members-section.js'
 import { ProjectTaskDetail } from './project-task-detail.js'
 import { TaskBoard } from './task-board.js'
@@ -156,7 +155,7 @@ const markOf = entry => (entry?.state === 'ask' ? 'alert' : entry?.state === 'wo
 function MemberRow({ member, entry, room, roster, actions, stats }) {
   return h('div', { role: 'listitem', className: 'bt-member' },
     h('div', { className: 'bt-member-row' },
-      h('button', { type: 'button', className: 'bt-member-open', title: t("Open {name}'s chat", { name: member.name }), onClick: () => actions.openSession(member.id) },
+      h('button', { type: 'button', className: 'bt-member-open', title: t("Open {name}'s chat", { name: member.name }), onClick: () => actions.openMemberSession(room.id, member.id) },
         h(BotMark, { bot: member, size: 32, state: markOf(entry) }),
         h('span', { className: 'bt-member-text' },
           h('span', { className: 'bt-member-line' },
@@ -214,7 +213,7 @@ function GroupOverview({ room, roster, actions, run, usage, useWork, openTask, r
 
 // DSH list rows carry the last activity time. Archived rows can be absent from
 // the shell list, so use the part's saved time until the row is available.
-function BotSessions({ bot, part, rooms = [], openMember, run, useSessions, useSessionStatus, actions, running, readOnly }) {
+function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus, actions, running, readOnly }) {
   const [selection, setSelection] = useState(null)
   const [confirmation, setConfirmation] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -302,7 +301,7 @@ function BotSessions({ bot, part, rooms = [], openMember, run, useSessions, useS
       ]
       const className = `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`
       if (entry.roomId) return h('button', { type: 'button', key: entry.id, className: 'bt-agent-session',
-        disabled: editing || busy, onClick: () => openMember(entry, label) }, row)
+        disabled: editing || busy, onClick: () => actions.openMemberSession(entry.roomId, bot.id, entry.id) }, row)
       if (editing) return h('label', { key: entry.id, className },
         h('input', { type: 'checkbox', checked: selected.includes(entry.id), disabled: entry.running || !!confirmation || busy,
           'aria-label': t('Select {name}', { name: label }), onChange: e => {
@@ -340,7 +339,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
   const move = last.current.move
   const side = move === 'tab' ? undefined : move
   const close = () => actions.closeOverlay()
-  useEscape(view?.taskId || view?.member ? () => setView('overview') : close)
+  useEscape(view?.taskId ? () => setView('overview') : close)
   const bot = owner
   const running = useSessionStatus(map => map.get(part)?.running === true)
   const doing = useActivity(map => map[bot?.id ?? sessionId])
@@ -356,10 +355,6 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
     })
   }
   const errorLine = error ? h('div', { className: 'bt-error', role: 'alert', style: { padding: 0 } }, error) : null
-  if (bot && view?.member) {
-    return h(MemberHistory, { key: view.member.id, member: view.member, label: view.label, bot, actions, hasStrip,
-      back: () => setView('overview'), close })
-  }
   if (room && view?.taskId) {
     const card = room.projectCards?.find(item => item.taskId === view.taskId)
     return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, roster, readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
@@ -442,7 +437,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h(ModelMenu, { bot, roster, actions, run, wide: true, inline: true }),
           modelOf(bot, roster) ? null : h('div', { className: 'bt-note' }, t('Pick a model and {name} can start.', { name: bot.name })),
         ),
-        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, rooms: roster.rooms, openMember: (member, label) => setView({ member, label }), run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
+        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, rooms: roster.rooms, run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
         h(PermissionRow, { key: 'permission', bot, roster, actions, run }),
         h(BotConnectors, { key: 'connectors', bot, roster, actions, run }),
         h('div', { key: 'folder', className: 'bt-drawer-model' },
