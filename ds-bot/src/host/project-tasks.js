@@ -346,11 +346,11 @@ export function install(rt) {
         const text = [
           'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
           relatedTaskGuidance,
-          'For feature development targeting dev, assign a developer on a feature branch then an independent DSH test engineer with mergeToDev=true, independentReview=true, writePaths=[] and a dependency on the candidate. The tester tests and merges the passing commit directly into local dev, immediately calls record_merge, validates the integrated snapshot and submits evidence to you. For a small feature make this test-and-merge node final. Approve after targeted post-merge checks; report archiving is non-blocking and needs no extra architecture review. On a failed test send the feedback to the developer in a revised plan and dispatch retesting of the new candidate. Dispatch successors in this turn; the user need not prompt continuation.',
+          'For every feature task, the developer commits on the feature branch. Dispatch a final independent read-only test node with independentReview=true, writePaths=[] and a dependency on the approved developer candidate. The tester verifies the exact feature commit and submits the test report. Approve the report to finish; keep the candidate on the feature branch. Integration, installation and release require separate work. On test failure return the feedback to the developer and retest the revised candidate.',
           'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
           linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
           'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
-          'For an existing independently tested candidate on a blocked historical code round, pin candidateCommit in a revised mergeToDev node. Reuse verified evidence for the exact same version. The tester may own that integration node; do not make their previous test report a direct producer dependency of their own independent review. Preserve final verification and historical rounds.',
+          'When revising the test plan, reuse the accepted developer round and preserve its branch and candidate. Trellis records requirements and evidence; an authorized feature commit needs no separate grouping approval.',
           'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Normally approve the final node; request_acceptance only for explicit human sign-off.',
           ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
         ].join('\n\n')
@@ -466,7 +466,7 @@ export function install(rt) {
       const owner = run && run.ownerId === actor && source?.exchangeId === run.dispatchId
       const testNode = run?.planNode && card.plans.find(p => p.version === run.planNode.version)?.nodes[run.planNode.node - 1]
       if (args.action === 'return_for_changes') {
-        if (!testNode?.mergeToDev || !owner || !run.startedAt || !currentBinding(card, run)) throw new Error('Return changes from the current independent test execution.')
+        if (!testNode?.independentReview || testNode.writePaths?.length !== 0 || !owner || !run.startedAt || !currentBinding(card, run)) throw new Error('Return changes from the current independent test execution.')
         const feedback = field(args.feedback, 'specific corrective feedback for the developer', 2000)
         args = { ...args, action: 'block', feedback, reason: feedback, waitingFor: 'Developer fix and independent retest' }
       }
@@ -782,7 +782,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         binding.checkpointAt = Date.now()
       } else if (args.action === 'block' && binding && !round.result) {
         const node = card.plans.at(-1).nodes[binding.node - 1]
-        if (node.mergeToDev && args.feedback != null) binding.feedback = field(args.feedback, 'actionable test feedback for the developer', 4000)
+        if (node.independentReview && node.writePaths?.length === 0 && args.feedback != null) binding.feedback = field(args.feedback, 'actionable test feedback for the developer', 4000)
         blockRound(round, { by: actor, cause: 'reported', reason: field(args.reason, 'the blocker', 2000),
           waitingFor: field(args.waitingFor, 'the recovery condition', 2000), evidence: field(args.evidence, 'observed evidence', 2000) })
       } else if (args.action === 'submit' && round.startedAt) {

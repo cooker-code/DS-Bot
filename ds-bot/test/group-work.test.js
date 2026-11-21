@@ -3027,6 +3027,7 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   const delegated = host.begin('gc')
   assert.equal(delegated.source.intakeId, intake.source.intakeId)
   assert.match(text(delegated), /Change the empty label into a dash/)
+  assert.match(text(delegated), /keep the candidate on the feature branch/)
   const plan = { action: 'plan', version: 1, title: 'Empty label', acceptance: handoff.acceptance,
     nodes: [{ ownerId: 'b', title: 'Fix label', instructions: 'Implement and test', deliverable: 'Verified display', acceptance: handoff.acceptance }] }
   await assert.rejects(project('ga', plan), { code: 'TASK_ROLE_REQUIRED' })
@@ -4214,7 +4215,8 @@ test('a delegated feature candidate returns with feedback then integrates the re
   ]
   const plan = { action: 'plan', workspaceMode: 'worktree', workRef: branch, workspaceReason: 'Test one candidate', title: 'Members arrow',
     acceptance: 'Toggle works on dev', version: 1, nodes }
-  const { taskId } = await manager(plan)
+  await assert.rejects(manager(plan), /Keep feature validation on the feature branch/)
+  const { taskId } = await manager({ ...plan, nodes: [nodes[0], { ...nodes[1], mergeToDev: false }] })
   const dispatch = async (version, node, name, session) => {
     const { dispatchRound: round } = await manager({ action: 'dispatch', taskId, version, node })
     await host.tool('message_bot', { taskId, card_round: round, to: name, request_id: 'arrow-' + round, reply_to: 'user', message: 'Execute node.' }, 'gd')
@@ -4245,6 +4247,9 @@ test('a delegated feature candidate returns with feedback then integrates the re
       assert.match(text(host.begin('gd')), /Handle Space/)
       assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].planNode.feedback, feedback)
       host.finish('gc', feedback)
+      // An already persisted integration plan from the previous version can finish its receipt workflow.
+      await assert.rejects(manager({ ...plan, taskId, version: 2, reason: feedback }), /arrange integration separately/)
+      rt.roomOf('r1').projectCards[taskId].plans[0].nodes[1].mergeToDev = 1
       await manager({ ...plan, taskId, version: 2, reason: feedback, nodes: [{ ...nodes[0], instructions: feedback }, nodes[1], { ...nodes[0], title: 'Archive report', writePaths: ['report'], dependsOn: [2] }] })
     } else {
       const submit = { action: 'submit', taskId, round: testRound, commit, result: 'Click and keyboard pass' }
@@ -4318,7 +4323,7 @@ test('editing an active project card wakes its coordinator and reclaims the stop
   host.begin('ga')
   const act = (who, args) => host.tool('project_task', args, who).then(JSON.parse)
   const response = await act('ga', { action: 'reply', acceptWork: true, message: 'We will check the members toggle.',
-    plan: 'Add the members arrow', acceptance: 'Click and keyboard toggle; integrate into dev.' })
+    plan: 'Add the members arrow', acceptance: 'Click and keyboard toggle on the feature branch.' })
   assert.equal(response.delegated, true)
   host.begin('gd')
   const manager = args => act('gd', args)
@@ -4327,11 +4332,11 @@ test('editing an active project card wakes its coordinator and reclaims the stop
   const dir = inventory.branches.find(b => b.branch === branch).workDir
   const nodes = [
     { ownerId: 'b', title: 'Develop', instructions: 'Implement the toggle', acceptance: 'Build passes', deliverable: 'Candidate', writePaths: ['toggle.js'] },
-    { ownerId: 'c', title: 'Test and integrate', instructions: 'Test click and keyboard', acceptance: 'Tested commit on dev',
-      deliverable: 'Report and dev receipt', independentReview: true, writePaths: [], dependsOn: [1], mergeToDev: true },
+    { ownerId: 'c', title: 'Validate the feature', instructions: 'Test click and keyboard', acceptance: 'Tested candidate',
+      deliverable: 'Candidate test report', independentReview: true, writePaths: [], dependsOn: [1] },
   ]
   const plan = { action: 'plan', workspaceMode: 'worktree', workRef: branch, workspaceReason: 'Test one candidate', title: 'Members arrow',
-    acceptance: 'Toggle works on dev', version: 1, nodes }
+    acceptance: 'Toggle works on the feature branch', version: 1, nodes }
   const { taskId } = await manager(plan)
   const dispatch = async (version, node, name, session) => {
     const { dispatchRound: round } = await manager({ action: 'dispatch', taskId, version, node })
@@ -4366,4 +4371,18 @@ test('editing an active project card wakes its coordinator and reclaims the stop
   assert.equal(saved.rounds[first - 1].ownershipTransfer.version, 3)
   assert.ok(saved.rounds[second - 1].startedAt)
   assert.equal(saved.rounds[second - 1].ownerId, 'b')
+  const base = git(repo, 'rev-parse', 'dev')
+  git(dir, 'add', 'toggle.js')
+  git(dir, 'commit', '-m', 'Implement revised toggle')
+  const commit = git(dir, 'rev-parse', 'HEAD')
+  await act('gb', { action: 'submit', taskId, round: second, commit, result: 'Implemented toggle' })
+  host.finish('gb', 'Candidate ready')
+  host.begin('gd')
+  await manager({ action: 'approve', taskId, version: 3, node: 1, round: second, artifact: commit })
+  const validation = await dispatch(3, 2, 'Tester', 'gc')
+  await act('gc', { action: 'submit', taskId, round: validation, result: 'Verified toggle on ' + commit })
+  host.finish('gc', 'Verified candidate')
+  host.begin('gd')
+  assert.equal((await manager({ action: 'approve', taskId, version: 3, node: 2, round: validation, artifact: 'Verified ' + commit })).status, 'done')
+  assert.equal(git(repo, 'rev-parse', 'dev'), base)
 })
