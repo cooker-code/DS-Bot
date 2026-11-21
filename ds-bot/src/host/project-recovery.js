@@ -23,7 +23,7 @@ export const recoveryParameters = Object.fromEntries(Object.entries({
 
 export function currentBinding(card, round) {
   const b = round?.planNode
-  return Boolean(b && b.version === card.plans?.at(-1)?.version && !b.supersededBy)
+  return Boolean(b && !card.completedWithTaskId && b.version === card.plans?.at(-1)?.version && !b.supersededBy)
 }
 
 export function blockRound(round, { at = Date.now(), cause, by, reason, waitingFor, evidence }) {

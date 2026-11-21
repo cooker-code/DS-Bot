@@ -7,7 +7,7 @@ import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { approveRound, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
+import { approveRound, completeRelatedCards, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
 import { blockRound, checkProjectStart, currentBinding, inspectIntegratedWriter, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
 import { codeDelivery, projectStatus, taskPhase } from './project-status.js'
 import { scopeFields, scopeOf, taskRoom } from './task-routing.js'
@@ -127,7 +127,7 @@ export const projectCardSummary = (card, taskId = card.id) => {
     ...(card.updatedAt !== undefined ? { textUpdatedAt: card.updatedAt } : {}),
     startedAt: round?.startedAt, submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
     ...(card.clarification ? { clarification: card.clarification } : {}),
-    ...(card.humanReview?.status === 'pending' && card.humanReview.version === card.plans?.at(-1)?.version
+    ...(!card.completedWithTaskId && card.humanReview?.status === 'pending' && card.humanReview.version === card.plans?.at(-1)?.version
       ? { acceptanceRequest: { id: card.humanReview.id, artifact: card.humanReview.artifact } } : {}),
     updatedAt: round?.submittedAt ?? round?.failedAt ?? round?.startedAt ?? round?.sentAt ?? round?.assignedAt,
     status: taskPhase(card, projectStatus(round)), ...(card.plans?.length ? plannedSummary(card) : {}),
@@ -523,6 +523,7 @@ export function install(rt) {
         const intakeAction = ['attach', 'chat'].includes(args.action)
         const allowed = intakeAction ? rt.isAdminOf(room, actor) : runsProject(rt, room, actor) || (args.action === 'clarify' && rt.isAdminOf(room, actor))
         result = changeProject(rt, draft, args, actor, source, id, allowed && room.sessions?.[actor] === session, observation, session, exec.agent?.session ?? exec.agent)
+        if (args.action === 'approve' || args.action === 'plan') completeRelatedCards(draft.projectCards)
         if (Object.keys(draft.projectCards).length) room.projectCards = draft.projectCards
         if (previousInbox) room.projectInbox = draft.projectInbox
         return () => {
@@ -587,8 +588,11 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (cursor === id) throw new Error('Related tasks cannot form a cycle.')
     if (card.parentTaskId && card.parentTaskId !== parentId) throw new Error('This card already belongs to another primary task.')
     card.parentTaskId = parentId
-    return JSON.stringify(projectCardSummary(card))
+    completeRelatedCards(room.projectCards)
+    return JSON.stringify(projectCardSummary(room.projectCards[id]))
   }
+  if ((card ?? linked)?.completedWithTaskId && !['attach', 'chat', 'submit'].includes(args.action))
+    throw new Error('This task was completed with its primary task.')
   if (args.action === 'clarify' && id && !card) throw new Error('No such card in this group.')
   if (args.action === 'clarify' && (card || linked)) {
     card ??= linked
@@ -717,7 +721,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
     } else {
       if (!round.dispatchId || actor !== round.ownerId || source?.exchangeId !== round.dispatchId || (card.plans && source.taskId !== card.id)) throw new Error('Only the owner in the dispatched execution can confirm or submit it.')
       const binding = round.planNode
-      if (binding?.supersededBy || binding?.block) {
+      if (binding && (card.completedWithTaskId || binding.supersededBy || binding.block)) {
         if (args.action === 'block' && !binding.supersededBy && args.reason === binding.block.reason) return JSON.stringify(projectCardSummary(card))
         if (args.action !== 'submit') throw new Error('This execution is blocked or superseded. Read its recovery decision.')
         const result = field(args.result, 'the late result', 4000)
@@ -801,12 +805,16 @@ export async function decideAcceptance(rt, room, args) {
     if (!room || rt.roomOf(room.id) !== room || !review || review.id !== args.reviewId ||
         review.version !== original.plans.at(-1).version) throw new Error('This acceptance request is no longer current.')
     if (review.status === status && review.feedback === feedback) return
+    if (original.completedWithTaskId) throw new Error('This task was completed with its primary task.')
     if (review.status !== 'pending' || original.clarification) throw new Error('This task is not awaiting that decision.')
     const card = structuredClone(original)
     if (approved) approveRound(card, review, 'user')
     card.humanReview = { ...review, status, decidedAt: Date.now(), ...(feedback ? { feedback } : {}) }
-    room.projectCards[args.taskId] = card
-    return () => { room.projectCards[args.taskId] = original }
+    const previous = room.projectCards
+    const cards = { ...previous, [args.taskId]: card }
+    if (approved) completeRelatedCards(cards)
+    room.projectCards = cards
+    return () => { room.projectCards = previous }
   } })
   if (approved && assistantId(room)) await projectNotice(rt, room, room.admin, { taskId: args.taskId },
     'accepted:' + review.id, 'Human final acceptance passed. Read the card and use project_task report to tell the user the result.')

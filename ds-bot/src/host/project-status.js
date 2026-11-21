@@ -20,7 +20,7 @@ export function codeDelivery(card, round, node) {
 
 // Only task-level phases are exposed on the board and in tasks.status.
 export function taskPhase(card, phase, awaitingCode = false) {
-  if (phase === 'verified') return 'done'
+  if (card.completedWithTaskId || phase === 'verified') return 'done'
   if (card.clarification) return 'clarify'
   if (Array.isArray(card.plans) && !card.plans.length) return 'planning'
   const version = card.plans?.at(-1)?.version

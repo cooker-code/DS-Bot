@@ -200,6 +200,33 @@ export function taskWorkspaceFor(card, node) {
   return pick
 }
 
+// Replace changed cards so the caller can roll the entire room mutation back.
+export function completeRelatedCards(cards) {
+  const children = new Map()
+  for (const [id, card] of Object.entries(cards ?? {})) {
+    if (!card.parentTaskId) continue
+    if (!children.has(card.parentTaskId)) children.set(card.parentTaskId, [])
+    children.get(card.parentTaskId).push(id)
+  }
+  const done = new Set()
+  for (const id of children.keys()) {
+    const card = cards[id]
+    if (card?.completedWithTaskId || (card?.plans?.length && plannedSummary(card).status === 'done')) done.add(id)
+  }
+  let changed = false
+  for (const parent of done) {
+    for (const id of children.get(parent) ?? []) {
+      const card = cards[id]
+      if (!card.completedWithTaskId) {
+        cards[id] = { ...card, completedWithTaskId: parent }
+        changed = true
+      }
+      done.add(id)
+    }
+  }
+  return changed
+}
+
 export function planStage(views) {
   views = views.filter(n => n.status !== 'omitted')
   return ['active', 'blocked', 'failed', 'review', 'delivered', 'assigned'].find(s => views.some(n => n.status === s))

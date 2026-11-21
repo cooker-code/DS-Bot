@@ -3049,9 +3049,11 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
     await assert.rejects(project('gc', { action, ...key, artifact: 'Verified display' }), /round.*project_task read/)
   }
   assert.equal((await project('gc', { action: 'read', taskId })).status, 'review')
+  room.projectCards[cardB] = { id: cardB, parentTaskId: taskId, plans: [], rounds: [], intakes: [] }
   const approval = { action: 'approve', ...key, round: 1, artifact: 'Verified display' }
   const result = await project('gc', approval)
   assert.equal(result.status, 'done')
+  assert.equal((await project('gc', { action: 'read', taskId: cardB })).status, 'done')
   await project('gc', approval)
   assert.equal(host.agentOf('ga').calls.length, 2)
   assert.match(text(host.begin('ga')), /last node is approved/)
@@ -3889,9 +3891,11 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
   const response = host.round('clarification', host.say('Staging', taskId))
   await until(() => response() !== undefined)
   assert.equal((await detail()).status, 'review')
+  room().projectCards[cardB] = { id: cardB, parentTaskId: taskId, plans: [], rounds: [], intakes: [] }
   const approval = { taskId, version: 1, node: 1, round: 1, artifact: 'checked-v1' }
   assert.equal((await project({ ...approval, action: 'request_acceptance' })).status, 'human_review')
   await assert.rejects(project({ ...approval, action: 'approve' }), /human decision/)
+  assert.equal((await host.call('project-task-detail', { roomId: 'r1', taskId: cardB })).value.status, 'planning')
   const reviewId = (await detail()).humanReview.id
   const decide = (payload) => host.call('project-acceptance', { roomId: 'r1', taskId, reviewId, ...payload })
   assert.equal((await decide({ decision: 'approve', reviewId: 'stale' })).ok, false)
@@ -3902,9 +3906,29 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
   const db = new DatabaseSync(join(rt.home, 'state', 'rooms', 'id-r1', 'room.sqlite'), { readOnly: true })
   try {
     assert.equal(db.prepare('SELECT status FROM tasks WHERE task_id=?').get(taskId).status, 'done')
+    assert.equal(db.prepare('SELECT status FROM tasks WHERE task_id=?').get(cardB).status, 'done')
     const intake = db.prepare('SELECT received_at, planning_at FROM project_inbox').get()
     assert.equal(intake.planning_at, room().projectInbox[0].planningAt)
   } finally { db.close() }
+})
+
+test('loading a completed primary task closes existing descendants and preserves completion after deleting it', async t => {
+  const node = { no: 1, ownerId: 'b', title: 'Fix arrow', instructions: 'Update arrow', deliverable: 'Arrow', acceptance: 'Verified', dependsOn: [] }
+  const parent = { id: cardA, plans: [{ version: 1, by: 'a', at: 1, nodes: [node] }],
+    rounds: [{ ownerId: 'b', result: 'verified', planNode: { version: 1, node: 1, acceptedAt: 2, acceptedBy: 'a', artifact: 'Arrow', inputs: [] } }] }
+  const child = { id: cardB, parentTaskId: cardA, plans: [], rounds: [] }
+  const host = await start(t, { ...taskNotice, projectCards: { grandchild: { ...child, id: 'grandchild', parentTaskId: cardB },
+    [cardB]: child, [cardA]: parent, other: { id: 'other', plans: [], rounds: [], intakes: [] } } })
+  const read = async taskId => (await host.call('project-task-detail', { roomId: 'r1', taskId })).value
+  assert.equal((await read('grandchild')).status, 'done')
+  assert.equal((await read('other')).status, 'planning')
+  const related = JSON.parse(await host.tool('project_task', { action: 'relate', roomId: 'r1', taskId: 'other', parentTaskId: cardA }, 'ga'))
+  assert.equal(related.status, 'done')
+  assert.equal((await host.call('task-delete', { roomId: 'r1', items: [{ kind: 'project', id: cardA }] })).ok, true)
+  const remaining = await read(cardB)
+  assert.equal(remaining.parentTaskId, undefined)
+  assert.equal(remaining.status, 'done')
+  assert.deepEqual(remaining.rounds, [])
 })
 
 test('returned acceptance goes to the manager and an old request cannot approve the revision', async t => {

@@ -507,7 +507,7 @@ export function reserveNodePaths(rt, roomId, card, round) {
     for (const r of other.rounds ?? []) {
       const b = r.planNode
       if (!b || round.dispatchId === r.dispatchId || b.supersededBy || r.result || b.lateResult || r.ownershipTransfer) continue
-      if (b.version !== other.plans.at(-1).version && !r.startedAt) continue
+      if ((other.completedWithTaskId || b.version !== other.plans.at(-1).version) && !r.startedAt) continue
       const n = { ...other.plans.find(p => p.version === b.version)?.nodes[b.node - 1], ...r.workspace }
       if (n?.workDir !== node.workDir) continue
       if (n.writePaths?.length === 0 || (!node.writePaths && !n.writePaths)) continue
