@@ -118,6 +118,11 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         h('span', { className: 'bt-project-statuses' },
           h('span', { className: 'bt-task-status' }, t(card.validatingMerge ? 'Merged into dev, validating' : TASK_STATUS[card.status] ?? card.status))),
         onOpen ? h('span', { className: 'bt-project-arrow' }, h(ChevronRightIcon)) : null),
+      (card.validationProgress ?? []).map(progress => h('span', { key: progress.round, className: 'bt-project-meta' },
+        progress.checking ? h('span', null, t('Testing: {check}', { check: progress.checking })) : null,
+        progress.lastPassed ? h('span', null, t('Passed: {check}', { check: progress.lastPassed })) : null,
+        progress.submitted ? h('span', null, t('Test receipt submitted')) : progress.cleaned ? h('span', null, t('Cleanup verified'))
+          : progress.checksComplete && card.status === 'active' ? h('span', null, t('Checks passed · awaiting cleanup')) : null)),
       branch || hasStart ? h('span', { className: 'bt-project-meta' },
         branch ? h('span', { className: 'bt-project-branch', title: branch }, branch) : null,
         hasStart ? h('span', { className: 'bt-project-times' },

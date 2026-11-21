@@ -14229,6 +14229,14 @@ var ZH = {
   "The executing Bot was interrupted.": "执行 Bot 已中断",
   "Execution needs verification after restart": "重启后执行状态待核实",
   "Completed checks": "已完成检查",
+  "Candidate": "候选提交",
+  "Validation progress": "验收进度",
+  "Testing: {check}": "正在验证：{check}",
+  "Passed: {check}": "已通过：{check}",
+  "Checks passed · awaiting cleanup": "验收已通过，待清理",
+  "Cleanup verified": "清理已核实",
+  "Test receipt submitted": "已提交测试回执",
+  "Cleanup: {result}": "清理结果：{result}",
   "Remaining checks": "剩余检查",
   "Reassigned": "已接管",
   "Resumed": "已恢复",
@@ -39924,6 +39932,13 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         ),
         onOpen ? (0, import_react58.createElement)("span", { className: "bt-project-arrow" }, (0, import_react58.createElement)(ChevronRightIcon)) : null
       ),
+      (card.validationProgress ?? []).map((progress) => (0, import_react58.createElement)(
+        "span",
+        { key: progress.round, className: "bt-project-meta" },
+        progress.checking ? (0, import_react58.createElement)("span", null, t("Testing: {check}", { check: progress.checking })) : null,
+        progress.lastPassed ? (0, import_react58.createElement)("span", null, t("Passed: {check}", { check: progress.lastPassed })) : null,
+        progress.submitted ? (0, import_react58.createElement)("span", null, t("Test receipt submitted")) : progress.cleaned ? (0, import_react58.createElement)("span", null, t("Cleanup verified")) : progress.checksComplete && card.status === "active" ? (0, import_react58.createElement)("span", null, t("Checks passed · awaiting cleanup")) : null
+      )),
       branch || hasStart ? (0, import_react58.createElement)(
         "span",
         { className: "bt-project-meta" },
@@ -43738,6 +43753,36 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     event.target.value = "";
   } }) : null);
 }
+function ValidationProgress({ detail }) {
+  const nodes = detail.plans?.at(-1)?.nodes ?? [];
+  return nodes.filter((node) => node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && node.round && node.status !== "omitted").map((node) => {
+    const round = detail.rounds?.[node.round - 1];
+    if (!round) return null;
+    const progress = round.validation;
+    const checkpoint = round.planNode;
+    if (!progress && !checkpoint?.completed && !round.result) return null;
+    return (0, import_react75.createElement)(
+      "section",
+      { key: node.round, "aria-label": t("Validation progress") },
+      (0, import_react75.createElement)("h3", { className: "bt-section-title" }, t("Validation progress"), " · ", node.title),
+      progress?.checking && !checkpoint?.block ? (0, import_react75.createElement)("p", null, t("Testing: {check}", { check: progress.checking })) : null,
+      checkpoint?.block ? (0, import_react75.createElement)("p", null, checkpoint.block.reason) : null,
+      progress?.passed.length ? (0, import_react75.createElement)("ul", null, progress.passed.map((check) => (0, import_react75.createElement)(
+        "li",
+        { key: check.name },
+        (0, import_react75.createElement)("strong", null, t("Passed: {check}", { check: check.name })),
+        " · ",
+        check.evidence
+      ))) : null,
+      progress?.checksComplete && !progress.cleanup && !checkpoint?.block ? (0, import_react75.createElement)("p", null, t("Checks passed · awaiting cleanup")) : null,
+      progress?.cleanup ? (0, import_react75.createElement)("p", null, round.submittedAt ? t("Test receipt submitted") + " · " : "", t("Cleanup: {result}", { result: progress.cleanup })) : null,
+      progress ? (0, import_react75.createElement)("p", null, t("Candidate"), " · ", progress.candidates.join(", ")) : null,
+      !progress && checkpoint?.completed ? (0, import_react75.createElement)("p", null, checkpoint.completed) : null,
+      !progress && !round.result && checkpoint?.remaining ? (0, import_react75.createElement)("p", null, checkpoint.remaining) : null,
+      !progress && round.result ? (0, import_react75.createElement)("details", null, (0, import_react75.createElement)("summary", null, t("Test receipt submitted")), (0, import_react75.createElement)("p", null, round.result)) : null
+    );
+  });
+}
 function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = (0, import_react75.useState)();
   const [error, setError] = (0, import_react75.useState)("");
@@ -43808,6 +43853,7 @@ function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack
             images: detail.fieldImages?.acceptance,
             onSave: (...args) => save("acceptance", ...args)
           }),
+          (0, import_react75.createElement)(ValidationProgress, { detail }),
           (0, import_react75.createElement)(TaskWorkspace, { room: room2, card, readOnly })
         ) : !error ? (0, import_react75.createElement)("p", { role: "status" }, t("Loading…")) : null
       )

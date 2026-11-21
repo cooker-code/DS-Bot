@@ -249,7 +249,13 @@ export function plannedSummary(card) {
     return codeDelivery(card, run, node) && !run?.mainReview
   })
   const validating = status === 'active' && current.find(r => r.mergeReceipt && !r.submittedAt)
-  return { ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
+  const validationProgress = views.filter(n => n.status !== 'omitted').flatMap(n => {
+    const run = card.rounds[n.round - 1]
+    if (!run?.validation) return []
+    const { checking, passed } = run.validation
+    return [{ round: n.round, checking: n.status === 'active' ? checking : undefined, checksComplete: run.validation.checksComplete, cleaned: Boolean(run.validation.cleanup), lastPassed: passed.at(-1)?.name, passedCount: passed.length, submitted: Boolean(run.submittedAt) }]
+  })
+  return { ...(validationProgress.length && { validationProgress }), ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
     startedAt: started.length ? Math.min(...started.map(r => r.startedAt)) : undefined,
     submittedAt: submissions.length && submissions.length === current.length ? Math.max(...submissions) : undefined,
     stoppedAt: stops.length ? Math.max(...stops) : undefined, updatedAt }
@@ -303,6 +309,8 @@ export function nodeHandoff(card, round) {
       ...(decision.targetTree.commit ? ['Expected commit: ' + decision.targetTree.commit] : [])] : []),
     ...(card.rounds.some(r => r.ownershipTransfer?.version === binding.version && r.ownershipTransfer.node === node.no && r.ownershipTransfer.retainedChanges)
       ? ['Continue with the existing uncommitted changes in this checkout. Inspect the diff against the revised requirement and preserve the previous work.'] : []),
+    ...(node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && binding.inputs.some(i => card.rounds[i.round - 1].mainReview?.commit)
+      ? ['Validate the approved feature candidate against the acceptance criteria. Choose only checks needed to answer them; label extra coverage as a test method. Use project_task checkpoint with checking when a check begins and passedCheck plus evidence when it passes. Reuse existing results and artifact paths. Set checksComplete on the final passing check. After cleanup is verified, submit with cleanupEvidence only. The host creates the receipt; no separate report file or code commit is required.'] : []),
     'Plan v' + binding.version + ' · Node ' + node.no + ': ' + node.title,
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),

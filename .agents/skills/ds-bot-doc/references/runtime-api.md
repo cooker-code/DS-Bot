@@ -55,8 +55,16 @@
 
 ### 功能分支开发、独立测试与 dev 集成
 
-有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。功能任务的独立测试节点设置 independentReview=true、writePaths=[]，依赖已认可的开发轮。测试只读验证该功能分支的固定候选，按提交号给出证据，submit 测试报告后由管理者认可结单，候选保留在功能分支。测试失败用 return_for_changes 提供 feedback 与 evidence，由助理安排开发返工后复测。环境故障用 block。需要集成时另行安排。新建计划或改版新增 mergeToDev 节点会被拒绝。已有历史 mergeToDev 节点仍按原约定使用 record_merge 和 testedCommit，可在 rounds 查看合并回执。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
+有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。功能任务的独立测试节点设置 independentReview=true、writePaths=[]，依赖已认可的开发轮。测试只读验证该功能分支的固定候选，按当前轮次记录逐项证据，submit 只读回执后由管理者认可结单，候选保留在功能分支。测试失败用 return_for_changes 提供 feedback 与 evidence，由助理安排开发返工后复测。环境故障用 block。需要集成时另行安排。新建计划或改版新增 mergeToDev 节点会被拒绝。已有历史 mergeToDev 节点仍按原约定使用 record_merge 和 testedCommit，可在 rounds 查看合并回执。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
 
 新版计划派回原开发归档时，若前驱测试已认可并记录集成，宿主核实旧轮已经改版、原执行已停止、同一工作树干净且仍指向刚集成的候选，才将重叠路径交回原开发。原轮 rounds[].ownershipTransfer 记录接收节点、候选和集成轮。
 
 编辑未完成计划卡的需求或验收后，系统通知任务助理（未配置时通知管理员）读取最新卡片、更新受影响节点并继续派工；同一字段编辑重试复用通知。换版后，任务助理直接派发当前版本的就绪节点。派工事务核实同一开发人的旧执行已停止且无待处理的原派工消息、同一工作树干净、分支仍在旧轮开工提交或已有独立集成凭据，随新派工登记旧轮的 ownershipTransfer。同节点、同人、同一开工提交上的未提交修改若全部位于新旧两版共同授权的路径内，会原地保留并在派工消息中提示接续。旧回执保留在旧轮；新开工看当前版本轮次的 startedAt。
+
+### 功能分支只读测试回执
+
+独立只读功能测试开工时，宿主把已认可输入中的候选提交固定到 `rounds[].validation.candidates`。原执行者在该派工会话用 `project_task` 更新当前轮次，沿用卡号及轮号：
+
+- 开始某项验收，调用 `checkpoint` 并传 `checking`。通过时传 `passedCheck`（相同项名）及 `evidence`（实际观察、已存在的测试结果或证据路径）；可以在同次调用填入下一项 `checking`。最后一项通过时传 `checksComplete: true`，卡片显示验收已通过、待清理。失败使用原有返工或环境阻塞动作。
+- 全部验收通过后，调用 `submit` 并传 `cleanupEvidence`，说明已核实的清理结果。未创建资源时据实说明。若已在 checkpoint 登记清理证据，submit 只需卡号和轮号。宿主以原候选、各项已存结果和清理证据生成 `rounds[].result`，交管理者认可；无需另建报告文件或填写代码提交字段。
+- `project-task-list` 的 `validationProgress` 给出当前轮次的进行项、最近通过项和回执状态；`project-task-detail` 的 `rounds[].validation` 含逐项证据。旧轮继续按已有 completed、remaining 和 result 回读。结果随原轮保存在群库。验证方法、环境和样本数量按本卡需要选取。

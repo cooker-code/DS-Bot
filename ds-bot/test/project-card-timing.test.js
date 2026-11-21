@@ -248,7 +248,12 @@ test('task detail shows only the three fields and switches to a read-only requir
   const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
   const fields = body.children[0].children[1].children
-  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskWorkspace'])
+  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'ValidationProgress', 'TaskWorkspace'])
+  const progress = fields[2].type({ detail: { plans: [{ nodes: [{ round: 1, title: 'Verify', independentReview: true, writePaths: [] }] }],
+    rounds: [{ validation: { candidates: ['sha'], checking: 'Narrow layout', passed: [{ name: 'Format', evidence: 'Passed in Web' }] } }] } })
+  const labels = JSON.stringify(progress)
+  for (const label of ['Testing: Narrow layout', 'Passed: Format', 'Passed in Web']) assert.ok(labels.includes(label))
+  assert.ok(!labels.includes('Test receipt submitted'))
   const show = (field = fields[0]) => { hook = 3; return field.type(field.props).props }
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')
