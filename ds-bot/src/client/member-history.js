@@ -155,17 +155,18 @@ export function MemberConversation({ renderFactorySlot }) {
   })
 }
 
-export function MemberHistory({ member, room, bot, paneLeft, running, actions, listed, SessionProvider, renderSlot }) {
+export function MemberHistory({ member, room, bot, paneLeft, returnSession, running, actions, listed, SessionProvider, renderSlot }) {
   const back = useRef(null)
-  useEscape(actions.closeMemberSession)
+  const close = () => actions.closeMemberSession(returnSession)
+  useEscape(close)
   useEffect(() => { back.current?.focus() }, [])
   const title = [bot?.name, member ? `${room.name}-${member.number}` : room?.name].filter(Boolean).join(' · ')
   const fallback = h(MemberLog, { member, room, bot, actions })
-  return h('section', { className: 'bt-pane', style: { left: paneLeft }, 'aria-label': title },
+  return h('section', { className: 'bt-pane bt-member-pane', style: { left: paneLeft }, 'aria-label': title },
     h('div', { className: 'bt-dialog' },
       h('div', { className: 'bt-subhead' },
-        h('button', { ref: back, type: 'button', className: 'bt-icon-btn', 'aria-label': t('Back to details'), onClick: actions.closeMemberSession }, h(ChevronLeftIcon)),
-        h('span', { className: 'bt-subhead-title' }, title),
+        h('button', { ref: back, type: 'button', className: 'bt-icon-btn', 'aria-label': t('Back to details'), onClick: close }, h(ChevronLeftIcon)),
+        h('button', { type: 'button', className: 'bt-soft bt-subhead-title', disabled: !bot, onClick: () => actions.toggleDetails(bot.id) }, title),
         running && h('span', { className: 'bt-agent-session-run', role: 'status' }, t('Running'))),
       listed ? h(ListedTranscript, { member, actions, SessionProvider, renderSlot, fallback }) : fallback))
 }

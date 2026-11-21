@@ -25,9 +25,9 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
   return {
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
     openMemberSession: (roomId, botId, sessionId) => {
-      ui.set(state => ({ ...state, memberChat: { roomId, botId, sessionId }, leftDrawer: false }))
+      ui.set(state => ({ ...state, memberChat: { roomId, botId, sessionId }, details: botId, view: 'details', tab: null, renaming: false, panelYield: false, leftDrawer: false }))
     },
-    closeMemberSession: () => ui.set(state => ({ ...state, memberChat: null })),
+    closeMemberSession: returnSession => ui.set(state => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details })),
     openNewChat: (mode, sectionId = null) => { ui.set(state => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },
     // The token keeps a late exit timer from closing a palette opened again since.

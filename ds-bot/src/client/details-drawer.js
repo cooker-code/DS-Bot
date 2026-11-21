@@ -213,7 +213,7 @@ function GroupOverview({ room, roster, actions, run, usage, useWork, openTask, r
 
 // DSH list rows carry the last activity time. Archived rows can be absent from
 // the shell list, so use the part's saved time until the row is available.
-function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus, actions, running, readOnly }) {
+function BotSessions({ bot, part, viewingMember, memberSessionId, rooms = [], run, useSessions, useSessionStatus, actions, running, readOnly }) {
   const [selection, setSelection] = useState(null)
   const [confirmation, setConfirmation] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -299,8 +299,9 @@ function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus
         h('span', { key: 'name', className: 'bt-agent-session-name' }, label, timing(entry)),
         state(entry),
       ]
-      const className = `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`
-      if (entry.roomId) return h('button', { type: 'button', key: entry.id, className: 'bt-agent-session',
+      const visible = viewingMember ? entry.id === memberSessionId : entry.current && !entry.roomId
+      const className = `bt-agent-session${visible ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`
+      if (entry.roomId) return h('button', { type: 'button', key: entry.id, className, 'aria-current': visible || undefined,
         disabled: editing || busy, onClick: () => actions.openMemberSession(entry.roomId, bot.id, entry.id) }, row)
       if (editing) return h('label', { key: entry.id, className },
         h('input', { type: 'checkbox', checked: selected.includes(entry.id), disabled: entry.running || !!confirmation || busy,
@@ -308,13 +309,16 @@ function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus
             const checked = e.target.checked
             setSelection(prev => checked ? [...prev, entry.id] : prev.filter(id => id !== entry.id))
           } }), row)
-      return h('button', { key: entry.id, type: 'button', className, title, disabled: entry.current || busy || readOnly,
-        onClick: () => act(() => actions.openPart(bot.id, entry.id, entry.running)) }, row)
+      return h('button', { key: entry.id, type: 'button', className, title, disabled: busy || (entry.current ? !viewingMember : readOnly),
+        onClick: () => act(async () => {
+          if (!entry.current) await actions.openPart(bot.id, entry.id, entry.running)
+          if (viewingMember) actions.openSession(bot.id)
+        }) }, row)
     })))
 }
 const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt)
 
-export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+export function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId]
   const part = owner ? currentPart(owner) : sessionId
   const isMainBot = isMainOf(roster, owner?.id)
@@ -437,7 +441,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h(ModelMenu, { bot, roster, actions, run, wide: true, inline: true }),
           modelOf(bot, roster) ? null : h('div', { className: 'bt-note' }, t('Pick a model and {name} can start.', { name: bot.name })),
         ),
-        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, rooms: roster.rooms, run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
+        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, viewingMember, memberSessionId, rooms: roster.rooms, run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
         h(PermissionRow, { key: 'permission', bot, roster, actions, run }),
         h(BotConnectors, { key: 'connectors', bot, roster, actions, run }),
         h('div', { key: 'folder', className: 'bt-drawer-model' },

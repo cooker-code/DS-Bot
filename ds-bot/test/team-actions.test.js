@@ -69,3 +69,15 @@ test('the details status line asks the host for one Bot\'s current part', async 
   // A read: it does not pull the whole team again.
   assert.equal(pulls(), 0)
 })
+
+test('group member navigation keeps details bound to the member until returning to the group', () => {
+  const { actions, ui } = bench()
+  actions.openMemberSession('room', 'tester')
+  assert.equal(ui.getSnapshot().details, 'tester')
+  actions.openMemberSession('room', 'tester', 'older')
+  assert.equal(ui.getSnapshot().memberChat.sessionId, 'older')
+  assert.equal(ui.getSnapshot().details, 'tester')
+  actions.closeMemberSession('room')
+  assert.equal(ui.getSnapshot().memberChat, null)
+  assert.equal(ui.getSnapshot().details, 'room')
+})

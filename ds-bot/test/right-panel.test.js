@@ -430,3 +430,19 @@ test('a member in group details opens that group’s current member session', ()
   open.props.onClick()
   assert.deepEqual(calls, [['g', 'a']])
 })
+
+test('member details highlight the viewed segment and let the user return to the current private chat', async () => {
+  const calls = []
+  const [sessions] = named(editable({}), 'BotSessions')
+  const rooms = [{ id: 'eng', name: 'Engineering', memberSessions: { a: [
+    { id: 'old', number: 1 }, { id: 'now', number: 2, current: true },
+  ] } }]
+  const rendered = sessions.type({ ...sessions.props, rooms, viewingMember: true, memberSessionId: 'old',
+    actions: { openSession: id => calls.push(id) } })
+  const rows = buttonsOf(rendered).filter(row => row.props.className?.split(' ').includes('bt-agent-session'))
+  assert.deepEqual(rows.filter(row => row.props.className.includes('is-current')).map(row => row.props.key), ['old'])
+  const personal = rows.find(row => row.props.key === 'a')
+  assert.equal(Boolean(personal.props.disabled), false)
+  await personal.props.onClick()
+  assert.deepEqual(calls, ['a'])
+})
