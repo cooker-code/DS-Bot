@@ -98,6 +98,7 @@ dsh plugin --profile desktop --config.registry=https://registry.npmjs.org/ add "
 
 - 首次修改代码、文档或配置前，在实际工作目录核对当前分支。禁止在 `main`、`master` 上直接开发或提交。当前在这两个分支时，先切到 `dev` 或独立工作分支。`dev` 允许直接开发和本地提交。保留已有改动；共享目录或含无关改动时，为新任务建立独立工作树。紧急修复从 `main` 切出 `fix/hot-<name>`。
 - 项目群中，主 Bot 在派发写入任务前核对并绑定任务分支及工作目录。执行 Bot 在首次写入前核对实际目录和分支与分配一致，并遵守上一条。群已建好合规工作树时直接复用；若分配到了 `main`、`master` 或错误目录，交由主 Bot 更正任务分配后继续。
+- 在仓库的 `.worktrees/` 下创建工作树时，保留 Git 分支名中的 `/`，目录名将每个 `/` 替换为 `-`。例如 `docs/diffmap-architecture` 对应 `.worktrees/docs-diffmap-architecture`。目标目录重名时先检查已有工作树，禁止覆盖。
 - 日常任务需要独立工作分支时，从最新的 `dev` 切出，按 `fix/<issue>-<name>`、`feat/<issue>-<name>`、`docs/<name>` 或 `chore/<name>` 命名。禁止以 `dev/` 作为分支名前缀。日常开发的拉取请求以 `dev` 为目标分支。上游版本发布和紧急修复以 `main` 为目标。本地二开发版的合并、验收和发布顺序见「本地二次开发发版」。
 - 使用 `scripts/merge-dev.sh` 更新工作分支。脚本会合并 `origin/dev`。如果 `ds-bot/client.js` 有冲突，脚本会采用 dev 分支的版本，再重新构建。禁止对已推送的分支执行变基（rebase），也禁止强制推送。
 - 填写拉取请求模板，用 `Fixes #<number>` 关联 Issue。修复缺陷时，写明修复了哪个问题。在 Changelog 栏填写用户可见的变化，常规贡献由维护者在发版时汇总到 `CHANGELOG.md`。本地同步上游时，按 sync-upstream 技能更新该文件的本地插件章节。
