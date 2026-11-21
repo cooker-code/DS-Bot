@@ -3,7 +3,7 @@ import { assistantId, runsProject } from './project-assistant.js'
 // question and view cards. Group rounds and reading chats are in groups.js.
 import { taskError } from '../shared/task-settings.js'
 import { projectQuestion } from './project-intake.js'
-import { clarifyIntake, developmentHandoff, projectRoomForCard } from './project-tasks.js'
+import { clarifyIntake, developmentHandoff, hasBlockedExecution, projectRoomForCard } from './project-tasks.js'
 import { outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -934,7 +934,7 @@ export function install(rt) {
       await rt.load()
       const id = exec.agent?.id
       if (rt.groupOwners.has(id) && rt.live?.get(id)?.info?.taskId)
-        return 'Use project_task clarify with the taskId and your question so the user can answer in this group.'
+        return 'Use project_task on the same card. Report technical blockers with block and coordinate recovery with the assistant or admin. Use project_task clarify for missing requirements.'
       if (rt.groupOwners.has(id)) return 'Question cards only work in your own chat. In a group, ask in your message instead.'
       if (!rt.chatOwners.has(id)) return `Only Bots on the team can use ask_user. Use ${BLOCKING_QUESTION_TOOL} if it is available in this session, or ask the user in your reply.`
       const options = (Array.isArray(args.options) ? args.options : [])
@@ -958,6 +958,7 @@ export function install(rt) {
       }
       const source = rt.live?.get(id)?.info
       const target = projectQuestion(rt, id, source)
+      if (hasBlockedExecution(target?.card)) return 'This card has a blocked execution. Use project_task clarify in the group session to coordinate it with the assistant or admin.'
       if (target && question.question) {
         question.projectSource = source
         if (target.card) target.card.clarification = question.question

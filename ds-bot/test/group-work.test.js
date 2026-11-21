@@ -3094,6 +3094,19 @@ test('mentioning a blocked project card continues its intake and delegates only 
   assert.equal(host.agentOf('gc').calls.length, 1)
   assert.equal(host.agentOf('gb').calls.length, 0)
 
+  const coordinate = { action: 'clarify', taskId: cardA, reason: 'Coordinate independent validation before integration.' }
+  const response = JSON.parse(await host.tool('project_task', coordinate, 'gc'))
+  assert.equal(response.status, 'blocked')
+  assert.equal(response.coordination.toId, 'a')
+  await host.tool('project_task', coordinate, 'gc')
+  assert.equal(host.agentOf('ga').calls.length, 2)
+  assert.equal(host.begin('ga').source.taskId, cardA)
+  const decision = JSON.parse(await host.tool('project_task', { ...coordinate, reason: 'Verify the saved candidate in isolation.' }, 'ga'))
+  assert.equal(decision.coordination.toId, 'c')
+  assert.equal(host.begin('gc').source.taskId, cardA)
+  assert.equal(room.projectCards[cardA].clarification, undefined)
+  const human = await host.tool('project_task', { ...coordinate, humanInput: 'requirement', reason: 'Which edition did you purchase?' }, 'ga')
+  assert.equal(JSON.parse(human).status, 'clarify')
   host.finish('ga', 'Delegated')
   room.projectCards[cardA].clarification = 'Which branch should be reviewed?'
   const question = host.round('question-about-card', host.say(message.replace('推进任务', '为什么受阻？')))
@@ -3105,7 +3118,7 @@ test('mentioning a blocked project card continues its intake and delegates only 
   assert.equal(room.projectCards[cardA].clarification, 'Which branch should be reviewed?')
   assert.equal(room.projectCards[cardA].rounds.length, 1)
   assert.deepEqual(Object.keys(room.projectCards), [cardA])
-  assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.equal(host.agentOf('gc').calls.length, 2)
 })
 
 test('a project manager answers the original group input once before planning, without waking the workers', async t => {
