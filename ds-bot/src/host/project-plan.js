@@ -185,7 +185,8 @@ export function nodeViews(card, plan) {
     const round = card.rounds[number - 1]
     const waiting = node.dependsOn.filter(no => !card.rounds[numberOf(plan.nodes[no - 1]) - 1]?.planNode?.acceptedAt)
     const omitted = card.finishAfterIntegration?.version === plan.version && node.no > card.finishAfterIntegration.node
-    const status = omitted ? 'omitted' : round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
+    const needsReceipt = card.finishAfterIntegration?.version === plan.version && node.no === card.finishAfterIntegration.node && card.finishAfterIntegration.needsReceiptRound
+    const status = omitted ? 'omitted' : needsReceipt ? 'blocked' : round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
     const workspace = round ? round.workspace : plan === card.plans.at(-1) ? taskWorkspaceFor(card, node) : undefined
     return { ...node, ...workspace, ownerId: round?.ownerId ?? node.ownerId, status, round: number || undefined, waiting }
   })

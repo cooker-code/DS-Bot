@@ -470,11 +470,13 @@ export function install(rt) {
                 card.humanReview || card.rounds.some(r => r.planNode?.version === version && r.planNode.node > node))
               throw new Error('Choose the current integration node before dispatching downstream work.')
             const previous = card.finishAfterIntegration
-            card.finishAfterIntegration = { version, node }
+            const last = card.rounds.findLast(r => r.planNode?.version === version && r.planNode.node === node)
+            const needsReceiptRound = last?.submittedAt && !last.mergeReceipt
+            card.finishAfterIntegration = { version, node, ...(needsReceiptRound && { needsReceiptRound: true }) }
             return () => { if (previous) card.finishAfterIntegration = previous; else delete card.finishAfterIntegration }
           } })
           await projectNotice(rt, room, assistantId(room) ?? room.admin, { taskId: card.id }, 'finish-after-integration:' + version + ':' + node,
-            'The user selected this test-and-merge node as final. Preserve history; archive separately and skip extra architecture review. Recover the tester now if blocked, using the immutable dev snapshot and existing valid evidence. Have the tester immediately call record_merge (commit=candidate, mergeCommit=actual dev merge), then submit targeted validation with testedCommit. Approve and report completion. No user continuation is needed.')
+            'The user selected this test-and-merge node as final. Preserve history; archive separately and skip extra architecture review. If an older submitted round lacks the separate merge receipt, revise the plan now: reuse prior accepted evidence and dispatch the independent tester on the existing candidate for the final receipt and targeted verification; preserve the old result without repeating the Git merge. Otherwise recover the tester if blocked, using the immutable dev snapshot and existing valid evidence. Have the tester immediately call record_merge (commit=candidate, mergeCommit=actual dev merge), then submit targeted validation with testedCommit. Approve and report completion. No user continuation is needed.')
           return ok(card.finishAfterIntegration)
         }
         case 'set-task-human-acceptance': {
