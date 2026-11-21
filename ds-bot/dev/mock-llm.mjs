@@ -251,7 +251,7 @@ function decide(body) {
         case 'approve': return [tool('project_task', { action: 'dispatch', taskId, version, node: 2 })]
       }
     }
-    if (used?.name === 'project_task' && messages.some(m => textOf(m.content).includes('native-project-image-smoke'))) {
+    if (used?.name === 'project_task' && messages.some(m => /native-project-image-smoke|Verify the original attachment reaches Coder\./.test(textOf(m.content)))) {
       if (result.is_error) return [text('Project task failed: ' + resultText)]
       const card = JSON.parse(resultText)
       switch (used.input.action) {
@@ -417,7 +417,7 @@ function decide(body) {
   if (me === 'Chief' && recoveryRequest && tools.has('project_task')) {
     return [tool('project_task', { action: 'inspect_recovery', taskId: recoveryRequest[1], ownerId: recoveryRequest[2], version: 1, node: 3, round: 3 })]
   }
-  if (tools.has('project_task') && (userText.includes('native-project-image-smoke') || userText.includes('按图将请求来源空值显示为短横线'))) {
+  if (tools.has('project_task') && (/native-project-image-smoke|Verify the original attachment reaches Coder\./.test(userText) || userText.includes('按图将请求来源空值显示为短横线'))) {
     if (userText.includes('Handle it in your session for this group.')) {
       if (userText.includes('native-project-image-smoke') && userText.includes('call project_task reply'))
         return [tool('project_task', { action: 'reply', message: '我会请 Coder 打开这张原图，核对派工后能否看到附件。' })]
