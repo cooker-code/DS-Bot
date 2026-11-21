@@ -55,7 +55,7 @@
 
 ### 功能分支开发、独立测试与 dev 集成
 
-有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。独立测试节点设置 `mergeToDev=true,independentReview=true,writePaths=[]` 并依赖一个已认可的代码轮。改版接续历史卡时可用 `candidateCommit` 固定已有开发轮的候选。测试失败时，测试者调用 `return_for_changes` 提供 feedback 与 evidence，宿主登记阻塞并通知助理派原开发返工；修复后复测新提交。环境故障仍用 block。测试通过后，测试者按授权合入本地 dev，立即用 record_merge 提交 commit 和 mergeCommit；宿主核对 Git 后保存 rounds[].mergeReceipt，通知助理，列表和详情的 validatingMerge 显示「已合入 dev，正在验证」。针对性验证通过后以 commit、testedCommit 和测试报告 submit，助理认可即结单。小型功能无需阻塞式归档与额外架构复核。宿主核对分支包含关系，记录合入证据并通知助理核验、推进或完成。在 `project-task-detail` 的 rounds 查看开发轮 mainReview（branch 为所验工作分支）、测试轮 integration（branch 为 dev，testedCommit 为测试者提供的实际集成快照，tip 为核验时分支头）与 planNode.feedback。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
+有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。功能任务的独立测试节点设置 independentReview=true、writePaths=[]，依赖已认可的开发轮。测试只读验证该功能分支的固定候选，按提交号给出证据，submit 测试报告后由管理者认可结单，候选保留在功能分支。测试失败用 return_for_changes 提供 feedback 与 evidence，由助理安排开发返工后复测。环境故障用 block。需要集成时另行安排。新建计划或改版新增 mergeToDev 节点会被拒绝。已有历史 mergeToDev 节点仍按原约定使用 record_merge 和 testedCommit，可在 rounds 查看合并回执。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
 
 新版计划派回原开发归档时，若前驱测试已认可并记录集成，宿主核实旧轮已经改版、原执行已停止、同一工作树干净且仍指向刚集成的候选，才将重叠路径交回原开发。原轮 rounds[].ownershipTransfer 记录接收节点、候选和集成轮。
 

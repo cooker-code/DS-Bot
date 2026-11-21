@@ -28,7 +28,7 @@ export const planParameters = {
       writePaths: { type: 'array', items: { type: 'string' }, description: 'Exclusive files or directory subtrees relative to workDir. Use [] for read-only work. Include generated files.' },
       fixedOwner: { type: 'boolean', description: 'Require the planned owner across recoveries when the requirement names that person.' },
       independentReview: { type: 'boolean', description: 'The executor must not have produced any direct input.' },
-      mergeToDev: { type: 'boolean', description: 'Independent test and integration node. After passing, merge the exact candidate into local dev, then submit the report with commit. On failed tests use return_for_changes with evidence and feedback.' },
+      mergeToDev: { type: 'boolean', description: 'Legacy integration node only. For new feature tasks use independentReview=true and writePaths=[] to test the fixed feature commit.' },
       candidateCommit: { type: 'string', description: 'Only for testing an existing candidate from an older round without a verified code receipt. Pin its full commit in the revised plan.' },
       reuseRound: { type: 'integer', description: 'Revision only: reuse the identified, already approved output from this card.' },
     } } },
@@ -112,6 +112,7 @@ export function savePlan(card, args, room, actor) {
     if (raw.workspaceMode) node.workspaceMode = raw.workspaceMode
     if (raw.writePaths) node.writePaths = raw.writePaths
     if (raw.mergeToDev) {
+      if (!prior?.mergeToDev) throw new Error('Keep feature validation on the feature branch. Plan an independent read-only test and arrange integration separately.')
       if (!node.independentReview || !usesGitWorkspace(node) || node.writePaths?.length !== 0 || ['dev', 'main', 'master'].includes(node.workRef))
         throw new Error('Test and merge requires independent review on a read-only candidate feature checkout.')
       if (raw.candidateCommit) {
@@ -306,7 +307,7 @@ export function nodeHandoff(card, round) {
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),
     ...(node.writePaths || round.workspace ? ['Before starting, use working_directory to enter the assigned working folder above. Confirm the branch and run project_task start before editing.'] : []),
-    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Leave integration to the independent tester.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
+    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Keep the candidate on the feature branch for independent testing.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
     ...(node.mergeToDev ? ['Test the exact candidate ' + (node.candidateCommit ?? binding.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean).join(', ')) +
       ' using the assigned checkout. After passing, merge that immutable commit into local dev in its verified checkout, preserve other work, and immediately call record_merge with commit and mergeCommit. Then verify the integrated result. The candidate checkout remains read-only. Submit the test report, candidate commit and exact testedCommit on dev. Later changes to dev do not invalidate that snapshot. If tests fail, call return_for_changes with evidence and concrete feedback for the developer. Use block for an environment impediment.'] : []),
     ...binding.inputs.map(input => {
