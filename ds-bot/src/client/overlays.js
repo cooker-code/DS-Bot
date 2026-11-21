@@ -19,7 +19,7 @@ import { OpeningCover, openingModel } from './opening.js'
 const DIALOG_EXIT_MS = 160
 const MENU_EXIT_MS = 120
 
-export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useUpdate, useFrame, useSidebarPref, useSettingsShellHeld, actions }) {
+export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useComputer, useRegistry, useBrowserPages, useBrowserTabs, useUpdate, useFrame, useSidebarPref, useSettingsShellHeld, actions }) {
   const roster = useRoster(value => value)
   const ui = useUi(value => value)
   useRegistry(value => value)
@@ -51,7 +51,7 @@ export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSes
     const timer = setTimeout(() => setKept(null), reducedMotion() ? 0 : PANEL_LINGER_MS)
     return () => clearTimeout(timer)
   }, [ui.details, ui.view, ui.renaming, ui.tab, shown === null])
-  const pane = ui.memberChat ? null : shown ?? kept
+  const pane = shown ?? kept
   const memberRoom = roster.roomsById[ui.memberChat?.roomId]
   const memberBot = roster.byId[ui.memberChat?.botId]
   const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? []
@@ -76,9 +76,14 @@ export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSes
   const opening = openingModel({ pending: ui.pendingOpen ?? null, current, roster })
   return h(Fragment, null,
     opening ? createPortal(h(OpeningCover, { model: opening, column: layout.column }), document.body) : null,
-    pane ? createPortal(h(BotPanel, { pane, leaving: shown === null, room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages }), document.body) : null,
-    ui.memberChat ? createPortal(h(MemberHistory, { key: JSON.stringify([ui.memberChat.roomId, ui.memberChat.botId, member?.id]),
-      listed: listedMember, SessionProvider, renderSlot, room: memberRoom, bot: memberBot, member, running: memberRunning, paneLeft: layout.column, actions }), document.body) : null,
+    // The panel must precede its CSS-anchored transcript, including after reopening it.
+    createPortal(h(Fragment, null,
+      pane ? h(BotPanel, { pane, memberChat: ui.memberChat, memberSessionId: member?.id, leaving: shown === null,
+        room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus,
+        useActivity, useWork, useComputer, useBrowserTabs, useBrowserPages }) : null,
+      ui.memberChat ? h(MemberHistory, { key: JSON.stringify([ui.memberChat.roomId, ui.memberChat.botId, member?.id]),
+        listed: listedMember, SessionProvider, renderSlot, room: memberRoom, bot: memberBot, member,
+        running: memberRunning, paneLeft: layout.column, returnSession: current, actions }) : null), document.body),
     ui.newChat ? createPortal(h(NewChat, { key: `${ui.newChat}:${ui.newChatSection ?? ''}`, mode: ui.newChat, sectionId: ui.newChatSection ?? null, paneLeft: layout.column, roster, actions }), document.body) : null,
     ui.palette ? createPortal(h(CommandPalette, { key: ui.palette.token, start: ui.palette.query, token: ui.palette.token, roster, actions, useSessions }), document.body) : null,
     ui.groupArchive && roster.roomsById[ui.groupArchive.roomId] ? createPortal(h(DiscussionArchive, { key: ui.groupArchive.token,

@@ -337,7 +337,7 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
  * Session id the panel follows and `side` the open chat's id. Without the
  * Desktop bridge the browser view never shows; side chats need no bridge.
  */
-export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+export function BotPanel({ pane, memberChat, memberSessionId, leaving, room, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const bot = roster.byId[pane.id]
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow)
   const sideChats = bot ? sideChatsOf(roster, bot.id) : []
@@ -558,7 +558,7 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
         ? h('div', { key: `side:${sideChat.id}`, className: 'bt-panel-view' }, h(SideChatView, { subject: pane.id, chat: sideChat, roster, actions: panelActions }))
         : h('div', { key: `details:${pane.id}:${pane.renaming ? 'rename' : ''}:${pane.tab ?? ''}`, className: 'bt-panel-view' },
             h(DetailsDrawer, {
-              sessionId: pane.id, startRenaming: pane.renaming, startTab: pane.tab, hasStrip,
+              sessionId: pane.id, viewingMember: memberChat?.botId === pane.id, memberSessionId, startRenaming: pane.renaming, startTab: pane.tab, hasStrip,
               roster, actions: panelActions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer,
             })))
 }

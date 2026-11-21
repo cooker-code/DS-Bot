@@ -29,7 +29,7 @@ not quietly fall back to the two-view shape.
 - The details panel shows one list ordered by the session's last activity. Each
   row uses the group name and part number (such as `Design-2`) or the Bot's
   own name and private session number (such as `Chief-1`). Current and earlier
-  parts both show their creation and last activity times. A group row opens that member’s selected session transcript in the main conversation area. Opening a member from a group shows that member’s current session in the same area. Group work appears in the group and its member session, while the private composer shows only its own activity.
+  parts both show their creation and last activity times. A group row opens that member’s selected session transcript in the main conversation area. Opening a member from a group shows that member’s current session in the same area. Its Bot details stay alongside the transcript when the window fits both. The panel’s session list selects another group segment or returns to the private conversation. Group work appears in the group and its member session, while the private composer shows only its own activity.
   Viewing a current or archived part leaves the group delivery session in place. New session and Edit manage the Bot's private sessions.
 - **Edit** shows a checkbox on each private row. **Delete** shows the selected count and
   asks for confirmation. Cancel returns to the selection. Confirm removes the
