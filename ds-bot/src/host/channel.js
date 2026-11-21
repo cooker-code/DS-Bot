@@ -1,3 +1,4 @@
+import { readResultDocument } from './project-result-files.js'
 import { assistantId, projectNotice } from './project-assistant.js'
 import { groupDiscussions, setDiscussionArchive } from './group-archive.js'
 import { taskErrors, taskError, taskManagementEnabled } from '../shared/task-settings.js'
@@ -521,6 +522,7 @@ export function install(rt) {
           if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
           const cards = room.projectCards ?? {}
           if (typeof body.taskId !== 'string' || !Object.hasOwn(cards, body.taskId)) return fail('No such task', 'bot/not-found')
+          if (typeof body.documentId === 'string') return ok(await readResultDocument(rt, cards[body.taskId], body.documentId, signal))
           if (typeof body.imageId === 'string') return ok(await readProjectImage(rt, room, cards[body.taskId], body.taskId, body.imageId, signal))
           if (body.workspaceChoices === true) return ok(await taskWorkspaceChoices(rt, room.id, body.taskId))
           if (body.workspaceOnly === true) return ok(workspaceDecisions(cards[body.taskId]))

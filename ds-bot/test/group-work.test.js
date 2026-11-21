@@ -2885,7 +2885,12 @@ test('Z site clarification creates one durable card and an explicit supplement r
 test('an in-flight phase-one manager assignment retains its original handoff, attachments and callbacks after upgrade', async t => {
   const attachments = fakeAttachments()
   const receipt = await attachments.saveImage({ mediaType: 'image/jpeg', width: 1, height: 1, data: new Uint8Array([1]) })
-  const host = await start(t, taskNotice, { attachments })
+  const dir = mkdtempSync(join(tmpdir(), 'ds-bot-result-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const markdown = '# Report\n' + '测试结果\n'.repeat(20000) + 'END'
+  writeFileSync(join(dir, 'result.md'), markdown)
+  writeFileSync(join(dir, 'screen.png'), Buffer.from([2]))
+  const host = await start(t, { ...taskNotice, workDir: dir }, { attachments })
   const original = host.say('Inspect the unmarked request source')
   original.content.push({ type: 'image', attachment: receipt })
   const ended = host.round('intake', original)
@@ -2930,7 +2935,15 @@ test('an in-flight phase-one manager assignment retains its original handoff, at
   assert.match(packet.text, /Inspect the unmarked request source/)
   assert.match(packet.text, /Source is identified/)
   assert.equal((await project({ action: 'start', taskId: id, round: 1 }, 'gb')).status, 'active')
-  assert.equal((await project({ action: 'submit', taskId: id, round: 1, result: 'Verified the source in the record' }, 'gb')).status, 'review')
+  const submit = { action: 'submit', taskId: id, round: 1, result: 'Verified the source in the record', resultFiles: ['result.md', 'screen.png'] }
+  assert.equal((await project(submit, 'gb')).status, 'review')
+  rmSync(join(dir, 'result.md'))
+  assert.equal((await project(submit, 'gb')).status, 'review')
+  const [doc, screen] = savedTeam(rt.home).rooms.r1.projectCards[id].rounds[0].resultFiles
+  const readResult = extra => host.call('project-task-detail', { roomId: 'r1', taskId: id, ...extra })
+  assert.equal((await readResult({ documentId: doc.ref.attachmentId })).value, markdown)
+  assert.equal((await readResult({ imageId: screen.ref.attachmentId })).value, 'data:image/png;base64,Ag==')
+  assert.equal((await readResult({ documentId: screen.ref.attachmentId })).error.code, 'bot/not-found')
   assert.equal(savedTeam(rt.home).rooms.r1.projectCards[id].rounds[0].dispatchId, work.source.exchangeId)
   host.finish('ga', 'Waiting for confirmation')
   await host.tool('message_bot', { to: 'Chief', taskId: id, message: 'Worktree verified. Started.', reply_to: 'user', request_id: 'start-1' }, 'gb')

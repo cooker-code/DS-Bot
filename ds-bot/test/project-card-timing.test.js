@@ -229,7 +229,7 @@ test('the card distinguishes a recorded dev merge from completed post-merge chec
   assert.deepEqual(row(task).labels, ['Awaiting review'])
 })
 
-test('task detail shows only the three fields and switches to a read-only requirement snapshot', async () => {
+test('task detail shows results below the criteria and switches to a read-only requirement snapshot', async () => {
   const { outputFiles } = await build({
     entryPoints: [fileURLToPath(new URL('../src/client/project-task-detail.js', import.meta.url))],
     bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
@@ -248,7 +248,21 @@ test('task detail shows only the three fields and switches to a read-only requir
   const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
   const fields = body.children[0].children[1].children
-  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskWorkspace'])
+  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'TaskWorkspace'])
+  const results = () => fields[2].type(fields[2].props)
+  assert.equal(results().props.placeholder, 'No results submitted yet')
+  detail.rounds = [{ result: 'Checks finished', resultFiles: [
+    { kind: 'image', name: 'screen.png', ref: { attachmentId: 'img' } },
+    { kind: 'markdown', name: 'report.md', ref: { attachmentId: 'doc' } },
+  ] }, { planNode: { feedback: 'Fix alignment', block: { evidence: 'Mismatch' } } }, { startedAt: 1 }]
+  const [returned, submitted] = results().children[0]
+  assert.match(returned.props.value, /Fix alignment.*Mismatch/s)
+  assert.equal(submitted.props.value, 'Checks finished')
+  const [screenshot, document] = submitted.children[0]
+  assert.equal(screenshot.props.label, 'screen.png')
+  const disclosure = document.type(document.props)
+  assert.equal(disclosure.type, 'details')
+  assert.equal(disclosure.children[0].children[0], 'report.md')
   const show = (field = fields[0]) => { hook = 3; return field.type(field.props).props }
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')

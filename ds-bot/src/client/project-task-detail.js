@@ -2,6 +2,7 @@ import { createElement as h, Fragment, useEffect, useRef, useState } from 'react
 import { call } from './api.js'
 import { MarkdownField } from './markdown-field.js'
 import { ChevronLeftIcon, CloseIcon } from './icons.js'
+import { TaskResults } from './task-results.js'
 import { TaskWorkspace } from './task-workspace.js'
 import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
 import { t } from './i18n.js'
@@ -129,6 +130,7 @@ export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack
             sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),
+          h(TaskResults, { key: room.id + taskId, roomId: room.id, taskId, detail }),
           h(TaskWorkspace, { room, card, readOnly }))
         : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))
 }

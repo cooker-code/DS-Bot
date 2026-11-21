@@ -1,3 +1,4 @@
+import { snapshotResultFiles } from './project-result-files.js'
 import { taskError } from '../shared/task-settings.js'
 import { assistantId, decidesGitWorkspace, runsProject, projectNotice } from './project-assistant.js'
 // Project cards belong to the group. Keep small assignment records here and resolve
@@ -163,6 +164,8 @@ export function projectImages(card, sources) {
 export async function readProjectImage(rt, room, card, taskId, imageId, signal) {
   const sources = projectSources(rt, room, card.intakes ?? [], taskId)
   const available = [...projectImages(card, sources), ...(card.requirementHistory ?? []).flatMap(entry => entry.images)]
+  for (const round of card.rounds ?? [])
+    for (const file of round.resultFiles ?? []) if (file.kind === 'image') available.push(file.ref)
   const ref = available.find(image => (image.attachmentId ?? image.id) === imageId)
   if (!ref) throw Object.assign(new Error('Image unavailable'), { code: 'bot/not-found' })
   const stored = await rt.ctx.get('attachments').readImage(ref.attachmentId ? ref : { ...ref, attachmentId: imageId }, signal)
@@ -283,6 +286,7 @@ export function install(rt) {
       acceptance: { type: 'string', description: 'Concise numbered list of observable conditions the user can verify.' },
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
+      resultFiles: { type: 'array', items: { type: 'string' }, description: 'On submit or return_for_changes, include available UI screenshots and delivered Markdown reports as file paths inside your assigned working folder. They appear on the card with the result.' },
       commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
       mergeCommit: { type: 'string', description: 'For record_merge, the full immutable commit on dev resulting from integrating the candidate. Send this receipt immediately before post-merge validation.' },
       testedCommit: { type: 'string', description: 'Full immutable integration commit actually verified after merging the candidate. It must include the candidate and remain on local dev; dev may have advanced since testing.' },
@@ -465,6 +469,20 @@ export function install(rt) {
       }
       const owner = run && run.ownerId === actor && source?.exchangeId === run.dispatchId
       const testNode = run?.planNode && card.plans.find(p => p.version === run.planNode.version)?.nodes[run.planNode.node - 1]
+      let resultFiles
+      if (args.resultFiles !== undefined) {
+        if (!['submit', 'return_for_changes'].includes(args.action) || !owner || !run.startedAt ||
+            !selectedForReview(card, run) || (run.planNode && source.taskId !== card.id))
+          throw new Error('Attach result files from the current dispatched round.')
+        if (run.resultFiles) {
+          if (!isDeepStrictEqual(args.resultFiles, run.resultFiles.map(file => file.path))) throw new Error('This round already has different result files.')
+          resultFiles = run.resultFiles
+        } else {
+          if (run.result) throw new Error('This round was already submitted without result files.')
+          const dir = run.workspace?.workDir ?? run.planNode?.workDir ?? rt.sessionFolder(exec.agent?.session ?? exec.agent) ?? room.workDir
+          resultFiles = await snapshotResultFiles(rt, dir, args.resultFiles)
+        }
+      }
       if (args.action === 'return_for_changes') {
         if (!testNode?.mergeToDev || !owner || !run.startedAt || !currentBinding(card, run)) throw new Error('Return changes from the current independent test execution.')
         const feedback = field(args.feedback, 'specific corrective feedback for the developer', 2000)
@@ -550,6 +568,14 @@ export function install(rt) {
         const intakeAction = ['attach', 'chat'].includes(args.action)
         const allowed = intakeAction ? rt.isAdminOf(room, actor) : runsProject(rt, room, actor) || ((args.action === 'clarify' || intakeRelation) && rt.isAdminOf(room, actor))
         result = changeProject(rt, draft, args, actor, source, id, allowed && room.sessions?.[actor] === session, observation, session, exec.agent?.session ?? exec.agent)
+        if (resultFiles) {
+          const target = draft.projectCards[id].rounds[args.round - 1]
+          if (target.dispatchId !== run.dispatchId || (target.planNode && !currentBinding(draft.projectCards[id], target)) ||
+              (!run.result && previousCards[id].rounds[args.round - 1].result && !target.resultFiles) ||
+              (target.resultFiles && !isDeepStrictEqual(target.resultFiles, resultFiles)))
+            throw new Error('The result files or assignment changed. Read the current round.')
+          target.resultFiles = resultFiles
+        }
         if (args.action === 'approve' || args.action === 'plan') completeRelatedCards(draft.projectCards)
         if (Object.keys(draft.projectCards).length) room.projectCards = draft.projectCards
         if (previousInbox) room.projectInbox = draft.projectInbox
