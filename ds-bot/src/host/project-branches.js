@@ -103,7 +103,7 @@ async function mergeRelation(repo, branch, tip, target, targetCommit) {
   }
 }
 
-export async function verifyReviewCommit(rt, room, repository, value, { writePaths, base } = {}) {
+export async function verifyReviewCommit(rt, room, repository, value, { writePaths, base, branch } = {}) {
   if (typeof value !== 'string' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(value))
     throw new Error('Supply the full commit ID of this delivery to enter review.')
   const repo = await projectRepository(rt, room, repository)
@@ -120,6 +120,15 @@ export async function verifyReviewCommit(rt, room, repository, value, { writePat
   if (writePaths?.length) {
     const touched = await git(repo, '--literal-pathspecs', 'diff-tree', '--root', '-m', '--no-commit-id', '-r', '--name-only', commit, '--', ...writePaths)
     if (!touched.trim()) throw new Error('The delivery commit must include a change to the assigned files.')
+  }
+  if (branch) {
+    const tip = await reviewBaseline(rt, room, repo, branch)
+    try { await git(repo, 'merge-base', '--is-ancestor', commit, tip) }
+    catch (error) {
+      if (error.code === 1) throw new Error('The candidate is outside local branch ' + branch + '.')
+      throw error
+    }
+    return { repository: repo, branch, commit, tip }
   }
   const refs = await git(repo, 'for-each-ref', '--contains=' + commit, '--format=%(refname) %(objectname)', 'refs/heads/main', 'refs/heads/master')
   for (const line of refs.trim().split('\n')) {

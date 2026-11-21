@@ -12,13 +12,14 @@ export const planTables = {
   task_recovery_decisions: ['task_pk', 'round_no', 'decision_no'],
 }
 const nodeFields = {
+  mergeToDev: 'merge_to_dev', candidateCommit: 'candidate_commit',
   title: 'title', ownerId: 'owner_bot_id', instructions: 'instructions', deliverable: 'deliverable', acceptance: 'acceptance',
   repository: 'repository', baseRef: 'base_ref', workRef: 'work_ref', workDir: 'work_dir', environment: 'environment',
   workspaceReason: 'workspace_reason', workspaceMode: 'workspace_mode', contextGap: 'context_gap', reuseRound: 'reuse_round', fixedOwner: 'fixed_owner', independentReview: 'independent_review',
 }
 const branchFields = { repository: 'repository', branch: 'branch', commit: 'tip', commitAt: 'commit_at', refAt: 'ref_at', target: 'target', targetCommit: 'target_commit',
   relation: 'relation', workDir: 'work_dir', purpose: 'purpose', preparedAt: 'prepared_at', observedAt: 'observed_at' }
-const roundFields = { version: 'plan_version', node: 'node_no', acceptedAt: 'accepted_at', acceptedBy: 'accepted_by', artifact: 'artifact_ref',
+const roundFields = { feedback: 'test_feedback', version: 'plan_version', node: 'node_no', acceptedAt: 'accepted_at', acceptedBy: 'accepted_by', artifact: 'artifact_ref',
   supersededBy: 'superseded_by', session: 'writer_session', workDir: 'writer_dir', previousRound: 'previous_round', completed: 'completed_checks', remaining: 'remaining_checks', checkpointArtifact: 'checkpoint_artifact', checkpointAt: 'checkpoint_at', lateResult: 'late_result', lateAt: 'late_at',
 }
 const blockFields = { at: 'blocked_at', cause: 'cause', reason: 'reason', by: 'reported_by', waitingFor: 'waiting_for', evidence: 'evidence', resolvedAt: 'resolved_at' }

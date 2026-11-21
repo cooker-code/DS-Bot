@@ -1260,7 +1260,7 @@ export const JA = {
   'The intake changed. Check the task list again.': '依頼の状態が変わりました。タスク一覧をもう一度確認してください。',
   'Filter tasks by status': 'タスクをステータスで絞り込む',
   'Task statuses': 'タスクの状態',
-  'Code changes must be on the local main branch (main/master) before review. Other tasks are ready for review when their deliverable is submitted.': 'コードの変更はローカルのメインブランチ（main/master）に反映してからレビューに出します。その他のタスクは成果物の提出後にレビューを待ちます。',
+  'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': '提出された成果物を確認します。プロジェクトのコードは、割り当てられたブランチで候補コミットを確認します。',
   'A blocker must be resolved before work can continue.': '作業を続けるには障害の解決が必要です。',
   'The execution attempt failed.': '今回の実行に失敗しました。',
   'Awaiting start confirmation': '開始確認待ち',

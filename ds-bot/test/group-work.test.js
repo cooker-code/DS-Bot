@@ -3693,12 +3693,10 @@ test('the Main Bot prepares Git assignments and reserves disjoint files across c
   git(feature.workDir, 'add', 'src/b')
   git(feature.workDir, 'commit', '-m', 'Change second file')
   const secondCommit = git(feature.workDir, 'rev-parse', 'HEAD')
-  await assert.rejects(project({ ...secondDelivery, commit: secondCommit }, 'gc'), /not on local main or master/)
-  assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[rounds[1].dispatchRound - 1].submittedAt, undefined)
-  git(repo, 'merge', '--ff-only', feature.branch)
+  assert.equal(git(repo, 'rev-parse', 'main'), base)
   await project({ ...secondDelivery, commit: secondCommit }, 'gc')
   const receipt = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[rounds[1].dispatchRound - 1].mainReview
-  assert.deepEqual(receipt, { repository: repo, branch: 'main', commit: secondCommit, tip: secondCommit })
+  assert.deepEqual(receipt, { repository: repo, branch: feature.branch, commit: secondCommit, tip: secondCommit })
   await project({ ...secondDelivery, commit: secondCommit }, 'gc')
   await assert.rejects(project({ ...secondDelivery, commit: base }, 'gc'), /different verified delivery/)
   host.finish('gc', 'Second file ready')
@@ -4118,4 +4116,77 @@ test('legacy assistant migration respects explicit settings and never reinterpre
   assert.equal(stored.projectAssistantId, 'c')
   assert.equal(stored.taskManagementEnabled, false)
   assert.equal(Object.keys(stored.projectCards ?? {}).length, 0)
+})
+
+test('a delegated feature candidate returns with feedback then integrates the retested commit into dev', async t => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'project-tested-dev-')))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const git = (dir, ...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture',
+    '-c', 'user.email=test@example.invalid', '-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  git(repo, 'init', '-b', 'dev')
+  git(repo, 'commit', '--allow-empty', '-m', 'Initial')
+  const host = await start(t, { ...taskNotice, workDir: repo, projectAssistantId: 'd', members: ['a', 'b', 'c', 'd'],
+    sessions: { a: 'ga', b: 'gb', c: 'gc', d: 'gd' } }, {}, {}, { b: { workDir: repo }, c: { workDir: repo }, d: { workDir: repo } })
+  const request = host.round('arrow', host.say('Add a collapse arrow to the members section'))
+  await until(() => request() !== undefined)
+  host.begin('ga')
+  const act = (who, args) => host.tool('project_task', args, who).then(JSON.parse)
+  const response = await act('ga', { action: 'reply', acceptWork: true, message: 'We will check the members toggle.',
+    plan: 'Add the members arrow', acceptance: 'Click and keyboard toggle; integrate into dev.' })
+  assert.equal(response.delegated, true)
+  host.begin('gd')
+  const manager = args => act('gd', args)
+  const branch = 'feat/members-arrow'
+  const inventory = await manager({ action: 'prepare_worktree', workRef: branch, baseRef: 'dev', reason: 'Feature candidate' })
+  const dir = inventory.branches.find(b => b.branch === branch).workDir
+  const nodes = [
+    { ownerId: 'b', title: 'Develop', instructions: 'Implement the toggle', acceptance: 'Build passes', deliverable: 'Candidate', writePaths: ['toggle.js'] },
+    { ownerId: 'c', title: 'Test and integrate', instructions: 'Test click and keyboard', acceptance: 'Tested commit on dev',
+      deliverable: 'Report and dev receipt', independentReview: true, writePaths: [], dependsOn: [1], mergeToDev: true },
+  ]
+  const plan = { action: 'plan', workspaceMode: 'worktree', workRef: branch, workspaceReason: 'Test one candidate', title: 'Members arrow',
+    acceptance: 'Toggle works on dev', version: 1, nodes }
+  const { taskId } = await manager(plan)
+  const dispatch = async (version, node, name, session) => {
+    const { dispatchRound: round } = await manager({ action: 'dispatch', taskId, version, node })
+    await host.tool('message_bot', { taskId, card_round: round, to: name, request_id: 'arrow-' + round, reply_to: 'user', message: 'Execute node.' }, 'gd')
+    host.agentOf(session).session.header = { cwd: dir }
+    host.begin(session)
+    await act(session, { action: 'start', taskId, round })
+    return round
+  }
+  const approve = (version, node, round, artifact) => manager({ action: 'approve', taskId, version, node, round, artifact })
+  const baseline = git(repo, 'rev-parse', 'dev')
+  for (const version of [1, 2]) {
+    const round = await dispatch(version, 1, 'Writer', 'gb')
+    writeFileSync(join(dir, 'toggle.js'), version === 1 ? 'click' : 'click and keyboard')
+    git(dir, 'add', 'toggle.js')
+    git(dir, 'commit', '-m', 'Members arrow ' + version)
+    const commit = git(dir, 'rev-parse', 'HEAD')
+    await act('gb', { action: 'submit', taskId, round, commit, result: 'Self-tested feature candidate' })
+    host.finish('gb', 'Candidate ready')
+    host.begin('gd')
+    await approve(version, 1, round, commit)
+    const testRound = await dispatch(version, 2, 'Tester', 'gc')
+    if (version === 1) {
+      const reject = { action: 'return_for_changes', taskId, round: testRound, evidence: 'Space does not toggle the list' }
+      await assert.rejects(act('gc', reject), /corrective feedback/)
+      const feedback = 'Handle Space on the focused toggle.'
+      await act('gc', { ...reject, feedback })
+      assert.equal(git(repo, 'rev-parse', 'dev'), baseline)
+      assert.match(text(host.begin('gd')), /Handle Space/)
+      assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].planNode.feedback, feedback)
+      host.finish('gc', feedback)
+      await manager({ ...plan, taskId, version: 2, reason: feedback, nodes: [{ ...nodes[0], instructions: feedback }, nodes[1]] })
+    } else {
+      const submit = { action: 'submit', taskId, round: testRound, commit, result: 'Click and keyboard pass' }
+      await assert.rejects(act('gc', { ...submit, commit: baseline }), /exact independently tested/)
+      await assert.rejects(act('gc', submit), /outside local branch dev/)
+      git(repo, 'merge', '--ff-only', commit)
+      await act('gc', submit)
+      host.begin('gd')
+      assert.equal((await approve(version, 2, testRound, commit)).status, 'done')
+      assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].integration.tip, commit)
+    }
+  }
 })

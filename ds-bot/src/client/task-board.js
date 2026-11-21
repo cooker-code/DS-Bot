@@ -22,7 +22,7 @@ const BOARD_STATES = {
   planning: 'The manager is preparing or correcting the execution plan.',
   dispatching: 'The plan is ready and the first Bot has yet to start.',
   active: 'The team has started executing the plan.',
-  review: 'Code changes must be on the local main branch (main/master) before review. Other tasks are ready for review when their deliverable is submitted.',
+  review: 'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.',
   human_review: 'Your acceptance was explicitly requested for the final delivery.',
   blocked: 'A blocker must be resolved before work can continue.',
   failed: 'The execution attempt failed.',

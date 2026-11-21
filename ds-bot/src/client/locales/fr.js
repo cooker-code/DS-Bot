@@ -1260,7 +1260,7 @@ export const FR = {
   'The intake changed. Check the task list again.': 'La demande a changé. Vérifiez à nouveau la liste des tâches.',
   'Filter tasks by status': 'Filtrer les tâches par statut',
   'Task statuses': 'États des tâches',
-  'Code changes must be on the local main branch (main/master) before review. Other tasks are ready for review when their deliverable is submitted.': 'Les modifications du code doivent figurer dans la branche principale locale (main/master) avant la revue. Pour les autres tâches, la revue peut commencer après la remise du livrable.',
+  'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': 'Examinez le livrable. Pour le code du projet, vérifiez le commit candidat sur la branche attribuée.',
   'A blocker must be resolved before work can continue.': 'Un blocage doit être levé pour poursuivre le travail.',
   'The execution attempt failed.': 'Cette tentative d’exécution a échoué.',
   'Awaiting start confirmation': 'En attente de confirmation du démarrage',

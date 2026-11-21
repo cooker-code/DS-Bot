@@ -51,3 +51,7 @@
 | `browser-takeover` / `browser-give-back` / `browser-stop` | `botId` 指定浏览器。交回可附具体操作的反馈，停止使控制权归用户。 | `browserChannel`、`stopChat` 等更新控制状态，回读 `browserHolds`。[browser.js](../../../../ds-bot/src/host/browser.js) |
 | `changes-check` / `diagnostics` / `diagnostics-log` / `diagnostics-clear` | 查看某次变更用 `sessionId,seq`；诊断可传 `client,clientErrors`；读取及清理诊断日志用 `{}`。 | `changesAvailable` 返回布尔；`diagnostics.report` 返回 `facts,entries,total,markdown,issuesUrl`；log 读取日志，clear 清理后返回 true。[diagnostics.js](../../../../ds-bot/src/host/diagnostics.js) |
 | `update-check` / `update-install` / `dsh-update-install` / `repo-stars` | 查版本可用 `fresh:true`，启动插件或宿主安装、查仓库星标用 `{}`。 | `updateCheck/updateStart/dshUpdateStart/repoStars` 返回检查结果、安装启动结果或仓库统计。发起安装后按实际加载版本确认。[update.js](../../../../ds-bot/src/host/update.js) |
+
+### 功能分支开发、独立测试与 dev 集成
+
+有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。独立测试节点设置 `mergeToDev=true,independentReview=true,writePaths=[]` 并依赖一个已认可的代码轮。改版接续历史卡时可用 `candidateCommit` 固定已有开发轮的候选。测试失败时，测试者调用 `return_for_changes` 提供 feedback 与 evidence，宿主登记阻塞并通知助理派原开发返工；修复后复测新提交。环境故障仍用 block。测试通过后，测试者按授权合入本地 dev，核对集成结果，以同一个 commit 和测试报告 submit。宿主核对分支包含关系，记录合入证据并通知助理核验、推进或完成。在 `project-task-detail` 的 rounds 查看开发轮 mainReview（branch 为所验工作分支）、测试轮 integration（branch 为 dev，tip 为核验时分支头）与 planNode.feedback。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。

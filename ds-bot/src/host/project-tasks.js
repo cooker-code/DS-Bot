@@ -52,14 +52,24 @@ export function clarifyIntake(room, receipt, question, title) {
   return card
 }
 
-async function acceptWork(rt, room, intakeId, reason, title) {
+async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq) {
   await rt.save({ required: true, mutate() {
     if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
-    if (cardForIntake(room, intakeId)) return
+    const existing = cardForIntake(room, intakeId)
+    if (existing) {
+      if (delegatedSeq && delegatedSeq > (existing.delegatedSeq ?? 0)) {
+        const updated = { ...existing, delegatedSeq }
+        delete updated.clarification
+        room.projectCards[existing.id] = updated
+        return () => { room.projectCards[existing.id] = existing }
+      }
+      return
+    }
     const receipt = room.projectInbox?.find(item => item.id === intakeId)
     if (!receipt || room.deletedTaskIntakes?.includes(intakeId)) throw new Error('This intake is unavailable.')
     const previous = { ...receipt }
     const card = intakeCard(room, receipt, reason, title)
+    if (delegatedSeq) card.delegatedSeq = delegatedSeq
     return () => {
       delete room.projectCards[card.id]
       delete receipt.reason
@@ -233,7 +243,7 @@ export function install(rt) {
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
       humanAcceptanceRequired: { type: 'boolean', description: 'Record required human sign-off on the first plan.' },
       classificationReason: { type: 'string', description: 'Why this accepted request needs tracked work.' },
-      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
+      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
       message: { type: 'string', description: 'First public answer to the current group input. Use reply before planning, or chat with message and reason to answer and classify an unassigned question together. Members are not called.' },
       ...planParameters, ...recoveryParameters,
       repository: { type: 'string', description: 'Repository root inside the configured project working folder.' },
@@ -249,7 +259,8 @@ export function install(rt) {
       acceptance: { type: 'string', description: 'How the user can verify the result.' },
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
-      commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks local main/master. On approve, supply it for an older code delivery without verified evidence.' },
+      commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
+      feedback: { type: 'string', description: 'For a failed integration test, actionable changes for the developer, with the failed expectation and reproduction.' },
       deliveryKind: { type: 'string', enum: ['code', 'other'], description: 'For older assignments without a recorded Git scope, declare whether this submission changes code.' },
     },
     output,
@@ -284,7 +295,8 @@ export function install(rt) {
       const assistant = assistantId(room)
       if (['delegate', 'report', 'reply', 'chat', 'attach'].includes(args.action) && !contact) throw taskError('TASK_ROLE_REQUIRED')
       if (['relate', 'plan', 'dispatch', 'approve', 'request_acceptance', 'wait', 'takeover', 'resume', 'inspect_recovery'].includes(args.action) && !manager) throw taskError('TASK_ROLE_REQUIRED')
-      if (args.action === 'delegate') {
+      const handoffOnReply = args.action === 'reply' && args.acceptWork === true && assistant && args.plan && args.acceptance
+      if (args.action === 'delegate' || handoffOnReply) {
         const intakeId = original?.intakeId
         const linked = intakeId && cardForIntake(room, intakeId)
         if (!assistant || !contact || source?.role !== 'request' || source.roomId !== room.id || source.senderSessionId ||
@@ -295,17 +307,23 @@ export function install(rt) {
         const acceptance = field(args.acceptance, 'acceptance conditions', 2000)
         const lines = projectSources(rt, room, linked?.intakes ?? [intakeId], linked?.id, original.seq)
         const owners = members.filter(bot => bot.id !== actor && bot.id !== assistant)
+        await acceptWork(rt, room, intakeId, args.classificationReason || goal, args.title, original.seq)
+        if (handoffOnReply) {
+          const message = field(args.message, 'the answer for the group', 4000)
+          await rt.replyToProjectIntake(room, rt.botOf(actor), original, message)
+        }
         const scope = linked ? { taskId: linked.id } : { intakeId }
         const text = [
           'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
           relatedTaskGuidance,
+          'For feature development targeting dev, assign a developer on a feature branch then an independent DSH test engineer with mergeToDev=true, independentReview=true, writePaths=[] and a dependency on the candidate. The tester tests and merges the passing commit directly into local dev, then submits evidence to you. On a failed test send the feedback to the developer in a revised plan and dispatch retesting of the new candidate. Dispatch successors in this turn; the user need not prompt continuation.',
           'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
           linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
           'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
+          'For an existing independently tested candidate on a blocked historical code round, pin candidateCommit in a revised mergeToDev node. Reuse verified evidence for the exact same version. The tester may own that integration node; do not make their previous test report a direct producer dependency of their own independent review. Preserve final verification and historical rounds.',
           'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Normally approve the final node; request_acceptance only for explicit human sign-off.',
           ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
         ].join('\n\n')
-        await acceptWork(rt, room, intakeId, args.classificationReason || goal, args.title)
         await projectNotice(rt, room, assistant, scope, 'delegate-' + original.seq, text, { images: projectImages(linked, lines), files: lines.flatMap(line => line.files ?? []) }, { goal, acceptance })
         return JSON.stringify({ delegated: true, assistantId: assistant, ...scope })
       }
@@ -350,7 +368,15 @@ export function install(rt) {
         return JSON.stringify(projectCardDetail(rt, room, executionCard))
       }
       if (args.action === 'plan' && manager && Array.isArray(args.nodes)) {
-        args = { ...args, nodes: await resolvePlanWorkspaces(rt, room, args, actor, card ?? (source?.intakeId && cardForIntake(room, source.intakeId))) }
+        const planningCard = card ?? (source?.intakeId && cardForIntake(room, source.intakeId))
+        const nodes = await resolvePlanWorkspaces(rt, room, args, actor, planningCard)
+        for (const node of nodes.filter(n => n.mergeToDev && n.candidateCommit)) {
+          const producer = planningCard?.rounds.findLast(r => r.startedAt && r.ownerId !== node.ownerId && r.workspace?.repository === node.repository &&
+            r.workspace.workRef === node.workRef && codeDelivery(planningCard, r))
+          if (!producer) throw new Error('Choose an existing developer round on this feature branch.')
+          await verifyReviewCommit(rt, room, node.repository, node.candidateCommit, { ...codeDelivery(planningCard, producer), base: producer.reviewBase })
+        }
+        args = { ...args, nodes }
       }
       if (args.action === 'dispatch' && manager && card?.plans?.at(-1)?.version === args.version) {
         const node = nodeViews(executionCard, card.plans.at(-1))[args.node - 1]
@@ -404,7 +430,22 @@ export function install(rt) {
         return args.action === 'approve' && args.version === plan?.version && plan?.nodes[args.node - 1]?.reuseRound === args.round
       }
       const owner = run && run.ownerId === actor && source?.exchangeId === run.dispatchId
-      if (!scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
+      const testNode = run?.planNode && card.plans.find(p => p.version === run.planNode.version)?.nodes[run.planNode.node - 1]
+      if (args.action === 'return_for_changes') {
+        if (!testNode?.mergeToDev || !owner || !run.startedAt || !currentBinding(card, run)) throw new Error('Return changes from the current independent test execution.')
+        const feedback = field(args.feedback, 'specific corrective feedback for the developer', 2000)
+        args = { ...args, action: 'block', feedback, reason: feedback, waitingFor: 'Developer fix and independent retest' }
+      }
+      let integration
+      if (testNode?.mergeToDev && owner && run.startedAt && args.action === 'submit' && selectedForReview(card, run)) {
+        const candidates = run.planNode.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean)
+        const candidate = testNode.candidateCommit ?? (candidates.length === 1 && candidates[0])
+        if (!candidate || args.commit !== candidate) throw new Error('Submit the exact independently tested candidate commit.')
+        const repo = run.workspace.repository
+        await verifyReviewCommit(rt, room, repo, candidate, { branch: run.workspace.workRef })
+        integration = await verifyReviewCommit(rt, room, repo, candidate, { branch: 'dev' })
+      }
+      if (!testNode?.mergeToDev && !scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
         const node = run.planNode && card.plans?.at(-1)?.nodes[run.planNode.node - 1]
         if (args.commit || args.deliveryKind === 'code') {
           if (run.mainReview && args.commit?.toLowerCase() !== run.mainReview.commit) throw new Error('This round already has a different verified delivery commit.')
@@ -442,11 +483,12 @@ export function install(rt) {
         }
         if (inheritedCheckout && draft.projectCards[id] && !draft.projectCards[id].plannedWorkspace)
           draft.projectCards[id].plannedWorkspace = inheritedCheckout
-        if (review || baseline) {
+        if (review || baseline || integration) {
           const fresh = draft.projectCards[id], target = fresh?.rounds[args.round - 1]
           if (!target || target.dispatchId !== run.dispatchId || !isDeepStrictEqual(codeDelivery(fresh, target), scope))
             throw new Error('The assignment changed. Read the current round before submitting.')
           if (selectedForReview(fresh, target)) {
+            if (integration) target.integration ??= integration
             if (baseline) target.reviewBase ??= baseline
             if (review) {
               if (target.mainReview && target.mainReview.commit !== review.commit) throw new Error('This round already has a different verified delivery commit.')
@@ -491,7 +533,7 @@ async function notifyProjectChange(rt, room, args, actor, source, result) {
         JSON.stringify({ taskId: card.id, version: round.planNode.version, node: round.planNode.node, round: args.round }) + '. Then dispatch any ready successors.'
       : 'Read the card and the evidence. Review or recover the node and dispatch ready successors.'
     await projectNotice(rt, room, assistant, scope, round.dispatchId + ':' + args.action,
-      'The owner ' + status + ' on round ' + args.round + '. ' + next)
+      'The owner ' + status + ' on round ' + args.round + '. ' + next + (round.planNode?.feedback ? '\nReturn this failed test to the developer on the same card. Dispatch a repair with these changes, then retest the new candidate: ' + round.planNode.feedback : ''))
   } else if (args.action === 'clarify' && actor !== room.admin) {
     await projectNotice(rt, room, room.admin, scope, scopeOf(scope) + ':clarify:' + (source?.exchangeId ?? ''),
       'The project needs a user decision. Use project_task report to ask this question in the group: ' + args.reason, {}, args.reason)
@@ -670,11 +712,15 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         if (args.artifact) binding.checkpointArtifact = field(args.artifact, 'checkpoint artifact', 2000)
         binding.checkpointAt = Date.now()
       } else if (args.action === 'block' && binding && !round.result) {
+        const node = card.plans.at(-1).nodes[binding.node - 1]
+        if (node.mergeToDev && args.feedback != null) binding.feedback = field(args.feedback, 'actionable test feedback for the developer', 4000)
         blockRound(round, { by: actor, cause: 'reported', reason: field(args.reason, 'the blocker', 2000),
           waitingFor: field(args.waitingFor, 'the recovery condition', 2000), evidence: field(args.evidence, 'observed evidence', 2000) })
       } else if (args.action === 'submit' && round.startedAt) {
+        if (binding && currentBinding(card, round) && card.plans.at(-1).nodes[binding.node - 1].mergeToDev && !round.integration)
+          throw new Error('Verify the independently tested candidate on dev before submitting.')
         if ((!binding || currentBinding(card, round)) && codeDelivery(card, round) && !round.mainReview)
-          throw new Error('Verify the delivery commit on local main or master before submitting this round.')
+          throw new Error('Verify the delivery commit on its assigned branch before submitting this round.')
         const result = field(args.result, 'the verified result', 4000)
         if (round.result && result !== round.result) throw new Error('This round already has a different result.')
         round.result = result

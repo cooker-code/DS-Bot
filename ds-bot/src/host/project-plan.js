@@ -28,6 +28,8 @@ export const planParameters = {
       writePaths: { type: 'array', items: { type: 'string' }, description: 'Exclusive files or directory subtrees relative to workDir. Use [] for read-only work. Include generated files.' },
       fixedOwner: { type: 'boolean', description: 'Require the planned owner across recoveries when the requirement names that person.' },
       independentReview: { type: 'boolean', description: 'The executor must not have produced any direct input.' },
+      mergeToDev: { type: 'boolean', description: 'Independent test and integration node. After passing, merge the exact candidate into local dev, then submit the report with commit. On failed tests use return_for_changes with evidence and feedback.' },
+      candidateCommit: { type: 'string', description: 'Only for testing an existing candidate from an older round without a verified code receipt. Pin its full commit in the revised plan.' },
       reuseRound: { type: 'integer', description: 'Revision only: reuse the identified, already approved output from this card.' },
     } } },
 }
@@ -109,6 +111,17 @@ export function savePlan(card, args, room, actor) {
     if (raw.workspaceReason != null) node.workspaceReason = field(raw.workspaceReason, 'the reason for the workspace choice', 500)
     if (raw.workspaceMode) node.workspaceMode = raw.workspaceMode
     if (raw.writePaths) node.writePaths = raw.writePaths
+    if (raw.mergeToDev) {
+      if (!node.independentReview || !usesGitWorkspace(node) || node.writePaths?.length !== 0 || ['dev', 'main', 'master'].includes(node.workRef))
+        throw new Error('Test and merge requires independent review on a read-only candidate feature checkout.')
+      if (raw.candidateCommit) {
+        if (!latest || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(raw.candidateCommit) ||
+            dependsOn.some(no => args.nodes[no - 1]?.writePaths?.length))
+          throw new Error('Pin an existing candidate from a previous developer round.')
+        node.candidateCommit = raw.candidateCommit
+      } else if (!dependsOn.length) throw new Error('Depend on the developer candidate round.')
+      node.mergeToDev = 1
+    }
     if (raw.reuseRound != null) {
       const previous = card.rounds[raw.reuseRound - 1]?.planNode
       if (!Number.isSafeInteger(raw.reuseRound) || !previous?.acceptedAt || previous.version >= v) throw new Error('Reuse an approved artifact from an earlier plan of this card.')
@@ -224,6 +237,8 @@ export function dispatchNode(card, args, room, actor, assignment) {
   checkOwner(room, actor, node.ownerId)
   const inputs = node.dependsOn.map(no => ({ node: no, round: views[no - 1].round }))
   if (node.independentReview && inputs.some(i => card.rounds[i.round - 1].ownerId === node.ownerId)) throw new Error('The review must be independent of upstream producers. Revise the plan before dispatch.')
+  if (node.mergeToDev && !node.candidateCommit && inputs.filter(i => card.rounds[i.round - 1].mainReview?.commit).length !== 1)
+    throw new Error('Test and merge requires one approved code candidate.')
   const round = assignment(node.ownerId, node.instructions)
   const workspace = taskWorkspaceFor(card, plan.nodes[node.no - 1])
   if (workspace) round.workspace = workspace
@@ -258,7 +273,9 @@ export function nodeHandoff(card, round) {
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),
     ...(node.writePaths || round.workspace ? ['Before starting, use working_directory to enter the assigned working folder above. Confirm the branch and run project_task start before editing.'] : []),
-    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. It must be contained in local main or master. If integration needs authorization, report the blocker.' : 'Read-only assignment. Do not edit files.'] : []),
+    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Leave integration to the independent tester.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
+    ...(node.mergeToDev ? ['Test the exact candidate ' + (node.candidateCommit ?? binding.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean).join(', ')) +
+      ' using the assigned checkout. After passing, merge that immutable commit into local dev in its verified checkout, preserve other work and verify the integrated result. The candidate checkout remains read-only. Submit the test report and commit. If tests fail, call return_for_changes with evidence and concrete feedback for the developer. Use block for an environment impediment.'] : []),
     ...binding.inputs.map(input => {
       const prev = card.rounds[input.round - 1]
       return 'Approved input from node ' + input.node + ', round ' + input.round + ': ' + prev.planNode.artifact + '\n' + prev.result
