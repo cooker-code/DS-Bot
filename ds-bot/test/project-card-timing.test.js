@@ -255,7 +255,8 @@ test('task detail shows results below the criteria and switches to a read-only r
     { kind: 'image', name: 'screen.png', receiptFile: '5-image' },
     { kind: 'markdown', name: 'report.md', receiptFile: '5-report' },
   ] }]
-  const [list, [screenshot], [document]] = results().children
+  const [list, [document], gallery] = results().children
+  const [screenshot] = gallery.children[0]
   assert.equal(list.type, 'ol')
   assert.deepEqual(Array.from(list.children[0], item => item.children[0]), detail.results[0].items)
   assert.equal(screenshot.props.receiptFile, '5-image')

@@ -40432,6 +40432,8 @@ var TASK_CSS = `
 .bt-project-detail .bt-project-markdown ol{padding-inline-start:3.5em;list-style-position:outside}
 .bt-project-markdown img,.bt-task-image img{max-width:100%;height:auto}
 .bt-result-items{padding-inline-start:2.2em;list-style:decimal outside;margin:6px 0}
+.bt-result-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px}
+.bt-result-gallery .bt-task-image-open img{width:100%;max-height:140px;object-fit:contain}
 .bt-result-document{cursor:pointer;color:var(--bt-accent);text-decoration:underline;margin-top:8px}
 .bt-task-image{display:grid;justify-items:start;gap:4px;margin-top:8px}
 .bt-task-image img{display:block;border-radius:8px}
@@ -43593,15 +43595,15 @@ function TaskResults({ roomId, taskId, detail }) {
     MarkdownField,
     { title: t("Acceptance results"), placeholder: groups.length ? null : t("No results submitted yet") },
     items.length ? (0, import_react74.createElement)("ol", { className: "bt-result-items" }, items.map((item) => (0, import_react74.createElement)("li", { key: item }, item))) : null,
-    files.filter((file) => file.kind === "image").map((file, index) => (0, import_react74.createElement)(TaskImage, {
-      key: index,
+    files.filter((file) => file.kind === "markdown").map((file) => (0, import_react74.createElement)(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file })),
+    (0, import_react74.createElement)("div", { className: "bt-result-gallery" }, files.filter((file) => file.kind === "image").map((file) => (0, import_react74.createElement)(TaskImage, {
+      key: file.receiptFile ?? file.ref.attachmentId + file.name,
       roomId,
       taskId,
       image: file.ref,
       receiptFile: file.receiptFile,
       label: file.name
-    })),
-    files.filter((file) => file.kind === "markdown").map((file) => (0, import_react74.createElement)(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file }))
+    })))
   );
 }
 
