@@ -14153,6 +14153,7 @@ var ZH = {
   "New browser tab": "新建浏览器页",
   Terminal: "终端",
   Files: "文件树",
+  "Dimmed plugins require an active session. This group session is archived.": "此群会话已归档，灰色插件仅支持打开未归档的会话。",
   "Enable the conversation tab in Context plugin settings to view archived sessions.": "请在「上下文」插件设置中启用会话标签页，以查看已归档会话的上下文。",
   "The conversation workspace is not open yet. Try again.": "会话工作区尚未打开，请重试。",
   "Bot browser": "Bot 专属浏览器",
@@ -40843,7 +40844,9 @@ var SIDE_CSS = `
 .bt-pmenu-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:172px;max-height:65vh;overflow-y:auto;padding:6px;border-radius:12px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);display:flex;flex-direction:column;gap:2px;transform-origin:top right;animation:bt-pop-drop .18s cubic-bezier(.16,1,.3,1),bt-fade .14s ease-out}
 .bt-pmenu-pop[data-leaving]{animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
 .bt-pmenu-item{display:flex;align-items:center;gap:9px;width:100%;min-width:0;padding:7px 10px;border:0;border-radius:8px;background:none;color:var(--bt-ink);font:inherit;font-size:12px;line-height:17px;text-align:left;cursor:pointer}
-.bt-pmenu-item:hover{background:var(--bt-hover)}
+.bt-pmenu-note{padding:5px 10px;color:var(--bt-ink-3);font-size:11px;line-height:16px;white-space:normal}
+.bt-pmenu-item:disabled{color:var(--bt-ink-3);opacity:.55;cursor:not-allowed}
+.bt-pmenu-item:not(:disabled):hover{background:var(--bt-hover)}
 .bt-pmenu-item:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
 .bt-pmenu-item svg{flex:none;width:15px;height:15px;color:var(--bt-ink-3)}
 .bt-pmenu-sep{height:.5px;flex:none;margin:4px 8px;background:var(--bt-line-2)}
@@ -44538,7 +44541,7 @@ function BotSessions({ bot, part, viewingMember, memberSessionId, rooms = [], ru
   );
 }
 var rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt);
-function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, archivedReason, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId];
   const part = owner ? currentPart(owner) : sessionId;
   const isMainBot = isMainOf(roster, owner?.id);
@@ -44632,21 +44635,19 @@ function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, 
     if (entries2.length) more.push({ sep: true });
   }
   for (const entry of entries2) {
+    const memberContext = viewingMember && entry.kind === "dsh-context";
+    const embedded = memberContext && actions.hasContextView();
+    const reason = archivedReason && !embedded ? memberContext ? t("Enable the conversation tab in Context plugin settings to view archived sessions.") : archivedReason : void 0;
     more.push({
       key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
       icon: entry.icon ?? PlugIcon,
       label: entry.title(),
-      disabled: viewingMember && !memberSessionId,
+      disabled: viewingMember && !memberSessionId || !!reason,
+      reason,
       onPick: () => {
-        if (viewingMember && entry.kind === "dsh-context") {
-          if (actions.hasContextView()) {
-            setView("context");
-            return;
-          }
-          if (actions.isArchivedSession(memberSessionId)) {
-            actions.notice(t("Enable the conversation tab in Context plugin settings to view archived sessions."));
-            return;
-          }
+        if (embedded) {
+          setView("context");
+          return;
         }
         actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room2?.sessionId ?? part);
       }
@@ -44847,11 +44848,14 @@ function PanelMenu({ items, className, "aria-label": label }) {
         role: "menuitem",
         className: "bt-pmenu-item",
         disabled: item.disabled,
+        title: item.reason,
+        "aria-description": item.reason,
         onClick: () => {
           setOpen(false);
           item.onPick();
         }
-      }, (0, import_react78.createElement)(item.icon, { size: 15 }), (0, import_react78.createElement)("span", null, item.label)))
+      }, (0, import_react78.createElement)(item.icon, { size: 15 }), (0, import_react78.createElement)("span", null, item.label))),
+      [...new Set(items.map((item) => item.reason).filter(Boolean))].map((reason) => (0, import_react78.createElement)("span", { key: reason, className: "bt-pmenu-note" }, reason))
     ) : null
   );
 }
@@ -44875,7 +44879,7 @@ function menuItemFor(key, actions, subject) {
   }
 }
 var sideTitle = (chat) => chat?.entries?.[0]?.question?.trim() || t("Side chat");
-function PanelStrip({ bot, subject, view, ids, active, sides, side, canBrowse, reading, onView, actions, useBrowserPages }) {
+function PanelStrip({ bot, viewingMember, memberSessionId, archivedReason, subject, view, ids, active, sides, side, canBrowse, reading, onView, actions, useBrowserPages }) {
   const pages = useBrowserPages((map) => map);
   const wrap = (0, import_react78.useRef)(null);
   const ind = (0, import_react78.useRef)(null);
@@ -44938,7 +44942,16 @@ function PanelStrip({ bot, subject, view, ids, active, sides, side, canBrowse, r
     canBrowse,
     canTerminal: actions.canOpenTerminal?.() === true,
     canFiles: actions.canOpenFiles?.() === true
-  }).map((key) => menuItemFor(key, actions, subject));
+  }).map((key) => {
+    const item = menuItemFor(key, actions, subject);
+    if (!viewingMember || key !== "files" && key !== "terminal") return item;
+    return {
+      ...item,
+      disabled: !memberSessionId || !!archivedReason,
+      reason: archivedReason,
+      onPick: () => actions.openConversationTab(key, memberSessionId)
+    };
+  });
   return (0, import_react78.createElement)(
     "div",
     { className: "bt-ptabs", role: "tablist", "aria-label": t("Panel tabs") },
@@ -45175,7 +45188,7 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
     )
   );
 }
-function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSessionId, leaving, room: room2, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSessionId, historicalMember, leaving, room: room2, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const bot = roster.byId[pane.id];
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow);
   const sideChats = bot ? sideChatsOf(roster, bot.id) : [];
@@ -45380,6 +45393,8 @@ function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSession
       }
     });
   };
+  const viewingMember = memberChat?.botId === pane.id;
+  const archivedReason = viewingMember && (historicalMember || actions.isArchivedSession?.(memberSessionId)) ? t("Dimmed plugins require an active session. This group session is archived.") : void 0;
   const hasStrip = panelHasStrip(canBrowse, tabState.ids.length, sideChats.length);
   return (0, import_react78.createElement)(
     "aside",
@@ -45403,7 +45418,7 @@ function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSession
     // Over the whole window while dragging: the cursor stays a resize cursor and the
     // pages underneath (the chat, the guest) see no pointer.
     dragging ? (0, import_react_dom12.createPortal)((0, import_react78.createElement)("div", { className: "bt-drag-shield", "aria-hidden": true }), document.body) : null,
-    hasStrip ? (0, import_react78.createElement)(PanelStrip, { bot, subject: pane.id, view, ids: tabState.ids, active, sides: sideChats, side: pane.side, canBrowse, reading, onView: switchView, actions: panelActions, useBrowserPages }) : null,
+    hasStrip ? (0, import_react78.createElement)(PanelStrip, { bot, viewingMember, memberSessionId, archivedReason, subject: pane.id, view, ids: tabState.ids, active, sides: sideChats, side: pane.side, canBrowse, reading, onView: switchView, actions: panelActions, useBrowserPages }) : null,
     view === "browser" && bot ? (0, import_react78.createElement)(BrowserView, { key: `browser:${active}`, bot, tabId: active, leaving, landed: landed && !settling, actions, useBrowserPages }) : view === "side" && sideChat ? (0, import_react78.createElement)("div", { key: `side:${sideChat.id}`, className: "bt-panel-view" }, (0, import_react78.createElement)(SideChatView, { subject: pane.id, chat: sideChat, roster, actions: panelActions })) : (0, import_react78.createElement)(
       "div",
       { key: `details:${pane.id}:${pane.renaming ? "rename" : ""}:${pane.tab ?? ""}`, className: "bt-panel-view" },
@@ -45411,8 +45426,9 @@ function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSession
         sessionId: pane.id,
         SessionProvider,
         renderSlot,
-        viewingMember: memberChat?.botId === pane.id,
+        viewingMember,
         memberSessionId,
+        archivedReason,
         startRenaming: pane.renaming,
         startTab: pane.tab,
         hasStrip,
@@ -45670,6 +45686,7 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
         renderSlot,
         memberChat: ui2.memberChat,
         memberSessionId: member?.id,
+        historicalMember: !!member && !member.current,
         leaving: shown === null,
         room: layout.room,
         overlay: layout.panel === "overlay",
@@ -48570,9 +48587,14 @@ function apply(ctx) {
       const sidebar = ctx.get("sidebarRight");
       if (!target) return;
       const selection = ui2.getSnapshot().memberChat;
+      const archived = () => selection && actions.isArchivedSession(target);
+      if (archived()) {
+        actions.notice(t("Dimmed plugins require an active session. This group session is archived."));
+        return;
+      }
       if (sidebar.mounted.getSnapshot() !== target) {
         if (!ctx.sessions.list.getSnapshot().byId[target]) await ctx.sessions.refresh();
-        if (ui2.getSnapshot().memberChat !== selection) return;
+        if (ui2.getSnapshot().memberChat !== selection || archived()) return;
         if (!ctx.sessions.list.getSnapshot().byId[target]) throw new Error(t("The conversation workspace is not open yet. Try again."));
         await new Promise((resolve2, reject) => {
           const finish = (error) => {
@@ -48595,7 +48617,7 @@ function apply(ctx) {
         });
         await new Promise((resolve2) => requestAnimationFrame(resolve2));
       }
-      if (ui2.getSnapshot().memberChat !== selection) return;
+      if (ui2.getSnapshot().memberChat !== selection || archived()) return;
       if (sidebar.mounted.getSnapshot() !== target) throw new Error(t("The conversation workspace is not open yet. Try again."));
       sidebar.openTab(kind);
       actions.closePanel();

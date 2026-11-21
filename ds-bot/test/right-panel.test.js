@@ -464,3 +464,21 @@ test('context uses the visible group part or private chat without substituting t
   assert.deepEqual(calls, [['ctx', 'group-2'], ['ctx', 'group-1'], ['ctx', 'private-3']])
   assert.equal(menuItem(drawer('a', actions, roster, { viewingMember: true }), key).disabled, true)
 })
+
+test('archived member menus keep embedded Context available and explain disabled native plugins', () => {
+  const kinds = ['dsh-context', 'files', 'terminal', 'other-extension']
+  const guide = kinds.map(kind => ({ kind, id: kind, title: () => kind }))
+  const actions = { sidebarGuide: { getSnapshot: () => guide, subscribe: () => () => {} }, hasContextView: () => true }
+  const reason = 'This session is archived.'
+  const items = options => kinds.map(kind => menuItem(drawer('a', actions, roster, options), JSON.stringify([kind, kind])))
+  const old = { viewingMember: true, memberSessionId: 'group-1', archivedReason: reason }
+  const [context, ...native] = items(old)
+  assert.equal(context.disabled, false)
+  assert.ok(native.every(item => item.disabled && item.reason === reason))
+  for (const options of [{ viewingMember: true, memberSessionId: 'group-2' }, {}]) {
+    assert.ok(items(options).every(item => !item.disabled && !item.reason))
+  }
+  actions.hasContextView = () => false
+  assert.equal(items(old)[0].disabled, true)
+  assert.match(items(old)[0].reason, /Enable the conversation tab/)
+})

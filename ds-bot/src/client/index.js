@@ -963,9 +963,11 @@ export function apply(ctx) {
       const sidebar = ctx.get('sidebarRight')
       if (!target) return
       const selection = ui.getSnapshot().memberChat
+      const archived = () => selection && actions.isArchivedSession(target)
+      if (archived()) { actions.notice(t('Dimmed plugins require an active session. This group session is archived.')); return }
       if (sidebar.mounted.getSnapshot() !== target) {
         if (!ctx.sessions.list.getSnapshot().byId[target]) await ctx.sessions.refresh()
-        if (ui.getSnapshot().memberChat !== selection) return
+        if (ui.getSnapshot().memberChat !== selection || archived()) return
         if (!ctx.sessions.list.getSnapshot().byId[target]) throw new Error(t('The conversation workspace is not open yet. Try again.'))
         await new Promise((resolve, reject) => {
           const finish = error => {
@@ -984,7 +986,7 @@ export function apply(ctx) {
         // The sidebar publishes its Session before React commits that Session's pane.
         await new Promise(resolve => requestAnimationFrame(resolve))
       }
-      if (ui.getSnapshot().memberChat !== selection) return
+      if (ui.getSnapshot().memberChat !== selection || archived()) return
       if (sidebar.mounted.getSnapshot() !== target) throw new Error(t('The conversation workspace is not open yet. Try again.'))
       sidebar.openTab(kind)
       actions.closePanel()
