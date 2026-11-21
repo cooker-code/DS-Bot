@@ -28,7 +28,7 @@ export const planParameters = {
       writePaths: { type: 'array', items: { type: 'string' }, description: 'Exclusive files or directory subtrees relative to workDir. Use [] for read-only work. Include generated files.' },
       fixedOwner: { type: 'boolean', description: 'Require the planned owner across recoveries when the requirement names that person.' },
       independentReview: { type: 'boolean', description: 'The executor must not have produced any direct input.' },
-      mergeToDev: { type: 'boolean', description: 'Independent test and integration node. After passing, merge the exact candidate into local dev, then submit the report with commit. On failed tests use return_for_changes with evidence and feedback.' },
+      mergeToDev: { type: 'boolean', description: 'Legacy integration node only. For new feature tasks use independentReview=true and writePaths=[] to test the fixed feature commit.' },
       candidateCommit: { type: 'string', description: 'Only for testing an existing candidate from an older round without a verified code receipt. Pin its full commit in the revised plan.' },
       reuseRound: { type: 'integer', description: 'Revision only: reuse the identified, already approved output from this card.' },
     } } },
@@ -112,6 +112,7 @@ export function savePlan(card, args, room, actor) {
     if (raw.workspaceMode) node.workspaceMode = raw.workspaceMode
     if (raw.writePaths) node.writePaths = raw.writePaths
     if (raw.mergeToDev) {
+      if (!prior?.mergeToDev) throw new Error('Keep feature validation on the feature branch. Plan an independent read-only test and arrange integration separately.')
       if (!node.independentReview || !usesGitWorkspace(node) || node.writePaths?.length !== 0 || ['dev', 'main', 'master'].includes(node.workRef))
         throw new Error('Test and merge requires independent review on a read-only candidate feature checkout.')
       if (raw.candidateCommit) {
@@ -248,7 +249,13 @@ export function plannedSummary(card) {
     return codeDelivery(card, run, node) && !run?.mainReview
   })
   const validating = status === 'active' && current.find(r => r.mergeReceipt && !r.submittedAt)
-  return { ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
+  const validationProgress = views.filter(n => n.status !== 'omitted').flatMap(n => {
+    const run = card.rounds[n.round - 1]
+    if (!run?.validation) return []
+    const { checking, passed } = run.validation
+    return [{ round: n.round, checking: n.status === 'active' ? checking : undefined, checksComplete: run.validation.checksComplete, cleaned: Boolean(run.validation.cleanup), lastPassed: passed.at(-1)?.name, passedCount: passed.length, submitted: Boolean(run.submittedAt) }]
+  })
+  return { ...(validationProgress.length && { validationProgress }), ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
     startedAt: started.length ? Math.min(...started.map(r => r.startedAt)) : undefined,
     submittedAt: submissions.length && submissions.length === current.length ? Math.max(...submissions) : undefined,
     stoppedAt: stops.length ? Math.max(...stops) : undefined, updatedAt }
@@ -302,11 +309,13 @@ export function nodeHandoff(card, round) {
       ...(decision.targetTree.commit ? ['Expected commit: ' + decision.targetTree.commit] : [])] : []),
     ...(card.rounds.some(r => r.ownershipTransfer?.version === binding.version && r.ownershipTransfer.node === node.no && r.ownershipTransfer.retainedChanges)
       ? ['Continue with the existing uncommitted changes in this checkout. Inspect the diff against the revised requirement and preserve the previous work.'] : []),
+    ...(node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && binding.inputs.some(i => card.rounds[i.round - 1].mainReview?.commit)
+      ? ['Validate the approved feature candidate against the acceptance criteria. Choose only checks needed to answer them; label extra coverage as a test method. Use project_task checkpoint with checking when a check begins and passedCheck plus evidence when it passes. Reuse existing results and artifact paths. Set checksComplete on the final passing check. After cleanup is verified, submit with cleanupEvidence only. The host creates the receipt; no separate report file or code commit is required.'] : []),
     'Plan v' + binding.version + ' · Node ' + node.no + ': ' + node.title,
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),
     ...(node.writePaths || round.workspace ? ['Before starting, use working_directory to enter the assigned working folder above. Confirm the branch and run project_task start before editing.'] : []),
-    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Leave integration to the independent tester.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
+    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Keep the candidate on the feature branch for independent testing.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
     ...(node.mergeToDev ? ['Test the exact candidate ' + (node.candidateCommit ?? binding.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean).join(', ')) +
       ' using the assigned checkout. After passing, merge that immutable commit into local dev in its verified checkout, preserve other work, and immediately call record_merge with commit and mergeCommit. Then verify the integrated result. The candidate checkout remains read-only. Submit the test report, candidate commit and exact testedCommit on dev. Later changes to dev do not invalidate that snapshot. If tests fail, call return_for_changes with evidence and concrete feedback for the developer. Use block for an environment impediment.'] : []),
     ...binding.inputs.map(input => {

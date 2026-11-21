@@ -595,57 +595,11 @@ python3 ./.trellis/scripts/task.py start <task-dir>
 
 相应更新 `.trellis/spec/` 下的文档。即使结论是“没有需要更新的内容”，也要完成这一判断过程。
 
-#### 3.4 提交改动 `[required · once]`
+#### 3.4 记录功能候选
 
-**Spec 同步前置检查**：拟定 commit 前，先问：此 Task 是否修复了缺陷，或发现了应该写入 `.trellis/spec/` 的非显而易见知识，以免未来的自己（或 AI）重复犯错？如果是，先返回 Phase 3.3——Spec 改动应进入同一 Task 的 commit 批次，而不是被遗忘的后续事项。
+Trellis 管理需求、验收条件和证据。开发工程师按 DS Bot 原卡的授权在功能分支审查差异、按逻辑分组并提交自己的修改，自行排除无关文件。已有授权覆盖这些修改时直接执行，提交分组和标题无需另行确认。仅在范围或文件归属确有歧义时向任务管理者说明具体问题。
 
-AI 负责按批次 commit 此 Task 的代码改动，使 `/finish-work` 之后可以在干净的工作区运行。目标是先生成工作 commit，再生成记录管理（archive + journal）commit——不要交错。
-
-**操作步骤**：
-
-1. **检查未提交状态**：
-   ```bash
-   git status --porcelain
-   ```
-   记录每个未提交路径。如果工作树干净，跳到 3.5。
-
-2. **从近期历史学习 commit 风格**（使拟定的提交信息与现有风格一致）：
-   ```bash
-   git log --oneline -5
-   ```
-   观察前缀约定（`feat:` / `fix:` / `chore:` / `docs:` 等）、语言（中文/英文）和长度风格。
-
-3. **把未提交文件分成两组**：
-   - **本 session 由 AI 编辑** — 本 session 中通过 Edit/Write/Bash tool call 写入或编辑的文件。你知道改了什么以及原因。
-   - **无法识别** — 本 session 中你没有触碰的未提交文件（可能是用户手动修改、上个 session 遗留的 WIP，或不相关工作）。不要静默包含它们。
-
-4. **拟定 commit 计划**。把 AI 编辑的文件按逻辑 commit 分组（每个一致的改动单元一个 commit，而不是每个文件一个 commit）。每项包含 `<commit message>` 和文件列表。最后单独列出无法识别的文件。
-
-5. **只展示一次 plan，并请求一次性确认**。格式：
-   ```
-   拟议的 commit（按顺序）：
-     1. <message>
-        - <file>
-        - <file>
-     2. <message>
-        - <file>
-
-   无法识别的未提交文件（不会加入任何 commit——请确认包含/排除）：
-     - <file>
-     - <file>
-
-   回复 'ok' / '行' 执行。回复修改意见，或回复 '我自己来' / 'manual' 终止。
-   ```
-
-6. **确认后**：按顺序对每个批次运行 `git add <files>` + `git commit -m "<msg>"`。不要 amend。不要 push。
-
-7. **拒绝后**（用户回复“不行” / “我自己来” / “manual”，或对 plan 有任何异议）：停止。不要尝试第二份 plan。用户将手动 commit；他们确认后，跳到 3.5。
-
-**规则**：
-- 任何地方都不能使用 `git commit --amend`——遵守三阶段三 commit 流程（工作 commit → archive commit → journal commit）。
-- 此 Step 不得 push 到 remote。
-- 如果用户只想修改提交信息措辞，但接受文件分组，则修改提交信息并再确认一次；如果他们拒绝分组，则进入手动模式。
-- 批次计划只询问一次；不要对每个 commit 分别询问。
+记录分支、候选提交和验证结果。独立测试只读验证该候选，管理者认可测试报告即完成功能任务。候选保留在功能分支，集成及发布另行安排。
 
 #### 3.5 收尾提醒
 

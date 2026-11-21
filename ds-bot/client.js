@@ -14229,6 +14229,14 @@ var ZH = {
   "The executing Bot was interrupted.": "执行 Bot 已中断",
   "Execution needs verification after restart": "重启后执行状态待核实",
   "Completed checks": "已完成检查",
+  "Candidate": "候选提交",
+  "Validation progress": "验收进度",
+  "Testing: {check}": "正在验证：{check}",
+  "Passed: {check}": "已通过：{check}",
+  "Checks passed · awaiting cleanup": "验收已通过，待清理",
+  "Cleanup verified": "清理已核实",
+  "Test receipt submitted": "已提交测试回执",
+  "Cleanup: {result}": "清理结果：{result}",
   "Remaining checks": "剩余检查",
   "Reassigned": "已接管",
   "Resumed": "已恢复",
@@ -20247,7 +20255,7 @@ var COMPUTER_CSS = `
 .bt-cstep-shot-open img{max-height:280px;max-width:480px}
 `;
 
-// node_modules/deep-view/src/react/ui.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/react/ui.js
 var import_react13 = require("react");
 var FallbackMarkdown = ({ text }) => (0, import_react13.createElement)("span", null, String(text ?? ""));
 var ViewUi = (0, import_react13.createContext)({ t: (key) => key, Markdown: FallbackMarkdown });
@@ -20314,7 +20322,7 @@ function useOptionKeys2(count, onPick, ownRef) {
   return count > 0 && listening <= 1;
 }
 
-// node_modules/deep-view/src/core/formula.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/core/formula.js
 var FUNCTIONS = {
   min: { args: [1, Infinity], run: (...values) => Math.min(...values.map(num)) },
   max: { args: [1, Infinity], run: (...values) => Math.max(...values.map(num)) },
@@ -20595,7 +20603,7 @@ function evaluate(tree, lookup) {
   }
 }
 
-// node_modules/deep-view/src/core/views.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/core/views.js
 var LAYOUT = ["stack", "row"];
 var DISPLAY = ["text", "metric", "table", "chart", "progress", "callout", "sources", "html"];
 var INPUT_TYPES = ["slider", "choice", "toggle", "number"];
@@ -21227,7 +21235,7 @@ function validateForm(node, values) {
   return { fields };
 }
 
-// node_modules/deep-view/src/react/chart.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/react/chart.js
 var import_react14 = require("react");
 var PALETTE = ["var(--dv-accent)", "var(--dv-ink-tangerine)", "var(--dv-ink-green)", "var(--dv-ink-violet)", "var(--dv-ink-sky)", "var(--dv-ink-rose)", "var(--dv-ink-yellow)", "var(--dv-ink-cyan)", "var(--dv-ink-magenta)"];
 var colorAt = (index) => PALETTE[index % PALETTE.length];
@@ -21666,7 +21674,7 @@ var CHART_CSS = `
 @media (prefers-reduced-motion:reduce){.dv-chart-mark,.dv-chart-dot{transition:none}.dv-chart-tip{animation:none}}
 `;
 
-// node_modules/deep-view/src/react/frame.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/react/frame.js
 var import_react15 = require("react");
 var THEME_VARS = [
   ["--view-ink", "--bt-ink", "--dv-ink"],
@@ -21748,7 +21756,7 @@ var HTML_CSS = `
 .dv-view-frame-stopped{margin:0;font-size:13px;line-height:18px;color:var(--dv-ink-2)}
 `;
 
-// node_modules/deep-view/src/react/card.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/react/card.js
 var import_react16 = require("react");
 var mdLabels2 = (ui2) => ({ code: { copyLabel: ui2.t("Copy"), copiedLabel: ui2.t("Copied") }, footnotes: ui2.t("Footnotes") });
 var TONES2 = ["good", "warn", "bad"];
@@ -22490,7 +22498,7 @@ ${CHART_CSS}
 ${HTML_CSS}
 `;
 
-// node_modules/deep-view/src/react/styles.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/react/styles.js
 var THEME_CSS = `
 body{
 --dv-ink:var(--dsw-alias-label-primary);
@@ -22588,10 +22596,10 @@ button.dv-q-opt:active{background:var(--dv-active)}
 @media (prefers-reduced-motion:reduce){.dv-q,.dv-view-bare,.dv-q-submit,.dv-menu,.dv-q-check{animation:none}}
 `;
 
-// node_modules/deep-view/src/react/index.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/react/index.js
 var DEEP_VIEW_CSS = THEME_CSS + QUESTION_CSS + WIDGET_CSS;
 
-// node_modules/deep-view/src/core/reply.js
+// ../../DS-Bot/ds-bot/node_modules/deep-view/src/core/reply.js
 var REPLY_KIND = "user-question-reply";
 var REPLY_SOURCE_KIND = "deep-view-reply";
 function viewCardText(args) {
@@ -34330,7 +34338,7 @@ var CONNECTORS_PAGE_CSS = `
 @media (prefers-reduced-motion:reduce){.bt-app[data-fresh]::after,.bt-app[data-fresh] .bt-app-icon,.bt-app[data-fresh] .bt-app-btn-done{animation:none}}
 `;
 
-// node_modules/qrcode-generator/dist/qrcode.mjs
+// ../../DS-Bot/ds-bot/node_modules/qrcode-generator/dist/qrcode.mjs
 var qrcode = function(typeNumber, errorCorrectionLevel) {
   const PAD0 = 236;
   const PAD1 = 17;
@@ -39927,6 +39935,13 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         ),
         onOpen ? (0, import_react58.createElement)("span", { className: "bt-project-arrow" }, (0, import_react58.createElement)(ChevronRightIcon)) : null
       ),
+      (card.validationProgress ?? []).map((progress) => (0, import_react58.createElement)(
+        "span",
+        { key: progress.round, className: "bt-project-meta" },
+        progress.checking ? (0, import_react58.createElement)("span", null, t("Testing: {check}", { check: progress.checking })) : null,
+        progress.lastPassed ? (0, import_react58.createElement)("span", null, t("Passed: {check}", { check: progress.lastPassed })) : null,
+        progress.submitted ? (0, import_react58.createElement)("span", null, t("Test receipt submitted")) : progress.cleaned ? (0, import_react58.createElement)("span", null, t("Cleanup verified")) : progress.checksComplete && card.status === "active" ? (0, import_react58.createElement)("span", null, t("Checks passed · awaiting cleanup")) : null
+      )),
       branch || hasStart ? (0, import_react58.createElement)(
         "span",
         { className: "bt-project-meta" },
@@ -43782,6 +43797,36 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     event.target.value = "";
   } }) : null);
 }
+function ValidationProgress({ detail }) {
+  const nodes = detail.plans?.at(-1)?.nodes ?? [];
+  return nodes.filter((node) => node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && node.round && node.status !== "omitted").map((node) => {
+    const round = detail.rounds?.[node.round - 1];
+    if (!round) return null;
+    const progress = round.validation;
+    const checkpoint = round.planNode;
+    if (!progress && !checkpoint?.completed && !round.result) return null;
+    return (0, import_react76.createElement)(
+      "section",
+      { key: node.round, "aria-label": t("Validation progress") },
+      (0, import_react76.createElement)("h3", { className: "bt-section-title" }, t("Validation progress"), " · ", node.title),
+      progress?.checking && !checkpoint?.block ? (0, import_react76.createElement)("p", null, t("Testing: {check}", { check: progress.checking })) : null,
+      checkpoint?.block ? (0, import_react76.createElement)("p", null, checkpoint.block.reason) : null,
+      progress?.passed.length ? (0, import_react76.createElement)("ul", null, progress.passed.map((check) => (0, import_react76.createElement)(
+        "li",
+        { key: check.name },
+        (0, import_react76.createElement)("strong", null, t("Passed: {check}", { check: check.name })),
+        " · ",
+        check.evidence
+      ))) : null,
+      progress?.checksComplete && !progress.cleanup && !checkpoint?.block ? (0, import_react76.createElement)("p", null, t("Checks passed · awaiting cleanup")) : null,
+      progress?.cleanup ? (0, import_react76.createElement)("p", null, round.submittedAt ? t("Test receipt submitted") + " · " : "", t("Cleanup: {result}", { result: progress.cleanup })) : null,
+      progress ? (0, import_react76.createElement)("p", null, t("Candidate"), " · ", progress.candidates.join(", ")) : null,
+      !progress && checkpoint?.completed ? (0, import_react76.createElement)("p", null, checkpoint.completed) : null,
+      !progress && !round.result && checkpoint?.remaining ? (0, import_react76.createElement)("p", null, checkpoint.remaining) : null,
+      !progress && round.result ? (0, import_react76.createElement)("details", null, (0, import_react76.createElement)("summary", null, t("Test receipt submitted")), (0, import_react76.createElement)("p", null, round.result)) : null
+    );
+  });
+}
 function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = (0, import_react76.useState)();
   const [error, setError] = (0, import_react76.useState)("");
@@ -43853,6 +43898,7 @@ function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack
             onSave: (...args) => save("acceptance", ...args)
           }),
           (0, import_react76.createElement)(TaskResults, { key: room2.id + taskId, roomId: room2.id, taskId, detail }),
+          (0, import_react76.createElement)(ValidationProgress, { detail }),
           (0, import_react76.createElement)(TaskWorkspace, { room: room2, card, readOnly })
         ) : !error ? (0, import_react76.createElement)("p", { role: "status" }, t("Loading…")) : null
       )

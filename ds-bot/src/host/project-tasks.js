@@ -1,4 +1,5 @@
 import { snapshotResultFiles } from './project-result-files.js'
+import { beginValidation, checkpointValidation, validationReceipt } from './project-validation.js'
 import { taskError } from '../shared/task-settings.js'
 import { assistantId, decidesGitWorkspace, runsProject, projectNotice } from './project-assistant.js'
 // Project cards belong to the group. Keep small assignment records here and resolve
@@ -285,6 +286,10 @@ export function install(rt) {
       plan: { type: 'string', description: 'For first plan and delegation, the clarified requirement as a concise numbered list. For assignment or handoff, instructions for the next owner.' },
       acceptance: { type: 'string', description: 'Concise numbered list of observable conditions the user can verify.' },
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
+      checking: { type: 'string', description: 'Checkpoint: the acceptance check now in progress.' },
+      passedCheck: { type: 'string', description: 'Checkpoint: name of a passed check. Supply evidence with the observed result or existing artifact.' },
+      checksComplete: { type: 'boolean', description: 'Checkpoint: set true with the last passing check to show that validation passed and cleanup is pending.' },
+      cleanupEvidence: { type: 'string', description: 'Submit a read-only validation receipt after all acceptance checks pass. Supply the verified cleanup outcome, or state why no resources were created. The host reuses recorded checks and candidate; omit result and commit.' },
       result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
       resultFiles: { type: 'array', items: { type: 'string' }, description: 'On submit or return_for_changes, include available UI screenshots and delivered Markdown reports as file paths inside your assigned working folder. They appear on the card with the result.' },
       commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
@@ -350,11 +355,11 @@ export function install(rt) {
         const text = [
           'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
           relatedTaskGuidance,
-          'For feature development targeting dev, assign a developer on a feature branch then an independent DSH test engineer with mergeToDev=true, independentReview=true, writePaths=[] and a dependency on the candidate. The tester tests and merges the passing commit directly into local dev, immediately calls record_merge, validates the integrated snapshot and submits evidence to you. For a small feature make this test-and-merge node final. Approve after targeted post-merge checks; report archiving is non-blocking and needs no extra architecture review. On a failed test send the feedback to the developer in a revised plan and dispatch retesting of the new candidate. Dispatch successors in this turn; the user need not prompt continuation.',
+          'For every feature task, the developer commits on the feature branch. Dispatch a final independent read-only test node with independentReview=true, writePaths=[] and a dependency on the approved developer candidate. Keep the user’s acceptance criteria separate from the tester’s choice of checks. Reuse existing results, record each check on the card, and submit the read-only receipt with cleanupEvidence. No separate report file is needed. Approve the receipt to finish; keep the candidate on the feature branch. Integration, installation and release require separate work. On test failure return the feedback to the developer and retest the revised candidate.',
           'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
           linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
           'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
-          'For an existing independently tested candidate on a blocked historical code round, pin candidateCommit in a revised mergeToDev node. Reuse verified evidence for the exact same version. The tester may own that integration node; do not make their previous test report a direct producer dependency of their own independent review. Preserve final verification and historical rounds.',
+          'When revising the test plan, reuse the accepted developer round and preserve its branch and candidate. Trellis records requirements and evidence; an authorized feature commit needs no separate grouping approval.',
           'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Normally approve the final node; request_acceptance only for explicit human sign-off.',
           ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
         ].join('\n\n')
@@ -484,7 +489,7 @@ export function install(rt) {
         }
       }
       if (args.action === 'return_for_changes') {
-        if (!testNode?.mergeToDev || !owner || !run.startedAt || !currentBinding(card, run)) throw new Error('Return changes from the current independent test execution.')
+        if (!testNode?.independentReview || testNode.writePaths?.length !== 0 || !owner || !run.startedAt || !currentBinding(card, run)) throw new Error('Return changes from the current independent test execution.')
         const feedback = field(args.feedback, 'specific corrective feedback for the developer', 2000)
         args = { ...args, action: 'block', feedback, reason: feedback, waitingFor: 'Developer fix and independent retest' }
       }
@@ -508,7 +513,7 @@ export function install(rt) {
           integration = run.integration ?? await verifyIntegration(rt, room, repo, candidate, tested)
         }
       }
-      if (!testNode?.mergeToDev && !scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
+      if (!run?.validation && !testNode?.mergeToDev && !scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
         const node = run.planNode && card.plans?.at(-1)?.nodes[run.planNode.node - 1]
         if (args.commit || args.deliveryKind === 'code') {
           if (run.mainReview && args.commit?.toLowerCase() !== run.mainReview.commit) throw new Error('This round already has a different verified delivery commit.')
@@ -794,6 +799,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       }
       if (args.action === 'start') {
         if (binding && !round.startedAt) {
+          beginValidation(card, round)
           binding.session = session
           const dir = rt.sessionFolder?.(executionSession)
           if (dir) binding.workDir = dir
@@ -802,13 +808,18 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       } else if (args.action === 'record_merge') {
         if (!binding || !round.startedAt || !currentBinding(card, round) || !round.mergeReceipt) throw new Error('Record the merge from the assigned independent test round.')
       } else if (args.action === 'checkpoint' && binding && round.startedAt && !round.result) {
-        binding.completed = field(args.completed, 'finished checks', 4000)
-        binding.remaining = field(args.remaining, 'remaining checks', 4000)
+        if (args.checking !== undefined || args.passedCheck !== undefined || args.checksComplete === true || args.cleanupEvidence !== undefined) {
+          if (!round.validation) throw new Error('Record named checks in a read-only feature validation round.')
+          checkpointValidation(round.validation, args)
+        } else {
+          binding.completed = field(args.completed, 'finished checks', 4000)
+          binding.remaining = field(args.remaining, 'remaining checks', 4000)
+        }
         if (args.artifact) binding.checkpointArtifact = field(args.artifact, 'checkpoint artifact', 2000)
-        binding.checkpointAt = Date.now()
+        binding.checkpointAt = Math.max(Date.now(), (binding.checkpointAt ?? 0) + 1)
       } else if (args.action === 'block' && binding && !round.result) {
         const node = card.plans.at(-1).nodes[binding.node - 1]
-        if (node.mergeToDev && args.feedback != null) binding.feedback = field(args.feedback, 'actionable test feedback for the developer', 4000)
+        if (node.independentReview && node.writePaths?.length === 0 && args.feedback != null) binding.feedback = field(args.feedback, 'actionable test feedback for the developer', 4000)
         blockRound(round, { by: actor, cause: 'reported', reason: field(args.reason, 'the blocker', 2000),
           waitingFor: field(args.waitingFor, 'the recovery condition', 2000), evidence: field(args.evidence, 'observed evidence', 2000) })
       } else if (args.action === 'submit' && round.startedAt) {
@@ -816,7 +827,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
           throw new Error('Verify the independently tested candidate on dev before submitting.')
         if ((!binding || currentBinding(card, round)) && codeDelivery(card, round) && !round.mainReview)
           throw new Error('Verify the delivery commit on its assigned branch before submitting this round.')
-        const result = field(args.result, 'the verified result', 4000)
+        const result = round.validation ? validationReceipt(round.validation, args) : field(args.result, 'the verified result', 4000)
         if (round.result && result !== round.result) throw new Error('This round already has a different result.')
         round.result = result
         round.submittedAt ??= Date.now()

@@ -257,7 +257,7 @@ function decide(body) {
       switch (used.input.action) {
         case 'reply': {
           if (messages.some(m => textOf(m.content).includes('The assistant owns planning')))
-            return [tool('project_task', { action: 'delegate', plan: 'Verify the original attachment reaches Coder.', acceptance: 'Coder receives the original image.' })]
+            return [tool('project_task', { action: 'delegate', plan: 'Verify the original attachment reaches Coder. native-project-image-smoke', acceptance: 'Coder receives the original image.' })]
           const roster = messages.flatMap(m => textBlocks(m.content)).join('\n').match(/^Eligible node owners \(id, name, role\): (.+)$/m)
           const owner = JSON.parse(roster[1]).find(member => member.name === 'Coder')
           return [tool('project_task', { action: 'plan', version: 1, title: 'Check the project attachment', acceptance: 'Coder receives the original image.', nodes: [{ ownerId: owner.id, title: 'Check image', instructions: 'Inspect the original image.', deliverable: 'Image receipt', acceptance: 'Image is visible.' }] })]

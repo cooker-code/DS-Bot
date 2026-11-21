@@ -89,6 +89,30 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
   } }) : null)
 }
 
+export function ValidationProgress({ detail }) {
+  // Use the plan's selected round so a late receipt cannot replace current progress.
+  const nodes = detail.plans?.at(-1)?.nodes ?? []
+  return nodes.filter(node => node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && node.round && node.status !== 'omitted').map(node => {
+    const round = detail.rounds?.[node.round - 1]
+    if (!round) return null
+    const progress = round.validation
+    const checkpoint = round.planNode
+    if (!progress && !checkpoint?.completed && !round.result) return null
+    return h('section', { key: node.round, 'aria-label': t('Validation progress') },
+      h('h3', { className: 'bt-section-title' }, t('Validation progress'), ' · ', node.title),
+      progress?.checking && !checkpoint?.block ? h('p', null, t('Testing: {check}', { check: progress.checking })) : null,
+      checkpoint?.block ? h('p', null, checkpoint.block.reason) : null,
+      progress?.passed.length ? h('ul', null, progress.passed.map(check => h('li', { key: check.name },
+        h('strong', null, t('Passed: {check}', { check: check.name })), ' · ', check.evidence))) : null,
+      progress?.checksComplete && !progress.cleanup && !checkpoint?.block ? h('p', null, t('Checks passed · awaiting cleanup')) : null,
+      progress?.cleanup ? h('p', null, round.submittedAt ? t('Test receipt submitted') + ' · ' : '', t('Cleanup: {result}', { result: progress.cleanup })) : null,
+      progress ? h('p', null, t('Candidate'), ' · ', progress.candidates.join(', ')) : null,
+      !progress && checkpoint?.completed ? h('p', null, checkpoint.completed) : null,
+      !progress && !round.result && checkpoint?.remaining ? h('p', null, checkpoint.remaining) : null,
+      !progress && round.result ? h('details', null, h('summary', null, t('Test receipt submitted')), h('p', null, round.result)) : null)
+  })
+}
+
 export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = useState()
   const [error, setError] = useState('')
@@ -131,6 +155,7 @@ export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),
           h(TaskResults, { key: room.id + taskId, roomId: room.id, taskId, detail }),
+          h(ValidationProgress, { detail }),
           h(TaskWorkspace, { room, card, readOnly }))
         : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))
 }
