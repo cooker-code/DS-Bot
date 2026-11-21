@@ -26,8 +26,6 @@ function candidates(roster, sessionId, query) {
       add('project', card.taskId, card.title, card.status, Math.max(card.textUpdatedAt ?? 0, card.updatedAt ?? 0), card.owners ?? [card.ownerId])
     for (const [id, task] of Object.entries(room.tasks ?? {}))
       add('member', id, task.goal, task.status, task.updatedAt ?? task.startedAt, [task.botId])
-    for (const item of room.pendingIntakes ?? [])
-      add('intake', item.id, item.title || t('Original request'), item.status, item.receivedAt)
   }
   const shown = rows.sort((a, b) => b.updated - a.updated).slice(0, 12)
   return shown.map(({ id, candidate }) => {

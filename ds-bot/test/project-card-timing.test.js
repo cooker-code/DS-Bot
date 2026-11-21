@@ -38,14 +38,14 @@ function row(card) {
   return { labels: Array.from(labels.children.filter(Boolean), n => n.children[0]), times: times && Array.from(times.children, n => n.children[0]) }
 }
 
-test('the project board counts saved cards, keeping unassigned intakes and member entries visible and editable', () => {
+test('the project board counts saved cards, hiding unassigned intakes while keeping member entries visible', () => {
   const room = { notice: '[taskId]', pendingIntakes: [{ id: 'q', title: 'Question', status: 'clarify' }] }
   const render = () => TaskBoard({ room, roster: {}, actions: {} })
   const count = view => find(view, n => n.props?.className === 'bt-tasks-count').children[0]
   assert.equal(count(render()), 0)
-  assert.ok(find(render(), n => n.props?.['data-status'] === 'clarify'))
-  assert.ok(find(render(), n => n.type === 'button' && n.children[0] === 'Edit'))
-  assert.equal(find(render(), n => n.props?.className?.includes('bt-tasks-empty')), undefined)
+  assert.equal(find(render(), n => n.props?.['data-status'] === 'clarify'), undefined)
+  assert.equal(find(render(), n => n.type === 'button' && n.children[0] === 'Edit'), undefined)
+  assert.ok(find(render(), n => n.props?.className?.includes('bt-tasks-empty')))
   room.projectCards = [{ taskId: 'card', title: 'Saved task', status: 'blocked' }]
   room.tasks = { t1: { botId: 'worker', status: 'active', goal: 'Member work', startedAt: 1 } }
   assert.equal(count(render()), 1)
@@ -84,7 +84,7 @@ test('status filtering updates the task list, card count and member history when
   assert.equal(count(active), 1)
   assert.ok(find(active, n => n.props?.card?.taskId === 'b'))
   assert.ok(find(active, n => n.props?.task?.goal === 'Member work'))
-  assert.ok(find(active, n => n.props?.['data-status'] === 'pending'))
+  assert.equal(find(active, n => n.props?.['data-status'] === 'pending'), undefined)
   assert.equal(find(active, n => n.props?.card?.taskId === 'a'), undefined)
   assert.equal(history(active), undefined)
   room.projectCards[1].status = 'done'
@@ -192,7 +192,7 @@ test('the question mark reveals the board statuses on hover or focus and dismiss
     assert.equal(tip().props['data-side'], 'above')
     assert.equal(trigger().props['aria-describedby'], tip().props.id)
     const names = Array.from(find(tip(), n => n.type === 'dl').children[0], n => n.children[0].children[0])
-    assert.deepEqual(names, ['Awaiting intake', 'Needs clarification', 'Planning', 'Dispatching', 'In progress', 'Awaiting review',
+    assert.deepEqual(names, ['Needs clarification', 'Planning', 'Dispatching', 'In progress', 'Awaiting review',
       'Human acceptance', 'Blocked', 'Failed', 'Done', 'Cancelled'])
     render().props.onMouseLeave()
     assert.equal(tip(), undefined)

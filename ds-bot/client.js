@@ -39759,7 +39759,6 @@ var TASK_STATUS = {
   cancelled: "Cancelled"
 };
 var BOARD_STATES = {
-  pending: "The request is recorded and the manager has not picked it up.",
   clarify: "The task needs more information from you to continue.",
   planning: "The manager is preparing or correcting the execution plan.",
   dispatching: "The plan is ready and the first Bot has yet to start.",
@@ -39771,7 +39770,7 @@ var BOARD_STATES = {
   done: "The final output was approved or the owner marked the work complete.",
   cancelled: "The task was cancelled."
 };
-var statusKeys = Object.keys(TASK_STATUS);
+var statusKeys = Object.keys(BOARD_STATES);
 function TaskStatusFilter({ statuses, onChange, disabled }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu("start");
   const label = t("Filter tasks by status");
@@ -40118,14 +40117,12 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     const timer = setInterval(() => setNow(Date.now()), 1e3);
     return () => clearInterval(timer);
   }, [ticking]);
-  const inbox = (room2.pendingIntakes ?? []).filter(matches2).sort((a, b) => b.seq - a.seq);
   const count = cards.length + (taskManagementEnabled(room2) ? 0 : open.length);
-  const hasRows = Boolean(inbox.length || cards.length || open.length);
+  const hasRows = Boolean(cards.length || open.length);
   const past = all.filter(([, task]) => !OPEN.includes(task.status)).reverse();
   const selected = editing ? [
     ...all.map(([id]) => ({ kind: "member", id })),
-    ...cards.map((card) => ({ kind: "project", id: card.taskId })),
-    ...inbox.map((item) => ({ kind: "intake", id: item.id }))
+    ...cards.map((card) => ({ kind: "project", id: card.taskId }))
   ].filter(({ kind, id }) => selection.has(kind + ":" + id)) : [];
   const pick2 = (kind, id, title, content) => {
     const key = kind + ":" + id;
@@ -40321,22 +40318,6 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     (0, import_react58.createElement)(
       "div",
       { className: "bt-task-list" },
-      inbox.map((item) => editing ? pick2(
-        "intake",
-        item.id,
-        item.title || t("Original request"),
-        summary(item.title || t("Original request"), t(TASK_STATUS[item.status]))
-      ) : (0, import_react58.createElement)(
-        "div",
-        { key: item.id, className: "bt-task bt-project-intake", "data-status": item.status },
-        (0, import_react58.createElement)(
-          "div",
-          { className: "bt-task-head" },
-          (0, import_react58.createElement)("span", { className: "bt-task-name", title: item.title }, item.title || t("Original request")),
-          (0, import_react58.createElement)("span", { className: "bt-task-status" }, t(TASK_STATUS[item.status]))
-        ),
-        item.reason ? (0, import_react58.createElement)("div", { className: "bt-task-progress" }, item.reason) : null
-      )),
       roots.map(renderTree),
       open.map(row),
       !hasRows && !(statuses !== null && past.length) ? (0, import_react58.createElement)(
@@ -40478,8 +40459,6 @@ function candidates(roster, sessionId, query) {
       add("project", card.taskId, card.title, card.status, Math.max(card.textUpdatedAt ?? 0, card.updatedAt ?? 0), card.owners ?? [card.ownerId]);
     for (const [id, task] of Object.entries(room2.tasks ?? {}))
       add("member", id, task.goal, task.status, task.updatedAt ?? task.startedAt, [task.botId]);
-    for (const item of room2.pendingIntakes ?? [])
-      add("intake", item.id, item.title || t("Original request"), item.status, item.receivedAt);
   }
   const shown = rows2.sort((a, b) => b.updated - a.updated).slice(0, 12);
   return shown.map(({ id, candidate }) => {

@@ -2855,6 +2855,7 @@ test('Z site clarification creates one durable card and an explicit supplement r
   const first = host.round('first', host.say('Investigate Z site'), 'group-part-2')
   await until(() => first() !== undefined)
   host.begin('ga')
+  await host.tool('project_task', { action: 'reply', acceptWork: true, classificationReason: 'Deliver a site investigation', message: 'I will investigate Z site.' }, 'ga')
   const clarify = () => host.tool('project_task', { action: 'clarify', reason: 'Which site URL?', title: 'Z site' }, 'ga').then(JSON.parse)
   const [card, replay] = await Promise.all([clarify(), clarify()])
   assert.equal(card.status, 'clarify')
@@ -3089,6 +3090,43 @@ test('the planner can relate existing cards without moving their history or exec
   await assert.rejects(act({ ...relation, parentTaskId: cardB }), /different card/)
   const list = await act({ action: 'list' })
   assert.equal(list.cards.find(c => c.taskId === cardB).parentTaskId, cardA)
+})
+
+test('the admin can link two selected cards from the user message with an assistant appointed', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  const quote = id => '\n\n> Task details · Label\n> Ops · Planning · [task:' + id + ']\n\n'
+  for (const id of [cardA, cardB]) {
+    const intakeId = 'intake-' + id
+    rt.logRoom(room, { who: 'User', intakeId, text: 'Original ' + id, session: true })
+    ;(room.projectCards ??= {})[id] = { id, title: 'Label', intakes: [intakeId], rounds: [], plans: [] }
+  }
+  const group = host.round('pair', host.say('以' + quote(cardB) + '为主，把' + quote(cardA) + '关联过来'))
+  await until(() => group() !== undefined)
+  const delivery = host.begin('ga')
+  assert.equal(delivery.source.taskId, cardB)
+  assert.ok(text(delivery).includes('[task:' + cardA + ']'))
+  await host.tool('project_task', { action: 'relate', taskId: cardA, parentTaskId: cardB }, 'ga')
+  assert.equal(savedTeam(host.home).rooms.r1.projectCards[cardA].parentTaskId, cardB)
+  assert.equal(Object.keys(room.projectCards).length, 2)
+  assert.equal(host.agentOf('gc').calls.length, 0)
+})
+
+test('an unquoted instruction to associate two named cards consumes its receipt on the child', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Arrow', intakes: [], rounds: [] },
+    [cardB]: { id: cardB, title: 'Members', intakes: [], rounds: [] } }
+  const group = host.round('named-link', host.say('把 Arrow 关联到 Members'))
+  await until(() => group() !== undefined)
+  const { intakeId } = host.begin('ga').source
+  const relate = () => host.tool('project_task', { action: 'relate', taskId: cardA, parentTaskId: cardB }, 'ga')
+  await relate()
+  await relate()
+  assert.deepEqual(room.projectCards[cardA].intakes, [intakeId])
+  assert.equal(room.projectInbox[0].status, 'attached')
+  assert.equal(room.projectCards[cardA].parentTaskId, cardB)
+  assert.equal(Object.keys(room.projectCards).length, 2)
 })
 
 test('mentioning a blocked project card continues its intake and delegates only to its assistant', async t => {
@@ -3385,7 +3423,7 @@ test('three bound image intakes reach the group manager while unrelated group wo
     assert.equal(new Set(messages.map(message => message.source.intakeId)).size, 3)
     assert.deepEqual(rt.ledger.records('group-r1').filter(row => row.intakeId).map(row => row.who), ['User', 'User', 'User'])
     for (const [i, img] of images.entries()) {
-      const matching = messages.filter(message => text(message).includes('selection-' + (i + 1)))
+      const matching = messages.filter(message => text(message).trimEnd().endsWith('selection-' + (i + 1)))
       assert.equal(matching.length, 1)
       assert.deepEqual(matching[0].content.filter(b => b.type === 'image').map(b => b.attachment), [img])
     }
@@ -3513,14 +3551,14 @@ test('a picture intake releases two independent node rounds only after approval 
   const spec = { action: 'plan', version: 1, title: 'Empty source', acceptance: 'Shows a dash', nodes }
   await assert.rejects(project({ ...spec, nodes: [{...nodes[0],dependsOn:[2]}, nodes[1]] }), /earlier node/)
   assert.equal((await project({action:'clarify', reason:'Which source?'})).status, 'clarify')
-  assert.equal((await list()).cards.length, 1)
+  assert.equal((await list()).cards.length, 0)
   const writer = new DatabaseSync(join(rt.home, 'state', 'rooms', 'id-r1', 'room.sqlite'))
   try {
     writer.exec('BEGIN IMMEDIATE')
     await assert.rejects(project(spec), /locked|busy/i)
-    assert.equal((await list()).cards.length, 1)
-    assert.equal((await list()).cards[0].status, 'clarify')
-    assert.equal(Object.keys(savedTeam(rt.home).rooms.r1.projectCards).length, 1)
+    assert.equal((await list()).cards.length, 0)
+    assert.equal((await list()).inbox[0].status, 'clarify')
+    assert.equal(Object.keys(savedTeam(rt.home).rooms.r1.projectCards ?? {}).length, 0)
   } finally { writer.close() }
   const [card, replay] = await Promise.all([project(spec), project(spec)])
   const taskId = card.taskId
@@ -4089,6 +4127,8 @@ test('accepted work, plan controls and group task diagnostics share the durable 
   const sent = host.round('work', host.say('Inspect the site without changing it'))
   await until(() => sent() !== undefined)
   host.begin('ga')
+  await assert.rejects(project({ action: 'reply', acceptWork: true, message: 'OK' }), /verifiable outcome/)
+  assert.equal(Object.keys(rt.roomOf('r1').projectCards ?? {}).length, 0)
   await project({ action: 'reply', message: 'I will check the site.', acceptWork: true, classificationReason: 'Read-only investigation' })
   const [card] = Object.values(rt.roomOf('r1').projectCards)
   assert.equal(card.classificationReason, 'Read-only investigation')

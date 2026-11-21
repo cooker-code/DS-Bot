@@ -983,8 +983,11 @@ export function install(rt) {
       const reference = mentionedProjectCard(post.text)
       if (reference) {
         const calls = mentionsIn(reference.text, room.members.map(rt.botOf).filter(Boolean), post.references)
-        if (!calls.all && calls.found.every(member => member.id === manager.id))
+        if (!calls.all && calls.found.every(member => member.id === manager.id)) {
+          if (reference.referencedCards?.some(id => !Object.hasOwn(room.projectCards ?? {}, id)))
+            throw new Error('No such task in this group.')
           post = { ...post, ...reference, taskReference: true }
+        }
       }
     }
     const reminder = !scopeOf(post) && bareManagerMention(post, post.text, manager)

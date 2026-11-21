@@ -369,7 +369,9 @@ function decide(body) {
 
   // DSH may append a workspace-instruction refresh to the user's command.
   // The mock matches the command; prose in that refresh must not trigger another tool.
-  const userText = textOf(last?.content).replace(/\s*<system-reminder>\s*Updated instructions from:[\s\S]*$/, '').trim()
+  const userText = textOf(last?.content)
+    .replace(/^Recent public conversation \(context only\): .*$/gm, '')
+    .replace(/\s*<system-reminder>\s*Updated instructions from:[\s\S]*$/, '').trim()
   // "撑爆": the provider rejects the request as past its window.
   if (userText.startsWith('撑爆')) return 'overflow'
   // A file in the message (a long Bot message, a file the user sent): DSH gives its saved

@@ -46,12 +46,6 @@ function intakeCard(room, receipt, reason, title) {
   return card
 }
 
-export function clarifyIntake(room, receipt, question, title) {
-  const card = intakeCard(room, receipt, question, title)
-  card.clarification = question
-  return card
-}
-
 async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq) {
   await rt.save({ required: true, mutate() {
     if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
@@ -68,7 +62,7 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq) {
     const receipt = room.projectInbox?.find(item => item.id === intakeId)
     if (!receipt || room.deletedTaskIntakes?.includes(intakeId)) throw new Error('This intake is unavailable.')
     const previous = { ...receipt }
-    const card = intakeCard(room, receipt, reason, title)
+    const card = intakeCard(room, receipt, field(reason, 'the independently verifiable outcome for this new task', 4000), title)
     if (delegatedSeq) card.delegatedSeq = delegatedSeq
     return () => {
       delete room.projectCards[card.id]
@@ -238,12 +232,12 @@ export function developmentHandoff(rt, session, room, card, owner, number) {
 export function install(rt) {
   rt.teamTools.push(defineTool({
     name: 'project_task',
-    description: 'Manage DS Bot project cards. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with the specific question whenever human input is needed, including on an existing card. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Normally approve the last artifact to finish automatically. Only if the user explicitly requested human sign-off, request_acceptance for the final submitted artifact instead. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
+    description: 'Manage DS Bot project cards. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Normally approve the last artifact to finish automatically. Only if the user explicitly requested human sign-off, request_acceptance for the final submitted artifact instead. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
     parameters: {
       acceptWork: { type: 'boolean', description: 'With reply, create the formal task card before announcing acceptance of actual work, including read-only investigation.' },
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
       humanAcceptanceRequired: { type: 'boolean', description: 'Record required human sign-off on the first plan.' },
-      classificationReason: { type: 'string', description: 'Why this accepted request needs tracked work.' },
+      classificationReason: { type: 'string', description: 'For new work accepted by reply, specify the distinct deliverable and how its completion can be verified.' },
       action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'record_merge', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
       message: { type: 'string', description: 'First public answer to the current group input. Use reply before planning, or chat with message and reason to answer and classify an unassigned question together. Members are not called.' },
       ...planParameters, ...recoveryParameters,
@@ -283,21 +277,25 @@ export function install(rt) {
         if (room.unresolvedTaskAssistant || (room.projectAssistantId && !assistantId(room))) throw taskError('TASK_ASSISTANT_INVALID')
       }
       const manager = runsProject(rt, room, actor) && room.sessions?.[actor] === session
-      const planningAccess = manager && (args.action === 'read' || (args.action === 'relate' && source?.taskId === args.parentTaskId))
+      const original = Number.isSafeInteger(source?.intakeSeq) && rt.ledger.record('group-' + room.id, source.intakeSeq)
+      const contact = rt.isAdminOf(room, actor) && room.sessions?.[actor] === session
+      const intakeRelation = args.action === 'relate' && contact && source?.role === 'request' &&
+        source.roomId === room.id && !source.senderSessionId && original?.who === 'User' && !original.botId &&
+        original.intakeId && (source.taskId ? original.taskId === source.taskId : original.intakeId === source.intakeId)
+      const planningAccess = (manager && args.action === 'read') ||
+        ((manager || intakeRelation) && args.action === 'relate' && source?.taskId === args.parentTaskId)
       if (source?.taskId && source.taskId !== id && !planningAccess) throw new Error('This execution belongs to a different card.')
       const members = room.members.map(rt.botOf).filter(Boolean).map(({ id, name, role }) => ({ id, name, role }))
       const cards = Object.values(room.projectCards ?? {})
       if (args.action === 'list') return JSON.stringify({ roomId: room.id, workspacePolicy: workspacePolicyOf(room), members, inbox: pendingIntakes(room), cards: cards.map(card => projectCardSummary(card)) })
-      const original = Number.isSafeInteger(source?.intakeSeq) && rt.ledger.record('group-' + room.id, source.intakeSeq)
       const reminder = original?.reminderFor !== undefined
       if (reminder && !['reply', 'context', 'read'].includes(args.action) && !(args.action === 'chat' && args.message !== undefined))
         throw new Error('This mention asks for a group answer. Use project_task reply.')
       if (['branches', 'describe_branch', 'prepare_worktree'].includes(args.action)) return JSON.stringify(await manageBranches(rt, room, args, actor, exec))
       const card = cards.find(item => item.id === id)
-      const contact = rt.isAdminOf(room, actor) && room.sessions?.[actor] === session
       const assistant = assistantId(room)
       if (['delegate', 'report', 'reply', 'chat', 'attach'].includes(args.action) && !contact) throw taskError('TASK_ROLE_REQUIRED')
-      if (['relate', 'plan', 'dispatch', 'approve', 'request_acceptance', 'wait', 'takeover', 'resume', 'inspect_recovery'].includes(args.action) && !manager) throw taskError('TASK_ROLE_REQUIRED')
+      if (['relate', 'plan', 'dispatch', 'approve', 'request_acceptance', 'wait', 'takeover', 'resume', 'inspect_recovery'].includes(args.action) && !manager && !intakeRelation) throw taskError('TASK_ROLE_REQUIRED')
       const handoffOnReply = args.action === 'reply' && args.acceptWork === true && assistant && args.plan && args.acceptance
       if (args.action === 'delegate' || handoffOnReply) {
         const intakeId = original?.intakeId
@@ -347,7 +345,7 @@ export function install(rt) {
             (args.taskId && !card?.intakes?.includes(original.intakeId)))
           throw new Error('Reply from the manager chat handling this group message.')
         const message = field(args.message, 'the answer for the group', 4000)
-        if (args.action === 'reply' && args.acceptWork === true && !reminder) await acceptWork(rt, room, original.intakeId, args.classificationReason || message, args.title)
+        if (args.action === 'reply' && args.acceptWork === true && !reminder) await acceptWork(rt, room, original.intakeId, args.classificationReason, args.title)
         publish = () => rt.replyToProjectIntake(room, rt.botOf(actor), original, message)
         if (args.action === 'reply' || reminder) return publish()
       }
@@ -521,7 +519,7 @@ export function install(rt) {
         }
         if (previousInbox) draft.projectInbox = previousInbox.map(r => r.id === source?.intakeId ? { ...r } : r)
         const intakeAction = ['attach', 'chat'].includes(args.action)
-        const allowed = intakeAction ? rt.isAdminOf(room, actor) : runsProject(rt, room, actor) || (args.action === 'clarify' && rt.isAdminOf(room, actor))
+        const allowed = intakeAction ? rt.isAdminOf(room, actor) : runsProject(rt, room, actor) || ((args.action === 'clarify' || intakeRelation) && rt.isAdminOf(room, actor))
         result = changeProject(rt, draft, args, actor, source, id, allowed && room.sessions?.[actor] === session, observation, session, exec.agent?.session ?? exec.agent)
         if (args.action === 'approve' || args.action === 'plan') completeRelatedCards(draft.projectCards)
         if (Object.keys(draft.projectCards).length) room.projectCards = draft.projectCards
@@ -580,7 +578,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
   let dispatchRound
   if (args.action === 'relate') {
     const parentId = args.parentTaskId
-    if (!manager || !runsProject(rt, room, actor)) throw taskError('TASK_ROLE_REQUIRED')
+    if (!manager) throw taskError('TASK_ROLE_REQUIRED')
     if (!card || typeof parentId !== 'string' || !Object.hasOwn(room.projectCards, parentId))
       throw new Error('Choose two existing project cards in this group.')
     if (linked && linked.id !== id && linked.id !== parentId) throw new Error('This intake belongs to a different card.')
@@ -588,6 +586,11 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (cursor === id) throw new Error('Related tasks cannot form a cycle.')
     if (card.parentTaskId && card.parentTaskId !== parentId) throw new Error('This card already belongs to another primary task.')
     card.parentTaskId = parentId
+    if (receipt && !linked) {
+      ;(card.intakes ??= []).push(receipt.id)
+      receipt.status = 'attached'
+      delete receipt.reason
+    }
     completeRelatedCards(room.projectCards)
     return JSON.stringify(projectCardSummary(room.projectCards[id]))
   }
@@ -620,12 +623,8 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
     if (args.action === 'clarify' || args.action === 'chat') {
       if (!receipt || linked) throw new Error('Classify an unassigned intake.')
       receipt.reason = field(args.reason, 'the classification reason or clarification question', 2000)
-      if (args.action === 'chat') {
-        receipt.status = 'chat'
-        return JSON.stringify(receipt)
-      }
-      card = clarifyIntake(room, receipt, receipt.reason, args.title)
-      return JSON.stringify(projectCardSummary(card))
+      receipt.status = args.action === 'chat' ? 'chat' : 'clarify'
+      return JSON.stringify(receipt)
     }
     if (args.action === 'plan') {
       if (id && !card) throw new Error('No such card in this group.')

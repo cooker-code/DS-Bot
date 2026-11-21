@@ -3,7 +3,7 @@ import { assistantId, runsProject } from './project-assistant.js'
 // question and view cards. Group rounds and reading chats are in groups.js.
 import { taskError } from '../shared/task-settings.js'
 import { projectQuestion } from './project-intake.js'
-import { clarifyIntake, developmentHandoff, hasBlockedExecution, projectRoomForCard } from './project-tasks.js'
+import { developmentHandoff, hasBlockedExecution, projectRoomForCard } from './project-tasks.js'
 import { outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -962,7 +962,10 @@ export function install(rt) {
       if (target && question.question) {
         question.projectSource = source
         if (target.card) target.card.clarification = question.question
-        else clarifyIntake(rt.roomOf(source.roomId), target.receipt, question.question)
+        else {
+          target.receipt.status = 'clarify'
+          target.receipt.reason = question.question
+        }
       }
       state.questions[id] = question
       await rt.save()

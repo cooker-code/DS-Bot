@@ -1,7 +1,7 @@
 import { taskManagementEnabled } from '../shared/task-settings.js'
 // The group task board in the group's details panel: what each member is working on,
 // the latest line of progress, and the history of finished and cancelled work. The
-// board also holds project cards and incoming requests. Users manage the list here.
+// board also holds accepted project cards. Users manage the list here.
 import { createElement as h, Fragment, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BotMark } from './mark.js'
@@ -17,7 +17,6 @@ export const TASK_STATUS = {
 }
 
 const BOARD_STATES = {
-  pending: 'The request is recorded and the manager has not picked it up.',
   clarify: 'The task needs more information from you to continue.',
   planning: 'The manager is preparing or correcting the execution plan.',
   dispatching: 'The plan is ready and the first Bot has yet to start.',
@@ -30,7 +29,7 @@ const BOARD_STATES = {
   cancelled: 'The task was cancelled.',
 }
 
-const statusKeys = Object.keys(TASK_STATUS)
+const statusKeys = Object.keys(BOARD_STATES)
 
 function TaskStatusFilter({ statuses, onChange, disabled }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu('start')
@@ -258,14 +257,12 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [ticking])
-  const inbox = (room.pendingIntakes ?? []).filter(matches).sort((a, b) => b.seq - a.seq)
   const count = cards.length + (taskManagementEnabled(room) ? 0 : open.length)
-  const hasRows = Boolean(inbox.length || cards.length || open.length)
+  const hasRows = Boolean(cards.length || open.length)
   const past = all.filter(([, task]) => !OPEN.includes(task.status)).reverse()
   const selected = editing ? [
     ...all.map(([id]) => ({ kind: 'member', id })),
     ...cards.map(card => ({ kind: 'project', id: card.taskId })),
-    ...inbox.map(item => ({ kind: 'intake', id: item.id })),
   ].filter(({ kind, id }) => selection.has(kind + ':' + id)) : []
   const pick = (kind, id, title, content) => {
     const key = kind + ':' + id
@@ -366,11 +363,6 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     !taskManagementEnabled(room) ? h('div', { className: 'bt-set-hint' }, t('Existing tasks are still available to view.'), ' ',
       h('button', { type: 'button', className: 'bt-mini', onClick: () => actions.openSettings('groups', room.id) }, t('Group settings'))) : null,
     h('div', { className: 'bt-task-list' },
-      inbox.map(item => editing ? pick('intake', item.id, item.title || t('Original request'),
-        summary(item.title || t('Original request'), t(TASK_STATUS[item.status]))) : h('div', { key: item.id, className: 'bt-task bt-project-intake', 'data-status': item.status },
-        h('div', { className: 'bt-task-head' }, h('span', { className: 'bt-task-name', title: item.title }, item.title || t('Original request')),
-          h('span', { className: 'bt-task-status' }, t(TASK_STATUS[item.status]))),
-        item.reason ? h('div', { className: 'bt-task-progress' }, item.reason) : null)),
       roots.map(renderTree),
       open.map(row),
       !hasRows && !(statuses !== null && past.length) ? h('div', { className: 'bt-muted bt-tasks-empty' },

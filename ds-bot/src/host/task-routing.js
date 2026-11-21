@@ -15,13 +15,19 @@ export function scopeFields(key) {
 const quotedCard = new RegExp(' · \\[task:(' + uuid + ')\\]$', 'i')
 // The selected card determines the subject. The user's own words determine the action.
 export function mentionedProjectCard(text = '') {
-  const quotes = [...text.matchAll(/^>[^\n]*(?:\n>[^\n]*)*/gm)]
-  if (quotes.length !== 1) return
-  const [quote] = quotes
-  const id = quotedCard.exec(quote[0].split('\n', 2)[1])?.[1]
-  if (!id) return
-  const body = (text.slice(0, quote.index) + ' ' + text.slice(quote.index + quote[0].length)).trim()
-  if (body) return { taskId: id.toLowerCase(), text: body }
+  const ids = []
+  let single
+  const body = text.replace(/^>[^\n]*(?:\n>[^\n]*)*/gm, (quote, offset) => {
+    const id = quotedCard.exec(quote.split('\n', 2)[1])?.[1]?.toLowerCase()
+    if (!id) return quote
+    ids.push(id)
+    if (ids.length === 1) single = { offset, end: offset + quote.length }
+    return '[task:' + id + ']'
+  })
+  if (!ids.length) return
+  if (ids.length > 1) return { taskId: ids[0], text: body.trim(), referencedCards: ids }
+  const instruction = (text.slice(0, single.offset) + ' ' + text.slice(single.end)).trim()
+  return { taskId: ids[0], text: instruction || body.trim() }
 }
 
 export function inboundScope(post) {
