@@ -17,6 +17,7 @@ import { MemberApprovals, MemberState, StopMemberWork, StopRoomWork, useMemberWo
 import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
 import { MemberHistory } from './member-history.js'
+import { MembersSection } from './members-section.js'
 import { ProjectTaskDetail } from './project-task-detail.js'
 import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
@@ -183,10 +184,9 @@ function GroupOverview({ room, roster, actions, run, usage, useWork, openTask, r
     h(GroupTodos, { key: 'todos', room, actions }),
     h('button', { key: 'archive', type: 'button', className: 'bt-more', onClick: () => actions.openArchive(room.id, 'library') }, t('Archived discussions')),
     h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
-    h('div', { key: 'members' },
-      h('div', { className: 'bt-members-head' },
-        h('div', { className: 'bt-section-title' }, t('Members · {count}', { count: members.length })),
-        h(StopRoomWork, { room, entries, actions })),
+    h(MembersSection, { key: 'members:' + room.id,
+      title: t('Members · {count}', { count: members.length }),
+      controls: h(StopRoomWork, { room, entries, actions }) },
       h('div', { className: 'bt-members', role: 'list' }, members.map(member => h(MemberRow, {
         key: member.id, member, stats: stats[member.id], entry: entries.find(item => item.id === member.id), room, roster, actions,
       })))),
