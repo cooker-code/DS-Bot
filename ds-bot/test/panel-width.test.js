@@ -2,17 +2,17 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_WIDTH, DETAILS_WIDTH, widthRange, fitWidth, draggedWidth, trackPanelResize } from '../src/client/panel-width.js'
 
-test('details use available room beyond 520 while browser and side keep their ranges', () => {
+test('details can fill the available room while browser and side keep their ranges', () => {
   assert.equal(DEFAULT_WIDTH, 520)
   assert.equal(DETAILS_WIDTH, 320)
-  assert.deepEqual(widthRange('details', 1200), [320, 780])
+  assert.deepEqual(widthRange('details', 1200), [320, 1200])
   assert.deepEqual(widthRange('browser', 1200), [360, 780])
   assert.deepEqual(widthRange('side', 1200), [320, 520])
-  assert.deepEqual(widthRange('details', 740), [320, 320])
-  assert.deepEqual(widthRange('details', 600), [320, 320])
+  assert.deepEqual(widthRange('details', 740), [320, 740])
+  assert.deepEqual(widthRange('details', 250), [320, 320])
   for (const room of [740, 800, 1200, 2200]) {
     const width = fitWidth(10000, widthRange('details', room))
-    assert.equal(room - width, 420)
+    assert.equal(width, room)
     assert.equal(fitWidth(0, widthRange('details', room)), 320)
   }
 })
@@ -20,7 +20,7 @@ test('left drag grows and right drag shrinks, rounding and clamping both ends', 
   const range = widthRange('details', 1200)
   assert.equal(draggedWidth(320, 900, 500, range), 720)
   assert.equal(draggedWidth(720, 500, 900, range), 320)
-  assert.equal(draggedWidth(320, 900, -900, range), 780)
+  assert.equal(draggedWidth(320, 900, -900, range), 1200)
   assert.equal(draggedWidth(320, 900, 899.4, range), 321)
 })
 class Grip extends EventTarget {

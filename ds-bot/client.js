@@ -42993,7 +42993,11 @@ function AgentMenu({ menu, roster, actions, leaving }) {
 // src/client/panel-width.js
 var DEFAULT_WIDTH = 520;
 var DETAILS_WIDTH = 320;
-var widthRange = (view, room2) => view === "browser" ? [360, room2 - MIN_CHAT] : [DETAILS_WIDTH, view === "details" ? Math.max(DETAILS_WIDTH, room2 - MIN_CHAT) : Math.min(520, room2 - MIN_CHAT)];
+function widthRange(view, room2) {
+  if (view === "details") return [DETAILS_WIDTH, Math.max(DETAILS_WIDTH, room2)];
+  if (view === "browser") return [360, room2 - MIN_CHAT];
+  return [DETAILS_WIDTH, Math.min(DEFAULT_WIDTH, room2 - MIN_CHAT)];
+}
 var fitWidth = (width, [low, high]) => Math.round(Math.max(low, Math.min(width, high)));
 var draggedWidth = (width, startX, x, range) => fitWidth(width + startX - x, range);
 function trackPanelResize(grip, event, move, finish) {

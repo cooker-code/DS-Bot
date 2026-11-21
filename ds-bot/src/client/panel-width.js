@@ -3,9 +3,11 @@ import { MIN_CHAT } from './frame-layout.js'
 export const DEFAULT_WIDTH = 520
 export const DETAILS_WIDTH = 320
 
-export const widthRange = (view, room) => view === 'browser'
-  ? [360, room - MIN_CHAT]
-  : [DETAILS_WIDTH, view === 'details' ? Math.max(DETAILS_WIDTH, room - MIN_CHAT) : Math.min(520, room - MIN_CHAT)]
+export function widthRange(view, room) {
+  if (view === 'details') return [DETAILS_WIDTH, Math.max(DETAILS_WIDTH, room)]
+  if (view === 'browser') return [360, room - MIN_CHAT]
+  return [DETAILS_WIDTH, Math.min(DEFAULT_WIDTH, room - MIN_CHAT)]
+}
 export const fitWidth = (width, [low, high]) => Math.round(Math.max(low, Math.min(width, high)))
 export const draggedWidth = (width, startX, x, range) => fitWidth(width + startX - x, range)
 
