@@ -1300,6 +1300,7 @@ const ZH = {
   'The manager is preparing or correcting the execution plan.': '管理员 Bot 已接手，正在制定或修正规划。',
   'The plan is ready and the first Bot has yet to start.': '计划已保存，等待第一位执行 Bot 确认开工。',
   'The team has started executing the plan.': 'Bot 已确认开工，正在执行任务。',
+  'Merged into dev, validating': '已合入 dev，正在验证',
   'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': '复核本轮交付物。项目代码按分配的分支核对候选提交。',
   'Your acceptance was explicitly requested for the final delivery.': '这项交付明确要求人工终验，等待你确认。',
   'A blocker must be resolved before work can continue.': '有条件未满足，解决后才能继续。',

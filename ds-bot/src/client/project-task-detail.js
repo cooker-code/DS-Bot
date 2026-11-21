@@ -112,7 +112,7 @@ export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip
               } catch (failure) { setError(failure.message) }
               finally { setSavingAcceptance(false) }
             } }), t('Require human acceptance')),
-          h('p', null, t(TASK_STATUS[detail.status] ?? detail.status), ' · ',
+          h('p', null, t(detail.validatingMerge ? 'Merged into dev, validating' : TASK_STATUS[detail.status] ?? detail.status), ' · ',
             (detail.owners?.length ? detail.owners : detail.ownerId ? [detail.ownerId] : []).map(id => roster?.byId[id]?.name ?? id).join(', ') || t('Unassigned')),
           detail.clarification ? h('p', null, detail.clarification) : null,
           detail.classificationReason ? h('p', null, t('Classification reason'), ' · ', detail.classificationReason) : null,

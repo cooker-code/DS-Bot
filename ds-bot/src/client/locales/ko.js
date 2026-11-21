@@ -1287,6 +1287,7 @@ export const KO = {
   'The intake changed. Check the task list again.': '요청 상태가 변경되었습니다. 작업 목록을 다시 확인하세요.',
   'Filter tasks by status': '상태별로 작업 필터링',
   'Task statuses': '작업 상태 안내',
+  'Merged into dev, validating': 'dev 병합 완료, 검증 중',
   'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': '제출된 결과물을 검토하세요. 프로젝트 코드는 할당된 브랜치에서 후보 커밋을 확인하세요.',
   'A blocker must be resolved before work can continue.': '문제를 해결해야 작업을 계속할 수 있습니다.',
   'The execution attempt failed.': '이번 실행이 실패했습니다.',

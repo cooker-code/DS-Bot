@@ -115,7 +115,7 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         h('span', { className: 'bt-task-name', title: card.title }, card.title),
         !owners.length && card.status !== 'done' ? h('span', { className: 'bt-set-hint' }, t('Unassigned')) : null,
         h('span', { className: 'bt-project-statuses' },
-          h('span', { className: 'bt-task-status' }, t(TASK_STATUS[card.status]))),
+          h('span', { className: 'bt-task-status' }, t(card.validatingMerge ? 'Merged into dev, validating' : TASK_STATUS[card.status] ?? card.status))),
         onOpen ? h('span', { className: 'bt-project-arrow' }, h(ChevronRightIcon)) : null),
       branch || hasStart ? h('span', { className: 'bt-project-meta' },
         branch ? h('span', { className: 'bt-project-branch', title: branch }, branch) : null,

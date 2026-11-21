@@ -20,6 +20,7 @@
 | `select-task-workspace` / `update-project-task-text` | 前者用 `roomId,taskId,previous,selection`，以已读工作区对照选择；后者用 `roomId,taskId,field,previous,value,addImages?,removeImages?` 修订 requirement 或 acceptance。 | `selectTaskWorkspace/updateProjectTaskText` 校验旧值和当前轮次；成功后回读 task 的工作区选择或文本。版本冲突重读。 |
 | `continue-project-task` | roomId、taskId、text、requestId 均为字符串。 | 校验任务开启与本群任务归属后，按 requestId 去重，向群当前会话发送带 taskId 的用户消息。返回 true，回读群账本与卡片需求。群内 @ 单张项目卡并填写正文时，按选中的卡号收件；明确点名其他成员时仍按群聊点名规则投递，交给本群管理员处理。 |
 | `set-task-node-constraint` | roomId、taskId、version、node、field（fixedOwner 或 independentReview）、value（布尔值）。 | 派工前在原计划上新增一版，保存节点约束；拒绝过期版本。成功返回 true，回读 project-task-detail 的 plans。 |
+| `set-task-integration-finish` | 操作者指定 roomId、taskId、version、node，以当前计划的独立测试合并节点作为结单位置。 | 保留原计划和轮次，将未派发的后续节点显示为 omitted，并通知助理处理。拒绝变更已开始的下游或过期计划；回读详情 finishAfterIntegration。 |
 | `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。已有验收记录或完成后拒绝更改。用 project-task-detail 回读。 |
 | `project-acceptance` | `roomId,taskId,reviewId,decision,feedback?`。decision 为 approve 或 return，退回需明确 feedback。 | `decideAcceptance` 仅处理当前候选的人工终验，回读 `humanReview` 和 task 状态。 |
 | `room-progress` / `group-rows` / `group-search` | 查活跃群用 `roomId`；分页读群消息用 `roomId,from,to?,anchor?`；检索用 `roomId,query,before?,offset?`。 | `roomProgress/groupRowsView/groupSearch` 返回轮次及发言者、消息页或命中。活跃信息属运行时，持久依据是群账本。 |
@@ -54,6 +55,6 @@
 
 ### 功能分支开发、独立测试与 dev 集成
 
-有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。独立测试节点设置 `mergeToDev=true,independentReview=true,writePaths=[]` 并依赖一个已认可的代码轮。改版接续历史卡时可用 `candidateCommit` 固定已有开发轮的候选。测试失败时，测试者调用 `return_for_changes` 提供 feedback 与 evidence，宿主登记阻塞并通知助理派原开发返工；修复后复测新提交。环境故障仍用 block。测试通过后，测试者按授权合入本地 dev，核对集成结果，以同一个 commit 和测试报告 submit。宿主核对分支包含关系，记录合入证据并通知助理核验、推进或完成。在 `project-task-detail` 的 rounds 查看开发轮 mainReview（branch 为所验工作分支）、测试轮 integration（branch 为 dev，testedCommit 为测试者提供的实际集成快照，tip 为核验时分支头）与 planNode.feedback。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
+有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。开发轮 submit 提交功能分支的完整 commit。独立测试节点设置 `mergeToDev=true,independentReview=true,writePaths=[]` 并依赖一个已认可的代码轮。改版接续历史卡时可用 `candidateCommit` 固定已有开发轮的候选。测试失败时，测试者调用 `return_for_changes` 提供 feedback 与 evidence，宿主登记阻塞并通知助理派原开发返工；修复后复测新提交。环境故障仍用 block。测试通过后，测试者按授权合入本地 dev，立即用 record_merge 提交 commit 和 mergeCommit；宿主核对 Git 后保存 rounds[].mergeReceipt，通知助理，列表和详情的 validatingMerge 显示「已合入 dev，正在验证」。针对性验证通过后以 commit、testedCommit 和测试报告 submit，助理认可即结单。小型功能无需阻塞式归档与额外架构复核。宿主核对分支包含关系，记录合入证据并通知助理核验、推进或完成。在 `project-task-detail` 的 rounds 查看开发轮 mainReview（branch 为所验工作分支）、测试轮 integration（branch 为 dev，testedCommit 为测试者提供的实际集成快照，tip 为核验时分支头）与 planNode.feedback。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
 
 新版计划派回原开发归档时，若前驱测试已认可并记录集成，宿主核实旧轮已经改版、原执行已停止、同一工作树干净且仍指向刚集成的候选，才将重叠路径交回原开发。原轮 rounds[].ownershipTransfer 记录接收节点、候选和集成轮。

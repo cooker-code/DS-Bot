@@ -1287,6 +1287,7 @@ export const DE = {
   'The intake changed. Check the task list again.': 'Die Anfrage wurde geändert. Prüfe die Aufgabenliste erneut.',
   'Filter tasks by status': 'Aufgaben nach Status filtern',
   'Task statuses': 'Aufgabenstatus',
+  'Merged into dev, validating': 'In dev integriert, Prüfung läuft',
   'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': 'Prüfe das Arbeitsergebnis. Prüfe bei Projektcode den Kandidaten-Commit auf dem zugewiesenen Branch.',
   'A blocker must be resolved before work can continue.': 'Ein Hindernis muss beseitigt werden, bevor es weitergeht.',
   'The execution attempt failed.': 'Dieser Ausführungsversuch ist fehlgeschlagen.',

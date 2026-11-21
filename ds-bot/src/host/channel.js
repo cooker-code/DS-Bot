@@ -1,3 +1,4 @@
+import { assistantId, projectNotice } from './project-assistant.js'
 import { groupDiscussions, setDiscussionArchive } from './group-archive.js'
 import { taskErrors, taskError, taskManagementEnabled } from '../shared/task-settings.js'
 import { memberSettings } from './team-storage/member-settings.js'
@@ -455,6 +456,26 @@ export function install(rt) {
             return () => { card.plans = previous }
           } })
           return ok(true)
+        }
+        case 'set-task-integration-finish': {
+          await rt.load()
+          const room = rt.roomOf(body.roomId)
+          if (!room || !taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+          const card = rt.own(room.projectCards, body.taskId)
+          if (!card) throw Object.assign(new Error('No such task'), { code: 'bot/not-found' })
+          const { version, node } = body
+          await rt.save({ required: true, mutate() {
+            const plan = card.plans?.at(-1)
+            if (rt.roomOf(room.id)?.projectCards?.[card.id] !== card || !plan || plan.version !== version || !Number.isSafeInteger(node) || !plan.nodes[node - 1]?.mergeToDev ||
+                card.humanReview || card.rounds.some(r => r.planNode?.version === version && r.planNode.node > node))
+              throw new Error('Choose the current integration node before dispatching downstream work.')
+            const previous = card.finishAfterIntegration
+            card.finishAfterIntegration = { version, node }
+            return () => { if (previous) card.finishAfterIntegration = previous; else delete card.finishAfterIntegration }
+          } })
+          await projectNotice(rt, room, assistantId(room) ?? room.admin, { taskId: card.id }, 'finish-after-integration:' + version + ':' + node,
+            'The user selected this test-and-merge node as final. Preserve history; archive separately and skip extra architecture review. Recover the tester now if blocked, using the immutable dev snapshot and existing valid evidence. Have the tester immediately call record_merge (commit=candidate, mergeCommit=actual dev merge), then submit targeted validation with testedCommit. Approve and report completion. No user continuation is needed.')
+          return ok(card.finishAfterIntegration)
         }
         case 'set-task-human-acceptance': {
           await rt.load()

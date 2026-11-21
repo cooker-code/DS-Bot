@@ -1260,6 +1260,7 @@ export const FR = {
   'The intake changed. Check the task list again.': 'La demande a changé. Vérifiez à nouveau la liste des tâches.',
   'Filter tasks by status': 'Filtrer les tâches par statut',
   'Task statuses': 'États des tâches',
+  'Merged into dev, validating': 'Fusionné dans dev, vérification en cours',
   'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': 'Examinez le livrable. Pour le code du projet, vérifiez le commit candidat sur la branche attribuée.',
   'A blocker must be resolved before work can continue.': 'Un blocage doit être levé pour poursuivre le travail.',
   'The execution attempt failed.': 'Cette tentative d’exécution a échoué.',

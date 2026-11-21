@@ -204,3 +204,12 @@ test('the question mark reveals the board statuses on hover or focus and dismiss
     react.useState = initial
   }
 })
+
+test('the card distinguishes a recorded dev merge from completed post-merge checks', () => {
+  const task = { id: 'merge', title: 'Members arrow', plans: [{ version: 1, at: 1, nodes: [{ no: 1, dependsOn: [], ownerId: 'tester' }] }],
+    rounds: [{ ownerId: 'tester', startedAt: 10, planNode: { version: 1, node: 1 }, mergeReceipt: { mergeCommit: 'snapshot', at: 20 } }] }
+  assert.deepEqual(row(task).labels, ['Merged into dev, validating'])
+  task.rounds[0].result = 'Targeted checks passed'
+  task.rounds[0].submittedAt = 30
+  assert.deepEqual(row(task).labels, ['Awaiting review'])
+})

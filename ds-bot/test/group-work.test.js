@@ -4178,12 +4178,22 @@ test('a delegated feature candidate returns with feedback then integrates the re
       assert.match(text(host.begin('gd')), /Handle Space/)
       assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].planNode.feedback, feedback)
       host.finish('gc', feedback)
-      await manager({ ...plan, taskId, version: 2, reason: feedback, nodes: [{ ...nodes[0], instructions: feedback }, nodes[1]] })
+      await manager({ ...plan, taskId, version: 2, reason: feedback, nodes: [{ ...nodes[0], instructions: feedback }, nodes[1], { ...nodes[0], title: 'Archive report', writePaths: ['report'], dependsOn: [2] }] })
     } else {
       const submit = { action: 'submit', taskId, round: testRound, commit, result: 'Click and keyboard pass' }
       await assert.rejects(act('gc', { ...submit, commit: baseline }), /exact independently tested/)
-      await assert.rejects(act('gc', submit), /outside local branch dev/)
+      const receipt = { action: 'record_merge', taskId, round: testRound, commit, mergeCommit: commit }
+      await assert.rejects(act('gc', receipt), /outside local branch dev/)
+      assert.equal((await host.call('set-task-integration-finish', { roomId: 'r1', taskId, version, node: 2 })).ok, true)
+      assert.equal((await manager({ action: 'read', taskId })).plans.at(-1).nodes[2].status, 'omitted')
       git(repo, 'merge', '--ff-only', commit)
+      await assert.rejects(act('gc', submit), /record_merge/)
+      await act('gc', receipt)
+      const calls = host.agentOf('gd').calls.length
+      await act('gc', receipt)
+      assert.equal(host.agentOf('gd').calls.length, calls)
+      assert.match(text(host.begin('gd')), /Merged into dev, validating/)
+      assert.equal((await manager({ action: 'read', taskId })).validatingMerge.mergeCommit, commit)
       await assert.rejects(act('gc', { ...submit, testedCommit: baseline }), /must contain the candidate/)
       git(repo, 'commit', '--allow-empty', '-m', 'Unrelated follow-up on dev')
       await act('gc', { ...submit, testedCommit: commit })

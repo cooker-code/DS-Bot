@@ -123,6 +123,7 @@ export const projectCardSummary = (card, taskId = card.id) => {
   const round = card.rounds?.at(-1)
   return {
     taskId, ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
+    ...(card.finishAfterIntegration && { finishAfterIntegration: card.finishAfterIntegration }),
     ...(card.updatedAt !== undefined ? { textUpdatedAt: card.updatedAt } : {}),
     startedAt: round?.startedAt, submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
     ...(card.clarification ? { clarification: card.clarification } : {}),
@@ -243,7 +244,7 @@ export function install(rt) {
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
       humanAcceptanceRequired: { type: 'boolean', description: 'Record required human sign-off on the first plan.' },
       classificationReason: { type: 'string', description: 'Why this accepted request needs tracked work.' },
-      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
+      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'record_merge', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
       message: { type: 'string', description: 'First public answer to the current group input. Use reply before planning, or chat with message and reason to answer and classify an unassigned question together. Members are not called.' },
       ...planParameters, ...recoveryParameters,
       repository: { type: 'string', description: 'Repository root inside the configured project working folder.' },
@@ -260,6 +261,7 @@ export function install(rt) {
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
       commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
+      mergeCommit: { type: 'string', description: 'For record_merge, the full immutable commit on dev resulting from integrating the candidate. Send this receipt immediately before post-merge validation.' },
       testedCommit: { type: 'string', description: 'Full immutable integration commit actually verified after merging the candidate. It must include the candidate and remain on local dev; dev may have advanced since testing.' },
       feedback: { type: 'string', description: 'For a failed integration test, actionable changes for the developer, with the failed expectation and reproduction.' },
       deliveryKind: { type: 'string', enum: ['code', 'other'], description: 'For older assignments without a recorded Git scope, declare whether this submission changes code.' },
@@ -317,7 +319,7 @@ export function install(rt) {
         const text = [
           'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
           relatedTaskGuidance,
-          'For feature development targeting dev, assign a developer on a feature branch then an independent DSH test engineer with mergeToDev=true, independentReview=true, writePaths=[] and a dependency on the candidate. The tester tests and merges the passing commit directly into local dev, then submits evidence to you. On a failed test send the feedback to the developer in a revised plan and dispatch retesting of the new candidate. Dispatch successors in this turn; the user need not prompt continuation.',
+          'For feature development targeting dev, assign a developer on a feature branch then an independent DSH test engineer with mergeToDev=true, independentReview=true, writePaths=[] and a dependency on the candidate. The tester tests and merges the passing commit directly into local dev, immediately calls record_merge, validates the integrated snapshot and submits evidence to you. For a small feature make this test-and-merge node final. Approve after targeted post-merge checks; report archiving is non-blocking and needs no extra architecture review. On a failed test send the feedback to the developer in a revised plan and dispatch retesting of the new candidate. Dispatch successors in this turn; the user need not prompt continuation.',
           'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
           linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
           'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
@@ -441,16 +443,25 @@ export function install(rt) {
         const feedback = field(args.feedback, 'specific corrective feedback for the developer', 2000)
         args = { ...args, action: 'block', feedback, reason: feedback, waitingFor: 'Developer fix and independent retest' }
       }
-      let integration
-      if (testNode?.mergeToDev && owner && run.startedAt && args.action === 'submit' && selectedForReview(card, run)) {
+      let integration, mergeReceipt
+      if (testNode?.mergeToDev && owner && run.startedAt && ['record_merge', 'submit'].includes(args.action) && selectedForReview(card, run)) {
         const candidates = run.planNode.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean)
         const candidate = testNode.candidateCommit ?? (candidates.length === 1 && candidates[0])
         if (!candidate || args.commit !== candidate) throw new Error('Submit the exact independently tested candidate commit.')
         const repo = run.workspace.repository
         await verifyReviewCommit(rt, room, repo, candidate, { branch: run.workspace.workRef })
-        if (run.integration && args.testedCommit && run.integration.testedCommit !== args.testedCommit)
-          throw new Error('This round already has a different integration receipt.')
-        integration = run.integration ?? await verifyIntegration(rt, room, repo, candidate, args.testedCommit)
+        if (args.action === 'record_merge') {
+          const merged = field(args.mergeCommit, 'the exact dev merge commit', 64)
+          if (run.mergeReceipt && run.mergeReceipt.mergeCommit !== merged) throw new Error('This round already recorded a different merge.')
+          const verified = await verifyIntegration(rt, room, repo, candidate, merged)
+          mergeReceipt = { commit: candidate, mergeCommit: verified.testedCommit, devTip: verified.tip, at: Date.now() }
+        } else {
+          if (!run.mergeReceipt) throw new Error('Call record_merge before submitting post-merge validation.')
+          const tested = field(args.testedCommit, 'the dev commit tested after the merge', 64)
+          await verifyIntegration(rt, room, repo, run.mergeReceipt.mergeCommit, tested)
+          if (run.integration && run.integration.testedCommit !== tested) throw new Error('This round already has a different integration receipt.')
+          integration = run.integration ?? await verifyIntegration(rt, room, repo, candidate, tested)
+        }
       }
       if (!testNode?.mergeToDev && !scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
         const node = run.planNode && card.plans?.at(-1)?.nodes[run.planNode.node - 1]
@@ -491,11 +502,15 @@ export function install(rt) {
         if (ownershipTransfer) ownershipTransfer.apply(draft.projectCards[id])
         if (inheritedCheckout && draft.projectCards[id] && !draft.projectCards[id].plannedWorkspace)
           draft.projectCards[id].plannedWorkspace = inheritedCheckout
-        if (review || baseline || integration) {
+        if (review || baseline || integration || mergeReceipt) {
           const fresh = draft.projectCards[id], target = fresh?.rounds[args.round - 1]
           if (!target || target.dispatchId !== run.dispatchId || !isDeepStrictEqual(codeDelivery(fresh, target), scope))
             throw new Error('The assignment changed. Read the current round before submitting.')
           if (selectedForReview(fresh, target)) {
+            if (mergeReceipt) {
+              if (target.mergeReceipt && target.mergeReceipt.mergeCommit !== mergeReceipt.mergeCommit) throw new Error('This round already recorded a different merge.')
+              target.mergeReceipt ??= mergeReceipt
+            }
             if (integration) target.integration ??= integration
             if (baseline) target.reviewBase ??= baseline
             if (review) {
@@ -518,7 +533,7 @@ export function install(rt) {
       } })
       if (publish) await publish()
       const change = JSON.parse(result)
-      if (assistantId(room) || change.coordination) await notifyProjectChange(rt, room, args, actor, source, change)
+      if (assistantId(room) || change.coordination || args.action === 'record_merge') await notifyProjectChange(rt, room, args, actor, source, change)
       return result
     },
   }))
@@ -529,7 +544,11 @@ async function notifyProjectChange(rt, room, args, actor, source, result) {
   const card = room.projectCards?.[result.taskId ?? args.taskId ?? source?.taskId]
   const scope = card ? { taskId: card.id } : { intakeId: source?.intakeId }
   const round = card?.rounds[args.round - 1]
-  if (result.coordination) {
+  if (args.action === 'record_merge' && round?.mergeReceipt) {
+    await projectNotice(rt, room, assistant ?? room.admin, scope, round.dispatchId + ':merged',
+      'Merged into dev, validating. Candidate ' + round.mergeReceipt.commit + ', dev merge ' + round.mergeReceipt.mergeCommit +
+      '. The tester will submit post-merge checks. Wait for that report before approving.')
+  } else if (result.coordination) {
     const { toId, instruction } = result.coordination
     if (toId && toId !== actor) await projectNotice(rt, room, toId, scope,
       'technical-block:' + card.id + ':' + actor + ':' + (source?.exchangeId ?? '') + ':' + createHash('sha256').update(args.reason).digest('hex'),
@@ -637,12 +656,12 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       else {
         const review = card.humanReview
         if (card.clarification) throw new Error('Wait for the requested clarification before approval.')
-        if ((!review || review.version !== args.version) && card.humanAcceptanceRequired && nodeViews(card, card.plans.at(-1)).every(n => n.status === 'verified' || (n.no === args.node && n.status === 'review'))) {
+        if ((!review || review.version !== args.version) && card.humanAcceptanceRequired && nodeViews(card, card.plans.at(-1)).every(n => ['verified', 'omitted'].includes(n.status) || (n.no === args.node && n.status === 'review'))) {
           requestAcceptance(card, args)
           return JSON.stringify(projectCardSummary(card))
         }
         if (review && review.status !== 'approved' && (review.round === args.round ||
-            nodeViews(card, card.plans.at(-1)).every(n => n.status === 'verified' || (n.no === args.node && n.status === 'review'))))
+            nodeViews(card, card.plans.at(-1)).every(n => ['verified', 'omitted'].includes(n.status) || (n.no === args.node && n.status === 'review'))))
           throw new Error('This artifact requires the requested human decision. Revise the plan for returned work.')
         const reused = card.plans.at(-1).nodes[args.node - 1]?.reuseRound
         if (reused && reused === args.round && args.version === card.plans.at(-1).version) {
@@ -714,6 +733,8 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
           if (dir) binding.workDir = dir
         }
         round.startedAt ??= Date.now()
+      } else if (args.action === 'record_merge') {
+        if (!binding || !round.startedAt || !currentBinding(card, round) || !round.mergeReceipt) throw new Error('Record the merge from the assigned independent test round.')
       } else if (args.action === 'checkpoint' && binding && round.startedAt && !round.result) {
         binding.completed = field(args.completed, 'finished checks', 4000)
         binding.remaining = field(args.remaining, 'remaining checks', 4000)
@@ -754,7 +775,7 @@ function requestAcceptance(card, args) {
   const nodes = nodeViews(card, plan)
   const node = nodes.find(n => n.no === args.node)
   if (plan.version !== args.version || !node || node.round !== args.round || node.status !== 'review' ||
-      nodes.some(n => n !== node && n.status !== 'verified')) throw new Error('Request human acceptance for the final submitted node.')
+      nodes.some(n => n !== node && !['verified', 'omitted'].includes(n.status))) throw new Error('Request human acceptance for the final submitted node.')
   const artifact = field(args.artifact, 'the artifact to review', 2000)
   const current = card.humanReview
   if (current?.version === args.version && current.round === args.round) {

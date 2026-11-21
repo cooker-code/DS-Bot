@@ -129,7 +129,7 @@ export function savePlan(card, args, room, actor) {
     }
     return node
   })
-  if (latest?.nodes.slice(nodes.length).some(node => node.fixedOwner || node.independentReview))
+  if (latest?.nodes.slice(nodes.length).some(node => (node.fixedOwner || node.independentReview) && !(card.finishAfterIntegration?.version === latest.version && node.no > card.finishAfterIntegration.node)))
     throw new Error('A plan revision must preserve the existing constrained nodes.')
   for (const node of nodes.filter(n => n.reuseRound)) {
     const reused = card.rounds[node.reuseRound - 1]
@@ -159,7 +159,7 @@ export function savePlan(card, args, room, actor) {
   if (changesTree || gitNodes.some(n => !sameCheckout(n, first)))
     throw new Error('Use the same task worktree and branch for every Git step.')
   checkParallelScopes(nodes)
-  if (latest && nodeViews(card, latest).every(node => node.status === 'verified')) throw new Error('This task is complete.')
+  if (latest && nodeViews(card, latest).every(node => ['verified','omitted'].includes(node.status))) throw new Error('This task is complete.')
   if ((card.humanAcceptanceRequired || (card.humanReview && card.humanReview.status !== 'approved')) && nodes.every(node => node.reuseRound))
     throw new Error('Keep a final deliverable for the requested human acceptance.')
   const at = Date.now()
@@ -184,7 +184,8 @@ export function nodeViews(card, plan) {
     const number = numberOf(node)
     const round = card.rounds[number - 1]
     const waiting = node.dependsOn.filter(no => !card.rounds[numberOf(plan.nodes[no - 1]) - 1]?.planNode?.acceptedAt)
-    const status = round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
+    const omitted = card.finishAfterIntegration?.version === plan.version && node.no > card.finishAfterIntegration.node
+    const status = omitted ? 'omitted' : round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
     const workspace = round ? round.workspace : plan === card.plans.at(-1) ? taskWorkspaceFor(card, node) : undefined
     return { ...node, ...workspace, ownerId: round?.ownerId ?? node.ownerId, status, round: number || undefined, waiting }
   })
@@ -199,6 +200,7 @@ export function taskWorkspaceFor(card, node) {
 }
 
 export function planStage(views) {
+  views = views.filter(n => n.status !== 'omitted')
   return ['active', 'blocked', 'failed', 'review', 'delivered', 'assigned'].find(s => views.some(n => n.status === s))
     ?? (views.every(n => n.status === 'verified') ? 'verified' : views.some(n => n.status === 'ready') ? 'planned' : 'blocked')
 }
@@ -212,12 +214,13 @@ export function plannedSummary(card) {
   const started = current.filter(r => Number.isFinite(r.startedAt))
   const submissions = current.map(r => r.submittedAt).filter(Number.isFinite)
   const stops = (started.length ? started : current).map(r => r.planNode?.block?.at ?? r.failedAt).filter(Number.isFinite)
-  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.planNode?.acceptedAt ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
+  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.planNode?.acceptedAt ?? 0, r.mergeReceipt?.at ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
   const awaitingCode = status === 'review' && views.some(node => {
     const run = card.rounds[node.round - 1]
     return codeDelivery(card, run, node) && !run?.mainReview
   })
-  return { status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
+  const validating = status === 'active' && current.find(r => r.mergeReceipt && !r.submittedAt)
+  return { ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
     startedAt: started.length ? Math.min(...started.map(r => r.startedAt)) : undefined,
     submittedAt: submissions.length && submissions.length === current.length ? Math.max(...submissions) : undefined,
     stoppedAt: stops.length ? Math.max(...stops) : undefined, updatedAt }
@@ -275,7 +278,7 @@ export function nodeHandoff(card, round) {
     ...(node.writePaths || round.workspace ? ['Before starting, use working_directory to enter the assigned working folder above. Confirm the branch and run project_task start before editing.'] : []),
     ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Leave integration to the independent tester.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
     ...(node.mergeToDev ? ['Test the exact candidate ' + (node.candidateCommit ?? binding.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean).join(', ')) +
-      ' using the assigned checkout. After passing, merge that immutable commit into local dev in its verified checkout, preserve other work and verify the integrated result. The candidate checkout remains read-only. Submit the test report, candidate commit and exact testedCommit on dev. Later changes to dev do not invalidate that snapshot. If tests fail, call return_for_changes with evidence and concrete feedback for the developer. Use block for an environment impediment.'] : []),
+      ' using the assigned checkout. After passing, merge that immutable commit into local dev in its verified checkout, preserve other work, and immediately call record_merge with commit and mergeCommit. Then verify the integrated result. The candidate checkout remains read-only. Submit the test report, candidate commit and exact testedCommit on dev. Later changes to dev do not invalidate that snapshot. If tests fail, call return_for_changes with evidence and concrete feedback for the developer. Use block for an environment impediment.'] : []),
     ...binding.inputs.map(input => {
       const prev = card.rounds[input.round - 1]
       return 'Approved input from node ' + input.node + ', round ' + input.round + ': ' + prev.planNode.artifact + '\n' + prev.result

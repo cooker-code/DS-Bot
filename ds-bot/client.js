@@ -1397,6 +1397,7 @@ var JA = {
   "The intake changed. Check the task list again.": "依頼の状態が変わりました。タスク一覧をもう一度確認してください。",
   "Filter tasks by status": "タスクをステータスで絞り込む",
   "Task statuses": "タスクの状態",
+  "Merged into dev, validating": "dev にマージ済み、検証中",
   "Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.": "提出された成果物を確認します。プロジェクトのコードは、割り当てられたブランチで候補コミットを確認します。",
   "A blocker must be resolved before work can continue.": "作業を続けるには障害の解決が必要です。",
   "The execution attempt failed.": "今回の実行に失敗しました。",
@@ -3955,6 +3956,7 @@ var KO = {
   "The intake changed. Check the task list again.": "요청 상태가 변경되었습니다. 작업 목록을 다시 확인하세요.",
   "Filter tasks by status": "상태별로 작업 필터링",
   "Task statuses": "작업 상태 안내",
+  "Merged into dev, validating": "dev 병합 완료, 검증 중",
   "Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.": "제출된 결과물을 검토하세요. 프로젝트 코드는 할당된 브랜치에서 후보 커밋을 확인하세요.",
   "A blocker must be resolved before work can continue.": "문제를 해결해야 작업을 계속할 수 있습니다.",
   "The execution attempt failed.": "이번 실행이 실패했습니다.",
@@ -6521,6 +6523,7 @@ var ES = {
   "The intake changed. Check the task list again.": "La solicitud ha cambiado. Vuelve a revisar la lista de tareas.",
   "Filter tasks by status": "Filtrar tareas por estado",
   "Task statuses": "Estados de las tareas",
+  "Merged into dev, validating": "Integrado en dev, en validación",
   "Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.": "Revisa la entrega. Para el código del proyecto, comprueba el commit candidato en la rama asignada.",
   "A blocker must be resolved before work can continue.": "Hay que resolver un bloqueo para continuar.",
   "The execution attempt failed.": "Este intento de ejecución ha fallado.",
@@ -9050,6 +9053,7 @@ var FR = {
   "The intake changed. Check the task list again.": "La demande a changé. Vérifiez à nouveau la liste des tâches.",
   "Filter tasks by status": "Filtrer les tâches par statut",
   "Task statuses": "États des tâches",
+  "Merged into dev, validating": "Fusionné dans dev, vérification en cours",
   "Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.": "Examinez le livrable. Pour le code du projet, vérifiez le commit candidat sur la branche attribuée.",
   "A blocker must be resolved before work can continue.": "Un blocage doit être levé pour poursuivre le travail.",
   "The execution attempt failed.": "Cette tentative d’exécution a échoué.",
@@ -11608,6 +11612,7 @@ var DE = {
   "The intake changed. Check the task list again.": "Die Anfrage wurde geändert. Prüfe die Aufgabenliste erneut.",
   "Filter tasks by status": "Aufgaben nach Status filtern",
   "Task statuses": "Aufgabenstatus",
+  "Merged into dev, validating": "In dev integriert, Prüfung läuft",
   "Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.": "Prüfe das Arbeitsergebnis. Prüfe bei Projektcode den Kandidaten-Commit auf dem zugewiesenen Branch.",
   "A blocker must be resolved before work can continue.": "Ein Hindernis muss beseitigt werden, bevor es weitergeht.",
   "The execution attempt failed.": "Dieser Ausführungsversuch ist fehlgeschlagen.",
@@ -14173,6 +14178,7 @@ var ZH = {
   "The manager is preparing or correcting the execution plan.": "管理员 Bot 已接手，正在制定或修正规划。",
   "The plan is ready and the first Bot has yet to start.": "计划已保存，等待第一位执行 Bot 确认开工。",
   "The team has started executing the plan.": "Bot 已确认开工，正在执行任务。",
+  "Merged into dev, validating": "已合入 dev，正在验证",
   "Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.": "复核本轮交付物。项目代码按分配的分支核对候选提交。",
   "Your acceptance was explicitly requested for the final delivery.": "这项交付明确要求人工终验，等待你确认。",
   "A blocker must be resolved before work can continue.": "有条件未满足，解决后才能继续。",
@@ -39909,7 +39915,7 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         (0, import_react58.createElement)(
           "span",
           { className: "bt-project-statuses" },
-          (0, import_react58.createElement)("span", { className: "bt-task-status" }, t(TASK_STATUS[card.status]))
+          (0, import_react58.createElement)("span", { className: "bt-task-status" }, t(card.validatingMerge ? "Merged into dev, validating" : TASK_STATUS[card.status] ?? card.status))
         ),
         onOpen ? (0, import_react58.createElement)("span", { className: "bt-project-arrow" }, (0, import_react58.createElement)(ChevronRightIcon)) : null
       ),
@@ -43789,7 +43795,7 @@ function ProjectTaskDetail({ room: room2, card, roster, readOnly, move, hasStrip
           (0, import_react75.createElement)(
             "p",
             null,
-            t(TASK_STATUS[detail.status] ?? detail.status),
+            t(detail.validatingMerge ? "Merged into dev, validating" : TASK_STATUS[detail.status] ?? detail.status),
             " · ",
             (detail.owners?.length ? detail.owners : detail.ownerId ? [detail.ownerId] : []).map((id) => roster?.byId[id]?.name ?? id).join(", ") || t("Unassigned")
           ),

@@ -1260,6 +1260,7 @@ export const JA = {
   'The intake changed. Check the task list again.': '依頼の状態が変わりました。タスク一覧をもう一度確認してください。',
   'Filter tasks by status': 'タスクをステータスで絞り込む',
   'Task statuses': 'タスクの状態',
+  'Merged into dev, validating': 'dev にマージ済み、検証中',
   'Review the submitted deliverable. For project code, check the candidate commit on its assigned branch.': '提出された成果物を確認します。プロジェクトのコードは、割り当てられたブランチで候補コミットを確認します。',
   'A blocker must be resolved before work can continue.': '作業を続けるには障害の解決が必要です。',
   'The execution attempt failed.': '今回の実行に失敗しました。',
