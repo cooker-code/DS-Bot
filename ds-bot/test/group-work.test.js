@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { test } from 'node:test'
 import { savedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
+import { inspectIntegratedWriter } from '../src/host/project-recovery.js'
 import { forwardProjectIntake } from '../src/host/project-intake.js'
 import { createRuntime } from '../index.js'
 import { fakeAttachments, fakeContext } from './fake-ctx.js'
@@ -4183,10 +4184,35 @@ test('a delegated feature candidate returns with feedback then integrates the re
       await assert.rejects(act('gc', { ...submit, commit: baseline }), /exact independently tested/)
       await assert.rejects(act('gc', submit), /outside local branch dev/)
       git(repo, 'merge', '--ff-only', commit)
-      await act('gc', submit)
+      await assert.rejects(act('gc', { ...submit, testedCommit: baseline }), /must contain the candidate/)
+      git(repo, 'commit', '--allow-empty', '-m', 'Unrelated follow-up on dev')
+      await act('gc', { ...submit, testedCommit: commit })
       host.begin('gd')
       assert.equal((await approve(version, 2, testRound, commit)).status, 'done')
-      assert.equal(savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].integration.tip, commit)
+      const integrated = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].integration
+      assert.equal(integrated.testedCommit, commit)
+      assert.equal(integrated.tip, git(repo, 'rev-parse', 'dev'))
+      // A historical writer keeps its files until its exact clean candidate has
+      // been integrated, the test accepted and its own execution stopped.
+      const card = structuredClone(rt.roomOf('r1').projectCards[taskId])
+      const feature = card.rounds[round - 1]
+      const history = { ...feature, result: undefined, dispatchId: 'old-writer', planNode: { ...feature.planNode,
+        version: 1, node: 1, block: { resolvedAt: 1 }, session: 'historical' } }
+      card.rounds.unshift(history)
+      const archive = { ...card.plans.at(-1).nodes[0], no: 3, dependsOn: [2] }
+      const writer = { status: 'busy' }
+      const runtime = { live: new Map(), resolveAgent: async () => writer, inData: async () => false }
+      assert.equal(await inspectIntegratedWriter(runtime, card, archive), undefined)
+      writer.status = 'idle'
+      writeFileSync(join(dir, 'untracked'), 'work')
+      assert.equal(await inspectIntegratedWriter(runtime, card, archive), undefined)
+      rmSync(join(dir, 'untracked'))
+      const transfer = await inspectIntegratedWriter(runtime, card, archive)
+      writer.status = 'busy'
+      assert.throws(() => transfer.apply(card), /writer or plan changed/)
+      writer.status = 'idle'
+      transfer.apply(card)
+      assert.equal(history.ownershipTransfer.commit, commit)
     }
   }
 })

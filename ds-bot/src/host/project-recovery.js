@@ -6,7 +6,7 @@ import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { existingProjectDir, verifiedTree } from './project-branches.js'
-import { field, checkOwner, taskWorkspaceFor } from './project-plan.js'
+import { field, checkOwner, taskWorkspaceFor, pathsOverlap, nodeViews } from './project-plan.js'
 
 const run = promisify(execFile)
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -89,6 +89,38 @@ async function artifactCommits(tree, refs) {
 function idleWriter(rt, agent, sessionId, exchangeId) {
   if (agent.status !== 'idle' || rt.live.get(sessionId)?.turn !== undefined || rt.hasSubagents?.(sessionId)) return false
   return ![...(agent.inbox?.nextTurn ?? []), ...(agent.inbox?.nextStep ?? [])].some(m => m.source?.exchangeId === exchangeId)
+}
+
+// A historical blocked writer can hand its clean checkout back to the same developer
+// after independent integration. A revision alone never releases a live writer.
+export async function inspectIntegratedWriter(rt, card, node) {
+  if (!node?.writePaths?.length || node.round) return
+  const plan = card.plans.at(-1)
+  const views = nodeViews(card, plan)
+  const accepted = node.dependsOn.map(no => card.rounds[views[no - 1].round - 1])
+    .filter(r => r?.integration?.branch === 'dev' && r.integration.repository === node.repository && r.planNode.acceptedAt)
+  if (!accepted.length) return
+  for (const [index, prior] of card.rounds.entries()) {
+    const b = prior.planNode
+    if (!b?.block?.resolvedAt || b.version >= plan.version || prior.result || prior.ownershipTransfer ||
+        prior.ownerId !== node.ownerId || prior.workspace?.workDir !== node.workDir || prior.workspace.workRef !== node.workRef) continue
+    const oldNode = card.plans.find(p => p.version === b.version)?.nodes[b.node - 1]
+    if (!oldNode?.writePaths?.length || !pathsOverlap(oldNode.writePaths, node.writePaths)) continue
+    const session = b.session ?? prior.executionSession
+    if (!session) continue
+    const writer = await rt.resolveAgent(session)
+    const idle = () => idleWriter(rt, writer, session, prior.dispatchId)
+    if (!idle()) continue
+    const tree = await worktree(rt, node.workDir)
+    const receipt = accepted.find(r => r.integration.commit === tree.commit)
+    if (tree.changes || tree.branch !== node.workRef || !receipt) continue
+    return { apply(fresh) {
+      const original = fresh.rounds[index]
+      if (!idle() || fresh.plans.at(-1).version !== plan.version || original.dispatchId !== prior.dispatchId)
+        throw new Error('The original writer or plan changed before dispatch.')
+      original.ownershipTransfer = { version: plan.version, node: node.no, commit: tree.commit, integrationRound: card.rounds.indexOf(receipt) + 1 }
+    } }
+  }
 }
 
 function checkTarget(card, args) {

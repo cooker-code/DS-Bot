@@ -139,6 +139,18 @@ export async function verifyReviewCommit(rt, room, repository, value, { writePat
   throw new Error('The delivery commit is not on local main or master. It cannot enter review yet.')
 }
 
+export async function verifyIntegration(rt, room, repository, candidate, snapshot) {
+  const receipt = await verifyReviewCommit(rt, room, repository, candidate, { branch: 'dev' })
+  if (!snapshot) return receipt
+  const tested = await verifyReviewCommit(rt, room, repository, snapshot, { branch: 'dev' })
+  try { await git(receipt.repository, 'merge-base', '--is-ancestor', candidate, tested.commit) }
+  catch (error) {
+    if (error.code === 1) throw new Error('The tested integration snapshot must contain the candidate.')
+    throw error
+  }
+  return { ...receipt, tip: tested.tip, testedCommit: tested.commit }
+}
+
 export async function reviewBaseline(rt, room, repository, branch) {
   const repo = await projectRepository(rt, room, repository)
   const ref = branch ? 'refs/heads/' + await localBranch(repo, branch) : 'HEAD'
@@ -494,7 +506,7 @@ export function reserveNodePaths(rt, roomId, card, round) {
     const other = room.id === roomId && saved.id === card.id ? card : saved
     for (const r of other.rounds ?? []) {
       const b = r.planNode
-      if (!b || round.dispatchId === r.dispatchId || b.supersededBy || r.result || b.lateResult) continue
+      if (!b || round.dispatchId === r.dispatchId || b.supersededBy || r.result || b.lateResult || r.ownershipTransfer) continue
       if (b.version !== other.plans.at(-1).version && !r.startedAt) continue
       const n = { ...other.plans.find(p => p.version === b.version)?.nodes[b.node - 1], ...r.workspace }
       if (n?.workDir !== node.workDir) continue

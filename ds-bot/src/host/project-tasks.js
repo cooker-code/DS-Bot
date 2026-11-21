@@ -2,13 +2,13 @@ import { taskError } from '../shared/task-settings.js'
 import { assistantId, decidesGitWorkspace, runsProject, projectNotice } from './project-assistant.js'
 // Project cards belong to the group. Keep small assignment records here and resolve
 // the original text and attachments from the group's durable ledger when delivering.
-import { existingProjectDir, manageBranches, taskWorkspaceChoices, resolvePlanWorkspaces, reserveNodePaths, resolveNodeWorkspace, verifiedTree, projectRepository, reviewBaseline, verifyReviewCommit } from './project-branches.js'
+import { existingProjectDir, manageBranches, taskWorkspaceChoices, resolvePlanWorkspaces, reserveNodePaths, resolveNodeWorkspace, verifiedTree, projectRepository, reviewBaseline, verifyReviewCommit, verifyIntegration } from './project-branches.js'
 import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { approveRound, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
-import { blockRound, checkProjectStart, currentBinding, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
+import { blockRound, checkProjectStart, currentBinding, inspectIntegratedWriter, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
 import { codeDelivery, projectStatus, taskPhase } from './project-status.js'
 import { scopeFields, scopeOf, taskRoom } from './task-routing.js'
 import { taskMessage } from '../shared/task-message.js'
@@ -260,6 +260,7 @@ export function install(rt) {
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
       commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
+      testedCommit: { type: 'string', description: 'Full immutable integration commit actually verified after merging the candidate. It must include the candidate and remain on local dev; dev may have advanced since testing.' },
       feedback: { type: 'string', description: 'For a failed integration test, actionable changes for the developer, with the failed expectation and reproduction.' },
       deliveryKind: { type: 'string', enum: ['code', 'other'], description: 'For older assignments without a recorded Git scope, declare whether this submission changes code.' },
     },
@@ -378,12 +379,16 @@ export function install(rt) {
         }
         args = { ...args, nodes }
       }
+      let ownershipTransfer
       if (args.action === 'dispatch' && manager && card?.plans?.at(-1)?.version === args.version) {
         const node = nodeViews(executionCard, card.plans.at(-1))[args.node - 1]
         const selection = node && (node.round ? card.rounds[node.round - 1].workspace : taskWorkspaceFor(executionCard, node))
         if (node?.writePaths || selection) {
           if (!decidesGitWorkspace(rt, room, actor)) throw new Error('Only the task assistant (or the Main Bot if unassigned) can dispatch Git assignments.')
-          if (node.writePaths) await resolveNodeWorkspace(rt, room, node, selection)
+          if (node.writePaths) {
+            await resolveNodeWorkspace(rt, room, node, selection)
+            ownershipTransfer = await inspectIntegratedWriter(rt, card, node)
+          }
           else await verifiedTree(rt, node.repository, node.workRef, node.workDir)
         } else if (node?.workDir && !node.contextGap) await existingProjectDir(node.workDir)
       }
@@ -443,7 +448,9 @@ export function install(rt) {
         if (!candidate || args.commit !== candidate) throw new Error('Submit the exact independently tested candidate commit.')
         const repo = run.workspace.repository
         await verifyReviewCommit(rt, room, repo, candidate, { branch: run.workspace.workRef })
-        integration = await verifyReviewCommit(rt, room, repo, candidate, { branch: 'dev' })
+        if (run.integration && args.testedCommit && run.integration.testedCommit !== args.testedCommit)
+          throw new Error('This round already has a different integration receipt.')
+        integration = run.integration ?? await verifyIntegration(rt, room, repo, candidate, args.testedCommit)
       }
       if (!testNode?.mergeToDev && !scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
         const node = run.planNode && card.plans?.at(-1)?.nodes[run.planNode.node - 1]
@@ -481,6 +488,7 @@ export function install(rt) {
         for (const key of new Set([id, linked?.id])) {
           if (key && Object.hasOwn(draft.projectCards, key)) draft.projectCards[key] = structuredClone(draft.projectCards[key])
         }
+        if (ownershipTransfer) ownershipTransfer.apply(draft.projectCards[id])
         if (inheritedCheckout && draft.projectCards[id] && !draft.projectCards[id].plannedWorkspace)
           draft.projectCards[id].plannedWorkspace = inheritedCheckout
         if (review || baseline || integration) {
