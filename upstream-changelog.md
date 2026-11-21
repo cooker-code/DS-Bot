@@ -4,7 +4,7 @@
 
 ## 2026-11-21 · macOS 插件同步
 
-登记时间 2026-11-21 09:26 +0800（Asia/Taipei）。upstream/dev 第一父链 [f8577350 → 6905f3fb](https://github.com/Fei2411/DS-Bot/compare/f8577350...6905f3fbdd296282742f7ceee546816b2489b215)，终点 `6905f3fbdd296282742f7ceee546816b2489b215`。共 43 个 PR，17 项采用、17 项暂缓、9 项跳过。上游根目录 CHANGELOG.md 本批无改动。采用结果见本地 CHANGELOG.md。
+登记时间 2026-11-21 09:26 +0800（Asia/Taipei）。upstream/dev 第一父链 [f8577350 → 6905f3fb](https://github.com/Fei2411/DS-Bot/compare/f8577350...6905f3fbdd296282742f7ceee546816b2489b215)，终点 `6905f3fbdd296282742f7ceee546816b2489b215`。共 43 个 PR，17 项采用、15 项暂缓、9 项跳过、2 项需讨论。上游根目录 CHANGELOG.md 本批无改动。采用结果见本地 CHANGELOG.md。
 
 交付核验（2026-11-21 09:31 +0800）：实现提交 `11c3f88d` 已合入本地 dev。529 项针对性测试与 57 步模拟 Web 冒烟全部通过，客户端生成文件一致，179 个业务操作名覆盖检查通过。本地版本 0.3.8.17，Web 和 Desktop 两个 profile 各 163 个包内文件与发布包一致。Desktop 运行实例读回 0.3.8.16，需重启加载新版；日用 Web 进程加载状态未核实。
 
@@ -17,63 +17,55 @@
 - [浏览器与密钥](https://github.com/Fei2411/DS-Bot/blob/6905f3fbdd296282742f7ceee546816b2489b215/docs/plans/2026-10-08-browser-and-secrets.md)（修订，#1856）扩展了独立桌面应用的登录状态导入范围。[浏览器远程客户端](https://github.com/Fei2411/DS-Bot/blob/6905f3fbdd296282742f7ceee546816b2489b215/docs/plans/2026-11-17-web-remote.md)（新增，#1779）让网页作为独立设备配对，通过中继连接电脑，并限制网页可用接口。两者均跳过。
 - [设计目录](https://github.com/Fei2411/DS-Bot/blob/6905f3fbdd296282742f7ceee546816b2489b215/docs/plans/README.md)（修订）更新微信引用说明，登记搜索、文档识别、语音和远程客户端设计；目录收录不代表本地已采用。
 
-### 已采用（2026-11-21）
+### 本批 43 个 PR 的处理状态
 
-| 上游 PR | 权重 | 功能 | 本地处理及重审线索 |
-| --- | ---: | --- | --- |
-| [#1884](https://github.com/Fei2411/DS-Bot/pull/1884) | 4 | @ 候选菜单 | 使用实色背景，避免列表与底层文字重叠。 |
-| [#1885](https://github.com/Fei2411/DS-Bot/pull/1885) | 5 | 连接器客户端登录指引 | 整理自备 OAuth 客户端的设置步骤和布局，与本地已采用的登录流程配套。 |
-| [#1828](https://github.com/Fei2411/DS-Bot/pull/1828) | 8 | CLI 上下文窗口 | 优先使用智能体报告的实际窗口，避免错误显示 200K。 |
-| [#1803](https://github.com/Fei2411/DS-Bot/pull/1803) | 6 | Discord 频道标题 | 优先采用频道名，保持不同发言人的会话归属。 |
-| [#1874](https://github.com/Fei2411/DS-Bot/pull/1874) | 4 | 模型设置 | 深色主题下可读的下拉选项。 |
-| [#1897](https://github.com/Fei2411/DS-Bot/pull/1897) | 8 | Qoder 历史路由迁移 | 保留供应商 qoder/* 模型引用，有 CLI 使用依据时迁移到本地引擎。 |
-| [#1804](https://github.com/Fei2411/DS-Bot/pull/1804) | 6 | QQ 表格 | 识别无外侧竖线的 Markdown 表格。 |
-| [#1306](https://github.com/Fei2411/DS-Bot/pull/1306) | 8 | 微信引用回复 | 将被引用消息带给 Bot。仅声明支持引用的平台记录已发送正文，按连接、聊天和文本长度设上限。 |
-| [#1866](https://github.com/Fei2411/DS-Bot/pull/1866) | 8 | QQ 发送确认 | 即使 HTTP 成功也检查响应正文，正确识别发送失败。 |
-| [#1865](https://github.com/Fei2411/DS-Bot/pull/1865) | 8 | 本地智能体错误 | 保留 CLI 返回的上游错误码及详情。 |
-| [#1859](https://github.com/Fei2411/DS-Bot/pull/1859) | 5 | DSH 聊天列宽 | 适配 0.2.2-rc.3 的宿主结构，保留 960px 内容宽度。 |
-| [#1234](https://github.com/Fei2411/DS-Bot/pull/1234) | 8 | 子进程环境 | 按大小写无关的名称过滤已指定的宿主变量，成组移除 Git 注入配置。 |
-| [#1871](https://github.com/Fei2411/DS-Bot/pull/1871) | 8 | QQ 长回复重试 | 从首个未送达的分段继续发送，避免重复已送达内容。 |
-| [#1878](https://github.com/Fei2411/DS-Bot/pull/1878) | 4 | 发送按钮 | 悬停时调整底色，避免整体淡出闪烁。 |
-| [#1879](https://github.com/Fei2411/DS-Bot/pull/1879) | 7 | 搜索来源摘要 | auto 在当前路由自己的 HTTPS 地址尝试 DeepSeek Search，保留来源摘要和无 key 回退。 |
-| [#1139](https://github.com/Fei2411/DS-Bot/pull/1139) | 7 | 自定义远程 MCP 连接器 | 新增可选 OAuth 登录，兼容原有固定请求头和命令型配置。 |
-| [#1710](https://github.com/Fei2411/DS-Bot/pull/1710) | 5 | 用量页 | 切换时间范围时立即显示新范围总量，减少增减标记移动。 |
+2026-11-21 09:39 +0800 复核：#1892、#1902 从“暂缓”改为“需讨论”，需确定项目卡执行中收到另一张卡的消息时，是否自动转后台及完成后向谁回报。#1841 保留“暂缓”，优先按本地任务范围移植。
 
-### 暂缓（2026-11-21）
-
-| 上游 PR | 权重 | 功能 | 本地处理及重审线索 |
-| --- | ---: | --- | --- |
-| [#1433](https://github.com/Fei2411/DS-Bot/pull/1433) | 8 | 会话分叉归属 | 上游在客户端记录派生会话和来源 Agent；本地的会话选择、成员历史和私聊入口已改写，index.js 接入位置冲突。 |
-| [#1892](https://github.com/Fei2411/DS-Bot/pull/1892) | 9 | 忙碌时转后台和派生同级任务 | 依赖上一批暂缓的 #1887，前台结果需对应本地项目节点及回报目的地。 |
-| [#1863](https://github.com/Fei2411/DS-Bot/pull/1863) | 8 | 切换到小窗口模型 | 上游按被替换节点的实际大小生成检查点；本地分段及上下文测试已分化，需与此前 #1736、#1766 一起验证。 |
-| [#1861](https://github.com/Fei2411/DS-Bot/pull/1861) | 6 | CodeBuddy 登录状态 | 探测 CLI 会话文件；本地 discover.js 对引擎和平台的处理已改动，补丁上下文冲突。 |
-| [#1852](https://github.com/Fei2411/DS-Bot/pull/1852) | 6 | 自动回忆缓存 | 上游按文件版本缓存解析结果；本地分库后的记忆测试夹具不同。调整记忆生命周期时复核跨请求失效。 |
-| [#1864](https://github.com/Fei2411/DS-Bot/pull/1864) | 6 | Qoder CN CLI 探测 | 上游区分可执行文件别名；本地 ACP 启动与路由选择已有调整，acp.js 补丁冲突。 |
-| [#1868](https://github.com/Fei2411/DS-Bot/pull/1868) | 7 | IM 回复外发本地图片 | 上游依赖移动端共用的图片读取及路径边界；本地已移除移动服务，且群成员可覆盖工作目录。重审时需按实际会话校验取图范围。 |
-| [#1841](https://github.com/Fei2411/DS-Bot/pull/1841) | 9 | 群历史中恢复压缩回复 | 与上一批 #1757 同属历史读取；本地账本按任务和群过滤，不能直接替换历史查询及消息展示。 |
-| [#1870](https://github.com/Fei2411/DS-Bot/pull/1870) | 5 | Firefox 设置菜单定位 | 上游替换部分宿主设置渲染；本地设置入口已有修改，settings.js 冲突。 |
-| [#1902](https://github.com/Fei2411/DS-Bot/pull/1902) | 9 | 群里的后台任务 | 依赖暂缓的 #1887；本地群项目卡、节点会话、重启恢复均自行维护，需先明确所有权。 |
-| [#1410](https://github.com/Fei2411/DS-Bot/pull/1410) | 8 | 完全访问模式使用工作区外目录 | 本地群成员的目录覆盖存入 memberSettings；上游通过 memberDirs 判断继承，直接使用会按不同规则推导受影响会话。 |
-| [#1882](https://github.com/Fei2411/DS-Bot/pull/1882) | 6 | 布局、动效与无障碍修整 | 多模块混合修改，消息单元、浏览器面板和本地项目详情均有接入冲突，按具体问题拆取。 |
-| [#1880](https://github.com/Fei2411/DS-Bot/pull/1880) | 7 | DeepSeek 文档识别 | 上游新增 read_document 和服务设置；本地宿主初始化、设置入口、存储和工具范围不同，需适配凭据隔离与工具权限。 |
-| [#1881](https://github.com/Fei2411/DS-Bot/pull/1881) | 6 | DeepSeek 听写和朗读 | 依赖 #1880 的公共服务、凭据状态与设置面板；语音选择不能随配置密钥自动打开。 |
-| [#1854](https://github.com/Fei2411/DS-Bot/pull/1854) | 7 | Bot 创建的终端标签页 | 上游监听终端事件并接入页头；本地客户端入口已重构，需验证群任务会话与终端归属。 |
-| [#1771](https://github.com/Fei2411/DS-Bot/pull/1771) | 8 | 给空闲群成员开新会话 | 本地已有任务内主动换段和成员历史；上游详情抽屉、服务通道和成员状态与本地实现冲突。 |
-| [#1834](https://github.com/Fei2411/DS-Bot/pull/1834) | 6 | 长对话跳到待批准的学习建议 | 上游在页头与卡片间导航；本地详情和页头入口已调整，需要验证跳转到正确会话。 |
-
-### 跳过（2026-11-21）
-
-| 上游 PR | 权重 | 功能 | 本地处理及重审线索 |
-| --- | ---: | --- | --- |
-| [#1712](https://github.com/Fei2411/DS-Bot/pull/1712) | 1 | Windows 文件路径中的点目录 | 仅 Windows 链接语义。 |
-| [#1851](https://github.com/Fei2411/DS-Bot/pull/1851) | 1 | 手机附件分块读取 | 本地已删除手机附件服务。 |
-| [#1876](https://github.com/Fei2411/DS-Bot/pull/1876) | 1 | Windows 与 Linux 缩放快捷键 | 独立应用和非维护平台。 |
-| [#1846](https://github.com/Fei2411/DS-Bot/pull/1846) | 2 | iPhone Safari 窄屏布局 | 本项目维护 macOS 插件，上游针对 iPhone Safari 的宿主网格。 |
-| [#1810](https://github.com/Fei2411/DS-Bot/pull/1810) | 1 | Linux 应用图标 | 独立应用发行件。 |
-| [#1903](https://github.com/Fei2411/DS-Bot/pull/1903) | 2 | 上游 CI 和构建提速 | 上游发布矩阵与本地二开发版独立，插件改动用于缩短测试等待。 |
-| [#1856](https://github.com/Fei2411/DS-Bot/pull/1856) | 2 | 浏览器登录状态导入 | 依赖独立桌面壳提供的本机浏览器数据导入接口，插件页单独移植无法工作。 |
-| [#1844](https://github.com/Fei2411/DS-Bot/pull/1844) | 1 | 手机设置群工作目录 | 仅移动客户端。 |
-| [#1779](https://github.com/Fei2411/DS-Bot/pull/1779) | 1 | 浏览器远程客户端 | 依赖手机应用和加密中继，属于排除的远程产品。 |
+| 上游 PR | 状态 | 权重 | 功能 | 本地处理及重审线索 |
+| --- | --- | ---: | --- | --- |
+| [#1892](https://github.com/Fei2411/DS-Bot/pull/1892) | 需讨论 | 9 | 忙碌时转后台和派生同级任务 | 依赖上一批暂缓的 #1887，前台结果需对应本地项目节点及回报目的地。 |
+| [#1902](https://github.com/Fei2411/DS-Bot/pull/1902) | 需讨论 | 9 | 群里的后台任务 | 依赖暂缓的 #1887；本地群项目卡、节点会话、重启恢复均自行维护，需先明确所有权。 |
+| [#1841](https://github.com/Fei2411/DS-Bot/pull/1841) | 暂缓 | 9 | 群历史中恢复压缩回复 | 与上一批 #1757 同属历史读取；本地账本按任务和群过滤，不能直接替换历史查询及消息展示。 优先适配；以同群两张任务卡为用例，验收压缩后能找回本卡回复且不会读到另一张卡。 |
+| [#1433](https://github.com/Fei2411/DS-Bot/pull/1433) | 暂缓 | 8 | 会话分叉归属 | 上游在客户端记录派生会话和来源 Agent；本地的会话选择、成员历史和私聊入口已改写，index.js 接入位置冲突。 |
+| [#1863](https://github.com/Fei2411/DS-Bot/pull/1863) | 暂缓 | 8 | 切换到小窗口模型 | 上游按被替换节点的实际大小生成检查点；本地分段及上下文测试已分化，需与此前 #1736、#1766 一起验证。 |
+| [#1410](https://github.com/Fei2411/DS-Bot/pull/1410) | 暂缓 | 8 | 完全访问模式使用工作区外目录 | 本地群成员的目录覆盖存入 memberSettings；上游通过 memberDirs 判断继承，直接使用会按不同规则推导受影响会话。 |
+| [#1771](https://github.com/Fei2411/DS-Bot/pull/1771) | 暂缓 | 8 | 给空闲群成员开新会话 | 本地已有任务内主动换段和成员历史；上游详情抽屉、服务通道和成员状态与本地实现冲突。 |
+| [#1868](https://github.com/Fei2411/DS-Bot/pull/1868) | 暂缓 | 7 | IM 回复外发本地图片 | 上游依赖移动端共用的图片读取及路径边界；本地已移除移动服务，且群成员可覆盖工作目录。重审时需按实际会话校验取图范围。 |
+| [#1880](https://github.com/Fei2411/DS-Bot/pull/1880) | 暂缓 | 7 | DeepSeek 文档识别 | 上游新增 read_document 和服务设置；本地宿主初始化、设置入口、存储和工具范围不同，需适配凭据隔离与工具权限。 |
+| [#1854](https://github.com/Fei2411/DS-Bot/pull/1854) | 暂缓 | 7 | Bot 创建的终端标签页 | 上游监听终端事件并接入页头；本地客户端入口已重构，需验证群任务会话与终端归属。 |
+| [#1861](https://github.com/Fei2411/DS-Bot/pull/1861) | 暂缓 | 6 | CodeBuddy 登录状态 | 探测 CLI 会话文件；本地 discover.js 对引擎和平台的处理已改动，补丁上下文冲突。 |
+| [#1852](https://github.com/Fei2411/DS-Bot/pull/1852) | 暂缓 | 6 | 自动回忆缓存 | 上游按文件版本缓存解析结果；本地分库后的记忆测试夹具不同。调整记忆生命周期时复核跨请求失效。 |
+| [#1864](https://github.com/Fei2411/DS-Bot/pull/1864) | 暂缓 | 6 | Qoder CN CLI 探测 | 上游区分可执行文件别名；本地 ACP 启动与路由选择已有调整，acp.js 补丁冲突。 |
+| [#1882](https://github.com/Fei2411/DS-Bot/pull/1882) | 暂缓 | 6 | 布局、动效与无障碍修整 | 多模块混合修改，消息单元、浏览器面板和本地项目详情均有接入冲突，按具体问题拆取。 |
+| [#1881](https://github.com/Fei2411/DS-Bot/pull/1881) | 暂缓 | 6 | DeepSeek 听写和朗读 | 依赖 #1880 的公共服务、凭据状态与设置面板；语音选择不能随配置密钥自动打开。 |
+| [#1834](https://github.com/Fei2411/DS-Bot/pull/1834) | 暂缓 | 6 | 长对话跳到待批准的学习建议 | 上游在页头与卡片间导航；本地详情和页头入口已调整，需要验证跳转到正确会话。 |
+| [#1870](https://github.com/Fei2411/DS-Bot/pull/1870) | 暂缓 | 5 | Firefox 设置菜单定位 | 上游替换部分宿主设置渲染；本地设置入口已有修改，settings.js 冲突。 |
+| [#1828](https://github.com/Fei2411/DS-Bot/pull/1828) | 采用 | 8 | CLI 上下文窗口 | 优先使用智能体报告的实际窗口，避免错误显示 200K。 |
+| [#1897](https://github.com/Fei2411/DS-Bot/pull/1897) | 采用 | 8 | Qoder 历史路由迁移 | 保留供应商 qoder/* 模型引用，有 CLI 使用依据时迁移到本地引擎。 |
+| [#1306](https://github.com/Fei2411/DS-Bot/pull/1306) | 采用 | 8 | 微信引用回复 | 将被引用消息带给 Bot。仅声明支持引用的平台记录已发送正文，按连接、聊天和文本长度设上限。 |
+| [#1866](https://github.com/Fei2411/DS-Bot/pull/1866) | 采用 | 8 | QQ 发送确认 | 即使 HTTP 成功也检查响应正文，正确识别发送失败。 |
+| [#1865](https://github.com/Fei2411/DS-Bot/pull/1865) | 采用 | 8 | 本地智能体错误 | 保留 CLI 返回的上游错误码及详情。 |
+| [#1234](https://github.com/Fei2411/DS-Bot/pull/1234) | 采用 | 8 | 子进程环境 | 按大小写无关的名称过滤已指定的宿主变量，成组移除 Git 注入配置。 |
+| [#1871](https://github.com/Fei2411/DS-Bot/pull/1871) | 采用 | 8 | QQ 长回复重试 | 从首个未送达的分段继续发送，避免重复已送达内容。 |
+| [#1879](https://github.com/Fei2411/DS-Bot/pull/1879) | 采用 | 7 | 搜索来源摘要 | auto 在当前路由自己的 HTTPS 地址尝试 DeepSeek Search，保留来源摘要和无 key 回退。 |
+| [#1139](https://github.com/Fei2411/DS-Bot/pull/1139) | 采用 | 7 | 自定义远程 MCP 连接器 | 新增可选 OAuth 登录，兼容原有固定请求头和命令型配置。 |
+| [#1803](https://github.com/Fei2411/DS-Bot/pull/1803) | 采用 | 6 | Discord 频道标题 | 优先采用频道名，保持不同发言人的会话归属。 |
+| [#1804](https://github.com/Fei2411/DS-Bot/pull/1804) | 采用 | 6 | QQ 表格 | 识别无外侧竖线的 Markdown 表格。 |
+| [#1885](https://github.com/Fei2411/DS-Bot/pull/1885) | 采用 | 5 | 连接器客户端登录指引 | 整理自备 OAuth 客户端的设置步骤和布局，与本地已采用的登录流程配套。 |
+| [#1859](https://github.com/Fei2411/DS-Bot/pull/1859) | 采用 | 5 | DSH 聊天列宽 | 适配 0.2.2-rc.3 的宿主结构，保留 960px 内容宽度。 |
+| [#1710](https://github.com/Fei2411/DS-Bot/pull/1710) | 采用 | 5 | 用量页 | 切换时间范围时立即显示新范围总量，减少增减标记移动。 |
+| [#1884](https://github.com/Fei2411/DS-Bot/pull/1884) | 采用 | 4 | @ 候选菜单 | 使用实色背景，避免列表与底层文字重叠。 |
+| [#1874](https://github.com/Fei2411/DS-Bot/pull/1874) | 采用 | 4 | 模型设置 | 深色主题下可读的下拉选项。 |
+| [#1878](https://github.com/Fei2411/DS-Bot/pull/1878) | 采用 | 4 | 发送按钮 | 悬停时调整底色，避免整体淡出闪烁。 |
+| [#1846](https://github.com/Fei2411/DS-Bot/pull/1846) | 跳过 | 2 | iPhone Safari 窄屏布局 | 本项目维护 macOS 插件，上游针对 iPhone Safari 的宿主网格。 |
+| [#1903](https://github.com/Fei2411/DS-Bot/pull/1903) | 跳过 | 2 | 上游 CI 和构建提速 | 上游发布矩阵与本地二开发版独立，插件改动用于缩短测试等待。 |
+| [#1856](https://github.com/Fei2411/DS-Bot/pull/1856) | 跳过 | 2 | 浏览器登录状态导入 | 依赖独立桌面壳提供的本机浏览器数据导入接口，插件页单独移植无法工作。 |
+| [#1712](https://github.com/Fei2411/DS-Bot/pull/1712) | 跳过 | 1 | Windows 文件路径中的点目录 | 仅 Windows 链接语义。 |
+| [#1851](https://github.com/Fei2411/DS-Bot/pull/1851) | 跳过 | 1 | 手机附件分块读取 | 本地已删除手机附件服务。 |
+| [#1876](https://github.com/Fei2411/DS-Bot/pull/1876) | 跳过 | 1 | Windows 与 Linux 缩放快捷键 | 独立应用和非维护平台。 |
+| [#1810](https://github.com/Fei2411/DS-Bot/pull/1810) | 跳过 | 1 | Linux 应用图标 | 独立应用发行件。 |
+| [#1844](https://github.com/Fei2411/DS-Bot/pull/1844) | 跳过 | 1 | 手机设置群工作目录 | 仅移动客户端。 |
+| [#1779](https://github.com/Fei2411/DS-Bot/pull/1779) | 跳过 | 1 | 浏览器远程客户端 | 依赖手机应用和加密中继，属于排除的远程产品。 |
 
 ## 2026-11-20 · 首批补记
 
