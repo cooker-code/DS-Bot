@@ -95,9 +95,11 @@ export function ValidationProgress({ detail }) {
   return nodes.filter(node => node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && node.round && node.status !== 'omitted').map(node => {
     const round = detail.rounds?.[node.round - 1]
     if (!round) return null
+    if (round.result) return h('details', { key: node.round },
+      h('summary', null, t('Test receipt submitted')), h('p', null, round.result))
     const progress = round.validation
     const checkpoint = round.planNode
-    if (!progress && !checkpoint?.completed && !round.result) return null
+    if (!progress && !checkpoint?.completed) return null
     return h('section', { key: node.round, 'aria-label': t('Validation progress') },
       h('h3', { className: 'bt-section-title' }, t('Validation progress'), ' · ', node.title),
       progress?.checking && !checkpoint?.block ? h('p', null, t('Testing: {check}', { check: progress.checking })) : null,
@@ -105,11 +107,10 @@ export function ValidationProgress({ detail }) {
       progress?.passed.length ? h('ul', null, progress.passed.map(check => h('li', { key: check.name },
         h('strong', null, t('Passed: {check}', { check: check.name })), ' · ', check.evidence))) : null,
       progress?.checksComplete && !progress.cleanup && !checkpoint?.block ? h('p', null, t('Checks passed · awaiting cleanup')) : null,
-      progress?.cleanup ? h('p', null, round.submittedAt ? t('Test receipt submitted') + ' · ' : '', t('Cleanup: {result}', { result: progress.cleanup })) : null,
+      progress?.cleanup ? h('p', null, t('Cleanup: {result}', { result: progress.cleanup })) : null,
       progress ? h('p', null, t('Candidate'), ' · ', progress.candidates.join(', ')) : null,
       !progress && checkpoint?.completed ? h('p', null, checkpoint.completed) : null,
-      !progress && !round.result && checkpoint?.remaining ? h('p', null, checkpoint.remaining) : null,
-      !progress && round.result ? h('details', null, h('summary', null, t('Test receipt submitted')), h('p', null, round.result)) : null)
+      !progress && checkpoint?.remaining ? h('p', null, checkpoint.remaining) : null)
   })
 }
 
@@ -124,7 +125,7 @@ export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack
     const abort = new AbortController()
     activeRead.current = abort
     setError('')
-    call('project-task-detail', { roomId: room.id, taskId }, abort.signal).then(value => {
+    call('project-task-detail', { roomId: room.id, taskId, withResults: true }, abort.signal).then(value => {
       if (!abort.signal.aborted) setDetail(value)
     }, failure => {
       if (!abort.signal.aborted) setError(failure.message)

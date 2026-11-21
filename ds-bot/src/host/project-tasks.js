@@ -290,7 +290,7 @@ export function install(rt) {
       passedCheck: { type: 'string', description: 'Checkpoint: name of a passed check. Supply evidence with the observed result or existing artifact.' },
       checksComplete: { type: 'boolean', description: 'Checkpoint: set true with the last passing check to show that validation passed and cleanup is pending.' },
       cleanupEvidence: { type: 'string', description: 'Submit a read-only validation receipt after all acceptance checks pass. Supply the verified cleanup outcome, or state why no resources were created. The host reuses recorded checks and candidate; omit result and commit.' },
-      result: { type: 'string', description: 'Deliverable and actual verification evidence.' },
+      result: { type: 'string', description: 'Concise numbered acceptance outcomes, one observed result per line. Attach screenshot and Markdown evidence with resultFiles.' },
       resultFiles: { type: 'array', items: { type: 'string' }, description: 'On submit or return_for_changes, include available UI screenshots and delivered Markdown reports as file paths inside your assigned working folder. They appear on the card with the result.' },
       commit: { type: 'string', description: 'Full delivery commit ID for a code submission. The host checks the assigned branch for a project candidate, and dev for tested integrations. On approve, supply it for an older code delivery without verified evidence.' },
       mergeCommit: { type: 'string', description: 'For record_merge, the full immutable commit on dev resulting from integrating the candidate. Send this receipt immediately before post-merge validation.' },

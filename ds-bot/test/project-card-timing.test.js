@@ -251,15 +251,14 @@ test('task detail shows results below the criteria and switches to a read-only r
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
   assert.equal(results().props.placeholder, 'No results submitted yet')
-  detail.rounds = [{ result: 'Checks finished', resultFiles: [
-    { kind: 'image', name: 'screen.png', ref: { attachmentId: 'img' } },
-    { kind: 'markdown', name: 'report.md', ref: { attachmentId: 'doc' } },
-  ] }, { planNode: { feedback: 'Fix alignment', block: { evidence: 'Mismatch' } } }, { startedAt: 1 }]
-  const [returned, submitted] = results().children[0]
-  assert.match(returned.props.value, /Fix alignment.*Mismatch/s)
-  assert.equal(submitted.props.value, 'Checks finished')
-  const [screenshot, document] = submitted.children[0]
-  assert.equal(screenshot.props.label, 'screen.png')
+  detail.results = [{ items: ['Time is correct', 'Narrow layout fits'], files: [
+    { kind: 'image', name: 'screen.png', receiptFile: '5-image' },
+    { kind: 'markdown', name: 'report.md', receiptFile: '5-report' },
+  ] }]
+  const [list, [screenshot], [document]] = results().children
+  assert.equal(list.type, 'ol')
+  assert.deepEqual(Array.from(list.children[0], item => item.children[0]), detail.results[0].items)
+  assert.equal(screenshot.props.receiptFile, '5-image')
   const disclosure = document.type(document.props)
   assert.equal(disclosure.type, 'details')
   assert.equal(disclosure.children[0].children[0], 'report.md')

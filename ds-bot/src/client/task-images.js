@@ -15,7 +15,7 @@ export async function stageTaskImage(file) {
   return id
 }
 
-export function TaskImage({ roomId, taskId, image, file, label, onRemove, disabled }) {
+export function TaskImage({ roomId, taskId, image, receiptFile, file, label, onRemove, disabled }) {
   const [url, setUrl] = useState()
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
@@ -29,11 +29,11 @@ export function TaskImage({ roomId, taskId, image, file, label, onRemove, disabl
       return () => URL.revokeObjectURL(local)
     }
     const abort = new AbortController()
-    call('project-task-detail', { roomId, taskId, imageId: id }, abort.signal).then(value => {
+    call('project-task-detail', { roomId, taskId, ...(receiptFile ? { receiptFile } : { imageId: id }) }, abort.signal).then(value => {
       if (!abort.signal.aborted) setUrl(value)
     }, () => { if (!abort.signal.aborted) setFailed(true) })
     return () => abort.abort()
-  }, [roomId, taskId, id, file])
+  }, [roomId, taskId, id, receiptFile, file])
   return h('div', { className: 'bt-task-image' },
     failed ? h('span', { role: 'status' }, t('Image unavailable') + ' · ' + label)
       : url ? h('button', { type: 'button', className: 'bt-task-image-open', title: t('Original image'),
