@@ -443,6 +443,30 @@ test('project detail edits persist Markdown per field and keep the original inta
   assert.equal((await host.call('update-project-task-text', { ...target, roomId: 'missing', field: 'acceptance', previous: acceptance, value: 'Wrong room' })).error.code, 'GROUP_CONTEXT_REQUIRED')
 })
 
+test('a legacy user edit recovers the original intake before the next version is saved', async t => {
+  const team = seed()
+  const intakeId = 'intake-11111111-1111-4111-8111-111111111111'
+  const card = { id: 'card', title: 'Time', intakes: [intakeId], rounds: [], goal: 'MM-dd HH:mm:ss' }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: { card } })
+  const host = await start(t, team)
+  await host.rt.load()
+  const room = host.rt.roomOf('r1')
+  const original = host.rt.logRoom(room, { who: 'User', intakeId, text: 'MM:dd HH:mm:ss', session: true })
+  const target = { roomId: room.id, taskId: card.id }
+  const read = async () => (await host.call('project-task-detail', target)).value
+  const stored = room.projectCards.card
+  stored.requirementSources = [original.seq]
+  assert.deepEqual((await read()).requirementHistory, [])
+  stored.fieldEditTimes = { requirement: 10 }
+  const v1 = { text: 'MM:dd HH:mm:ss', images: [] }
+  assert.deepEqual((await read()).requirementHistory, [v1])
+  assert.equal((await read()).requirement, card.goal)
+  const edit = { ...target, field: 'requirement', previous: stored.goal, value: 'Show seconds' }
+  for (let attempt = 0; attempt < 2; attempt++) assert.equal((await host.call('update-project-task-text', edit)).ok, true)
+  assert.deepEqual(host.saved().rooms.r1.projectCards.card.requirementHistory, [v1, { text: 'MM-dd HH:mm:ss', images: [] }])
+  assert.equal((await read()).requirement, edit.value)
+})
+
 test('task fields show original annotation images and save separate pictures for acceptance and requirements', async t => {
   const team = seed()
   const intake = 'intake-11111111-1111-4111-8111-111111111111'

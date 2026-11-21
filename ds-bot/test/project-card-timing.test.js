@@ -252,6 +252,7 @@ test('task detail shows only the three fields and switches to a read-only requir
   const show = (field = fields[0]) => { hook = 3; return field.type(field.props).props }
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')
+  assert.deepEqual(Array.from(latest.headerControl.children[0], option => option.children[0]), ['v1 · Historical version', 'v2 · Current'])
   assert.equal(latest.headerControl.props.value, 1)
   latest.headerControl.props.onChange({ target: { value: '0' } })
   assert.equal(show().value, '1. Earlier request')

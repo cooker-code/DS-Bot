@@ -67,7 +67,8 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       disabled: !!draft, value: snapshot ? version : currentVersion, onChange: event => {
         const selected = Number(event.target.value)
         setVersion(selected === currentVersion ? null : selected)
-      } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index }, 'v' + (index + 1)))),
+      } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index },
+        'v' + (index + 1) + ' · ' + t(index === currentVersion ? 'Current' : 'Historical version')))),
     placeholder: visible.length ? null : '—', maxLength,
     draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
     onEdit: readOnly ? undefined : () => {
@@ -124,7 +125,7 @@ export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory ?? [],
+          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
             sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),

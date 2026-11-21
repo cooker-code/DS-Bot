@@ -13248,6 +13248,7 @@ var ZH = {
   "Current session": "当前会话",
   "This page could not be shown.": "这个页面无法显示。",
   "Current": "当前",
+  "Historical version": "历史版本",
   "This key comes from outside DS Bot, such as an environment variable, and cannot be changed here.": "这个 key 来自 DS Bot 之外（例如环境变量），这里改不了。",
   "and {count} more": "还有 {count} 个",
   "Remove {name}? Bots on its models need another model.": "删除 {name}？用它的模型的 Bot 要换一个模型。",
@@ -43706,7 +43707,11 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
         const selected = Number(event.target.value);
         setVersion(selected === currentVersion ? null : selected);
       }
-    }, Array.from({ length: currentVersion + 1 }, (_, index) => (0, import_react75.createElement)("option", { key: index, value: index }, "v" + (index + 1)))),
+    }, Array.from({ length: currentVersion + 1 }, (_, index) => (0, import_react75.createElement)(
+      "option",
+      { key: index, value: index },
+      "v" + (index + 1) + " · " + t(index === currentVersion ? "Current" : "Historical version")
+    ))),
     placeholder: visible.length ? null : "—",
     maxLength,
     draft: draft?.text,
@@ -43787,7 +43792,7 @@ function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack
             label: t("Requirement"),
             readOnly,
             value: detail.requirement,
-            versions: detail.requirementHistory ?? [],
+            versions: detail.requirementHistory,
             sourceImages: detail.sourceImages,
             images: detail.fieldImages?.requirement,
             onSave: (...args) => save("requirement", ...args)
