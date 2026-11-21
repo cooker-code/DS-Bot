@@ -16,6 +16,7 @@ import { useGlide } from './motion.js'
 import { MemberApprovals, MemberState, StopMemberWork, StopRoomWork, useMemberWork, workState } from './member-status.js'
 import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
+import { RetainedConversation } from './member-history.js'
 import { MembersSection } from './members-section.js'
 import { ProjectTaskDetail } from './project-task-detail.js'
 import { TaskBoard } from './task-board.js'
@@ -318,7 +319,7 @@ function BotSessions({ bot, part, viewingMember, memberSessionId, rooms = [], ru
 }
 const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt)
 
-export function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+export function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId]
   const part = owner ? currentPart(owner) : sessionId
   const isMainBot = isMainOf(roster, owner?.id)
@@ -343,7 +344,7 @@ export function DetailsDrawer({ sessionId, viewingMember, memberSessionId, start
   const move = last.current.move
   const side = move === 'tab' ? undefined : move
   const close = () => actions.closeOverlay()
-  useEscape(view?.taskId ? () => setView('overview') : close)
+  useEscape(view?.taskId || view === 'context' ? () => setView('overview') : close)
   const bot = owner
   const running = useSessionStatus(map => map.get(part)?.running === true)
   const doing = useActivity(map => map[bot?.id ?? sessionId])
@@ -359,6 +360,16 @@ export function DetailsDrawer({ sessionId, viewingMember, memberSessionId, start
     })
   }
   const errorLine = error ? h('div', { className: 'bt-error', role: 'alert', style: { padding: 0 } }, error) : null
+  if (view === 'context' && viewingMember && memberSessionId) {
+    return [
+      h('div', { key: 'head', className: 'bt-subhead' },
+        h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': t('Back to details'), onClick: () => setView('overview') }, h(ChevronLeftIcon)),
+        h('span', { className: 'bt-subhead-title' }, entries.find(entry => entry.kind === 'dsh-context')?.title())),
+      h('div', { key: memberSessionId, className: 'bt-drawer-body bt-member-context' },
+        h(RetainedConversation, { sessionId: memberSessionId, view: 'context', SessionProvider, renderSlot, retain: actions.retainMember,
+          fallback: h('div', { role: 'alert' }, t('The conversation workspace is not open yet. Try again.')) })),
+    ]
+  }
   if (room && view?.taskId) {
     const card = room.projectCards?.find(item => item.taskId === view.taskId)
     return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, roster, readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
@@ -386,7 +397,17 @@ export function DetailsDrawer({ sessionId, viewingMember, memberSessionId, start
       key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
       icon: entry.icon ?? PlugIcon,
       label: entry.title(),
-      onPick: () => actions.openConversationTab(entry.kind, room?.id ?? sessionId),
+      disabled: viewingMember && !memberSessionId,
+      onPick: () => {
+        if (viewingMember && entry.kind === 'dsh-context') {
+          if (actions.hasContextView()) { setView('context'); return }
+          if (actions.isArchivedSession(memberSessionId)) {
+            actions.notice(t('Enable the conversation tab in Context plugin settings to view archived sessions.'))
+            return
+          }
+        }
+        actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room?.sessionId ?? part)
+      },
     })
   }
   const top = h('div', { className: 'bt-drawer-top', 'data-move': side },

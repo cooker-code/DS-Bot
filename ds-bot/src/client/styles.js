@@ -415,7 +415,8 @@ body[data-ds-dark-theme] .bt-q.bt-q-settled[data-expandable]:not([data-open]):ho
 .bt-pane{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:var(--bt-font)}
 .bt-dialog{flex:1;display:flex;flex-direction:column;min-width:0}
 .bt-panel:not([data-overlay]):not([data-leaving]){anchor-name:--bt-member-panel}
-.bt-member-pane{right:anchor(--bt-member-panel left,0px);z-index:39}
+[data-rightbar-col]{anchor-name:--bt-native-rightbar}
+.bt-member-pane{right:max(anchor(--bt-member-panel left,0px),anchor(--bt-native-rightbar left,0px));z-index:39}
 .bt-member-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 .bt-member-conversation [data-composer-seat]{display:none}
 .bt-dialog .bt-head{height:62px}

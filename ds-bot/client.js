@@ -14153,6 +14153,7 @@ var ZH = {
   "New browser tab": "新建浏览器页",
   Terminal: "终端",
   Files: "文件树",
+  "Enable the conversation tab in Context plugin settings to view archived sessions.": "请在「上下文」插件设置中启用会话标签页，以查看已归档会话的上下文。",
   "The conversation workspace is not open yet. Try again.": "会话工作区尚未打开，请重试。",
   "Bot browser": "Bot 专属浏览器",
   "Bot side chat": "Bot 侧边对话",
@@ -15346,7 +15347,7 @@ function countCards(state, sessionId, callIds, delta) {
 }
 
 // src/client/team-actions.js
-function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
+function teamActions({ call: call2, after, partFor, mainView, show: show2, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
   let pastes = 0;
   const pasteState = (state, sessionId, blocks) => ({ ...state, paste: { ...state.paste, [sessionId]: blocks } });
@@ -15360,9 +15361,12 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
   return {
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
     openMemberSession: (roomId, botId, sessionId) => {
-      ui2.set((state) => ({ ...state, memberChat: { roomId, botId, sessionId }, details: botId, view: "details", tab: null, renaming: false, panelYield: false, leftDrawer: false }));
+      ui2.set((state) => ({ ...state, memberChat: { roomId, botId, sessionId, returnSession: state.memberChat?.returnSession ?? mainView?.() }, details: botId, view: "details", tab: null, renaming: false, panelYield: false, leftDrawer: false }));
     },
-    closeMemberSession: (returnSession) => ui2.set((state) => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details })),
+    closeMemberSession: (returnSession) => {
+      ui2.set((state) => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details }));
+      if (returnSession && mainView?.() !== returnSession) show2?.(returnSession);
+    },
     openNewChat: (mode, sectionId = null) => {
       ui2.set((state) => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false }));
     },
@@ -17007,7 +17011,8 @@ body[data-ds-dark-theme] .bt-q.bt-q-settled[data-expandable]:not([data-open]):ho
 .bt-pane{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:var(--bt-font)}
 .bt-dialog{flex:1;display:flex;flex-direction:column;min-width:0}
 .bt-panel:not([data-overlay]):not([data-leaving]){anchor-name:--bt-member-panel}
-.bt-member-pane{right:anchor(--bt-member-panel left,0px);z-index:39}
+[data-rightbar-col]{anchor-name:--bt-native-rightbar}
+.bt-member-pane{right:max(anchor(--bt-member-panel left,0px),anchor(--bt-native-rightbar left,0px));z-index:39}
 .bt-member-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 .bt-member-conversation [data-composer-seat]{display:none}
 .bt-dialog .bt-head{height:62px}
@@ -41450,14 +41455,14 @@ function MemberLog({ member, room: room2, bot, actions }) {
     ))
   );
 }
-function ListedTranscript({ member, actions, SessionProvider, renderSlot, fallback }) {
+function RetainedConversation({ sessionId, view = "chat", retain, SessionProvider, renderSlot, fallback }) {
   const [reference, setReference] = (0, import_react62.useState)(null);
   const [failed, setFailed] = (0, import_react62.useState)(false);
   (0, import_react62.useEffect)(() => {
     let current = true;
     let retained;
     try {
-      retained = actions.retainMember(member.id);
+      retained = retain(sessionId);
       retained.ready.then(() => {
         if (current) setReference(retained);
       }, () => {
@@ -41470,21 +41475,24 @@ function ListedTranscript({ member, actions, SessionProvider, renderSlot, fallba
       current = false;
       retained?.release();
     };
-  }, [member.id, actions]);
+  }, [sessionId, retain]);
   if (failed) return fallback;
   if (!reference) return (0, import_react62.createElement)("div", { role: "status" }, t("Loading…"));
   return (0, import_react62.createElement)(
     "div",
     { className: "bt-member-conversation" },
-    (0, import_react62.createElement)(SessionProvider, { session: reference }, renderSlot("ds-bot.member-conversation", {}))
+    (0, import_react62.createElement)(SessionProvider, { session: reference }, renderSlot("ds-bot.member-conversation", { view }))
   );
 }
 function MemberChatView({ renderSlot }) {
   return renderSlot("conversation.session", { view: "chat" });
 }
-function MemberConversation({ renderFactorySlot }) {
+function MemberContextView({ renderSlot }) {
+  return renderSlot("conversation.session", { view: "context" });
+}
+function MemberConversation({ renderFactorySlot, view }) {
   return renderFactorySlot("conversation.content", { variant: "embedded", phase: "active", hero: false }, {
-    slots: { views: MemberChatView }
+    slots: { views: view === "context" ? MemberContextView : MemberChatView }
   });
 }
 function MemberHistory({ member, room: room2, bot, paneLeft, returnSession, running, actions, listed, SessionProvider, renderSlot }) {
@@ -41509,7 +41517,7 @@ function MemberHistory({ member, room: room2, bot, paneLeft, returnSession, runn
         (0, import_react62.createElement)("button", { type: "button", className: "bt-soft bt-subhead-title", disabled: !bot, onClick: () => actions.toggleDetails(bot.id) }, title),
         running && (0, import_react62.createElement)("span", { className: "bt-agent-session-run", role: "status" }, t("Running"))
       ),
-      listed ? (0, import_react62.createElement)(ListedTranscript, { member, actions, SessionProvider, renderSlot, fallback }) : fallback
+      listed ? (0, import_react62.createElement)(RetainedConversation, { sessionId: member.id, retain: actions.retainMember, SessionProvider, renderSlot, fallback }) : fallback
     )
   );
 }
@@ -44530,7 +44538,7 @@ function BotSessions({ bot, part, viewingMember, memberSessionId, rooms = [], ru
   );
 }
 var rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt);
-function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId];
   const part = owner ? currentPart(owner) : sessionId;
   const isMainBot = isMainOf(roster, owner?.id);
@@ -44552,7 +44560,7 @@ function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenamin
   const move = last.current.move;
   const side = move === "tab" ? void 0 : move;
   const close = () => actions.closeOverlay();
-  useEscape(view?.taskId ? () => setView("overview") : close);
+  useEscape(view?.taskId || view === "context" ? () => setView("overview") : close);
   const bot = owner;
   const running = useSessionStatus((map) => map.get(part)?.running === true);
   const doing = useActivity((map) => map[bot?.id ?? sessionId]);
@@ -44572,6 +44580,28 @@ function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenamin
     });
   };
   const errorLine = error ? (0, import_react77.createElement)("div", { className: "bt-error", role: "alert", style: { padding: 0 } }, error) : null;
+  if (view === "context" && viewingMember && memberSessionId) {
+    return [
+      (0, import_react77.createElement)(
+        "div",
+        { key: "head", className: "bt-subhead" },
+        (0, import_react77.createElement)("button", { type: "button", className: "bt-icon-btn", "aria-label": t("Back to details"), onClick: () => setView("overview") }, (0, import_react77.createElement)(ChevronLeftIcon)),
+        (0, import_react77.createElement)("span", { className: "bt-subhead-title" }, entries2.find((entry) => entry.kind === "dsh-context")?.title())
+      ),
+      (0, import_react77.createElement)(
+        "div",
+        { key: memberSessionId, className: "bt-drawer-body bt-member-context" },
+        (0, import_react77.createElement)(RetainedConversation, {
+          sessionId: memberSessionId,
+          view: "context",
+          SessionProvider,
+          renderSlot,
+          retain: actions.retainMember,
+          fallback: (0, import_react77.createElement)("div", { role: "alert" }, t("The conversation workspace is not open yet. Try again."))
+        })
+      )
+    ];
+  }
   if (room2 && view?.taskId) {
     const card = room2.projectCards?.find((item) => item.taskId === view.taskId);
     return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, roster, readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
@@ -44606,7 +44636,20 @@ function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenamin
       key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
       icon: entry.icon ?? PlugIcon,
       label: entry.title(),
-      onPick: () => actions.openConversationTab(entry.kind, room2?.id ?? sessionId)
+      disabled: viewingMember && !memberSessionId,
+      onPick: () => {
+        if (viewingMember && entry.kind === "dsh-context") {
+          if (actions.hasContextView()) {
+            setView("context");
+            return;
+          }
+          if (actions.isArchivedSession(memberSessionId)) {
+            actions.notice(t("Enable the conversation tab in Context plugin settings to view archived sessions."));
+            return;
+          }
+        }
+        actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room2?.sessionId ?? part);
+      }
     });
   }
   const top = (0, import_react77.createElement)(
@@ -44803,6 +44846,7 @@ function PanelMenu({ items, className, "aria-label": label }) {
         type: "button",
         role: "menuitem",
         className: "bt-pmenu-item",
+        disabled: item.disabled,
         onClick: () => {
           setOpen(false);
           item.onPick();
@@ -45131,7 +45175,7 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
     )
   );
 }
-function BotPanel({ pane, memberChat, memberSessionId, leaving, room: room2, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSessionId, leaving, room: room2, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const bot = roster.byId[pane.id];
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow);
   const sideChats = bot ? sideChatsOf(roster, bot.id) : [];
@@ -45365,6 +45409,8 @@ function BotPanel({ pane, memberChat, memberSessionId, leaving, room: room2, ove
       { key: `details:${pane.id}:${pane.renaming ? "rename" : ""}:${pane.tab ?? ""}`, className: "bt-panel-view" },
       (0, import_react78.createElement)(DetailsDrawer, {
         sessionId: pane.id,
+        SessionProvider,
+        renderSlot,
         viewingMember: memberChat?.botId === pane.id,
         memberSessionId,
         startRenaming: pane.renaming,
@@ -45565,10 +45611,15 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
   const frameSnap = useFrame ? useFrame((value) => value) : { viewport: window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0 };
   const pref = useSidebarPref ? useSidebarPref((value) => value) : "open";
   const current = useSessions((list) => Object.values(list.byId).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)?.id ?? null);
+  const memberRoom = roster.roomsById[ui2.memberChat?.roomId];
+  const memberBot = roster.byId[ui2.memberChat?.botId];
+  const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? [];
+  const member = ui2.memberChat?.sessionId ? parts.find((part) => part.id === ui2.memberChat.sessionId) : parts.find((part) => part.current);
   const previous = (0, import_react80.useRef)(current);
   (0, import_react80.useEffect)(() => {
     if (previous.current === current) return;
     previous.current = current;
+    if (member && current === member.id) return;
     if (ui2.memberChat) actions.closeMemberSession();
     if (current) actions.followPanel?.(current);
   }, [current]);
@@ -45591,10 +45642,6 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
     return () => clearTimeout(timer);
   }, [ui2.details, ui2.view, ui2.renaming, ui2.tab, shown === null]);
   const pane = shown ?? kept;
-  const memberRoom = roster.roomsById[ui2.memberChat?.roomId];
-  const memberBot = roster.byId[ui2.memberChat?.botId];
-  const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? [];
-  const member = ui2.memberChat?.sessionId ? parts.find((part) => part.id === ui2.memberChat.sessionId) : parts.find((part) => part.current);
   const listedMember = useSessions((list) => !!member && !!list.byId[member.id]);
   const memberRunning = useSessionStatus((map) => member && (map.get(member.id)?.running ?? roster.partsRunning?.[member.id]) === true);
   const shellHeld = useSettingsShellHeld ? useSettingsShellHeld((value) => value) : false;
@@ -45619,6 +45666,8 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
       null,
       pane ? (0, import_react80.createElement)(BotPanel, {
         pane,
+        SessionProvider,
+        renderSlot,
         memberChat: ui2.memberChat,
         memberSessionId: member?.id,
         leaving: shown === null,
@@ -45644,7 +45693,7 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
         member,
         running: memberRunning,
         paneLeft: layout.column,
-        returnSession: current,
+        returnSession: ui2.memberChat.returnSession ?? current,
         actions
       }) : null
     ), document.body),
@@ -48142,7 +48191,7 @@ function apply(ctx) {
     }
   };
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
+    ...teamActions({ call, after, partFor, mainView, show: show2, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
     // The files a group row names open DSH's own review tab for that turn. The tab reads
     // the changes of the Session the shell shows, so that Session is opened first; the same
     // call then retries until its right column is mounted. This jump is the one place a
@@ -48187,6 +48236,7 @@ function apply(ctx) {
       setPlain(false);
       const target = partFor(id);
       show2(target);
+      if (roster.getSnapshot().roomsById[id]) actions.showDetails(target);
     },
     // The conversation replacements withdraw for a plain Session; set the surface
     // before the navigation so the Bot skin never flashes.
@@ -48500,6 +48550,8 @@ function apply(ctx) {
   actions.canOpenFiles = () => canOpenSidebarTab("files");
   actions.openFiles = () => openSidebarTab("files");
   const sidebarGuide = createSource([]);
+  actions.isArchivedSession = (id) => ctx.get("workspaces")?.list.getSnapshot().archivedSessionIds.includes(id) === true;
+  actions.hasContextView = () => ctx.slots.entries("conversation.view").some((entry) => entry.options.id === "context");
   actions.sidebarGuide = sidebarGuide;
   ctx.inject(["sidebarRight", "sidebarRightTabs"], (scope) => {
     scope.effect(() => {
@@ -48513,11 +48565,15 @@ function apply(ctx) {
       };
     }, "ds-bot: conversation sidebar guide");
   });
-  actions.openConversationTab = async (kind, conversationId) => {
+  actions.openConversationTab = async (kind, target) => {
     try {
       const sidebar = ctx.get("sidebarRight");
-      const target = partFor(conversationId);
+      if (!target) return;
+      const selection = ui2.getSnapshot().memberChat;
       if (sidebar.mounted.getSnapshot() !== target) {
+        if (!ctx.sessions.list.getSnapshot().byId[target]) await ctx.sessions.refresh();
+        if (ui2.getSnapshot().memberChat !== selection) return;
+        if (!ctx.sessions.list.getSnapshot().byId[target]) throw new Error(t("The conversation workspace is not open yet. Try again."));
         await new Promise((resolve2, reject) => {
           const finish = (error) => {
             off();
@@ -48531,7 +48587,7 @@ function apply(ctx) {
           const off = sidebar.mounted.subscribe(check);
           const timer = setTimeout(() => finish(new Error(t("The conversation workspace is not open yet. Try again."))), 5e3);
           try {
-            actions.openSession(conversationId);
+            show2(target);
             check();
           } catch (error) {
             finish(error);
@@ -48539,6 +48595,7 @@ function apply(ctx) {
         });
         await new Promise((resolve2) => requestAnimationFrame(resolve2));
       }
+      if (ui2.getSnapshot().memberChat !== selection) return;
       if (sidebar.mounted.getSnapshot() !== target) throw new Error(t("The conversation workspace is not open yet. Try again."));
       sidebar.openTab(kind);
       actions.closePanel();
