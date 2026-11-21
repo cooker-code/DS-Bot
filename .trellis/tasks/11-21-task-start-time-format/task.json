@@ -1,0 +1,14 @@
+{
+  "id": "task-start-time-format",
+  "name": "task-start-time-format",
+  "title": "项目任务开始时间固定显示月日时分秒",
+  "status": "in_progress",
+  "dev_type": "frontend",
+  "branch": "fix/task-start-time-format",
+  "base_branch": "dev",
+  "ds_bot_task_id": "363786dc-eb00-44fe-989f-ac3bf2580a72",
+  "plan_version": 3,
+  "execution_round": 3,
+  "node": 1,
+  "description": "Only ProjectCard start time uses MM-dd HH:mm:ss; preserve local timezone and elapsed behavior."
+}

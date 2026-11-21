@@ -39887,6 +39887,11 @@ function projectElapsed(start, end) {
   const duration = end - start;
   return duration < 6e4 ? elapsedLabel(duration) : t("{n} min", { n: Math.floor(duration / 6e4) });
 }
+function projectStartLabel(time) {
+  const date = new Date(time);
+  const pad2 = (value) => String(value).padStart(2, "0");
+  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
 function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
   const owners = card.owners ?? (card.ownerId ? [card.ownerId] : []);
   const start = card.startedAt;
@@ -39926,7 +39931,7 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         hasStart ? (0, import_react58.createElement)(
           "span",
           { className: "bt-project-times" },
-          (0, import_react58.createElement)("span", null, t("Started {time}", { time: messageClock(start) })),
+          (0, import_react58.createElement)("span", null, t("Started {time}", { time: projectStartLabel(start) })),
           (0, import_react58.createElement)("span", null, t("Elapsed {time}", { time: projectElapsed(start, end) }))
         ) : null
       ) : null

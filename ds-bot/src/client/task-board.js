@@ -5,7 +5,7 @@ import { taskManagementEnabled } from '../shared/task-settings.js'
 import { createElement as h, Fragment, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BotMark } from './mark.js'
-import { clockLabel, elapsedLabel, messageClock } from './text.js'
+import { clockLabel, elapsedLabel } from './text.js'
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from './icons.js'
 import { useAnchoredMenu } from './model-menu.js'
 import { t } from './i18n.js'
@@ -96,6 +96,12 @@ export function projectElapsed(start, end) {
   return duration < 60_000 ? elapsedLabel(duration) : t('{n} min', { n: Math.floor(duration / 60_000) })
 }
 
+function projectStartLabel(time) {
+  const date = new Date(time)
+  const pad = value => String(value).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
   const owners = card.owners ?? (card.ownerId ? [card.ownerId] : [])
   const start = card.startedAt
@@ -120,7 +126,7 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
       branch || hasStart ? h('span', { className: 'bt-project-meta' },
         branch ? h('span', { className: 'bt-project-branch', title: branch }, branch) : null,
         hasStart ? h('span', { className: 'bt-project-times' },
-          h('span', null, t('Started {time}', { time: messageClock(start) })),
+          h('span', null, t('Started {time}', { time: projectStartLabel(start) })),
           h('span', null, t('Elapsed {time}', { time: projectElapsed(start, end) }))) : null) : null))
 }
 
