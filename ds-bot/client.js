@@ -40196,12 +40196,6 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
       row2,
       (0, import_react58.createElement)(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room2.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room2) })
     );
-    if (card.status === "clarify" && card.clarification) return (0, import_react58.createElement)(
-      "div",
-      { key: card.taskId },
-      row2,
-      (0, import_react58.createElement)("div", { className: "bt-task-progress" }, card.clarification)
-    );
     if (!taskManagementEnabled(room2) || card.status !== "failed" || card.version || !card.ownerId || !actions.resume) return row2;
     return (0, import_react58.createElement)(
       "div",

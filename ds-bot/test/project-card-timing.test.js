@@ -55,6 +55,19 @@ test('the project board counts saved cards, hiding unassigned intakes while keep
   assert.equal(count(TaskBoard({ room: { taskManagementEnabled: false, tasks: room.tasks }, roster: {}, actions: {} })), 1)
 })
 
+test('a task needing clarification opens its detail without showing the explanation in the list', () => {
+  const card = { taskId: 'a', title: 'Start time', status: 'clarify', clarification: 'Confirm the time format.' }
+  const opened = []
+  const board = TaskBoard({ room: { projectCards: [card] }, roster: {}, actions: {}, onOpen: id => opened.push(id) })
+  const list = find(board, n => n.props?.className === 'bt-task-list')
+  assert.equal(find(list, n => n.children.includes(card.clarification)), undefined)
+  const component = find(list, n => n.props?.card === card)
+  const row = component.type(component.props)
+  assert.equal(find(row, n => n.props?.className === 'bt-task-status').children[0], 'Needs clarification')
+  row.props.onClick()
+  assert.deepEqual(opened, ['a'])
+})
+
 test('a related card is nested under its primary card and still opens its own detail', () => {
   const room = { projectCards: [{ taskId: 'b', parentTaskId: 'a', status: 'planning' }, { taskId: 'a', status: 'active' }] }
   const opened = []

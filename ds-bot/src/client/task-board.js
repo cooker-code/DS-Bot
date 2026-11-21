@@ -317,8 +317,6 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     if (editing) return pick('project', card.taskId, card.title, row)
     if (card.status === 'human_review' && card.acceptanceRequest) return h('div', { key: card.taskId }, row,
       h(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room) }))
-    if (card.status === 'clarify' && card.clarification) return h('div', { key: card.taskId }, row,
-      h('div', { className: 'bt-task-progress' }, card.clarification))
     if (!taskManagementEnabled(room) || card.status !== 'failed' || card.version || !card.ownerId || !actions.resume) return row
     return h('div', { key: card.taskId }, row,
       h(ProjectRetry, { key: card.round + '-' + card.updatedAt, card, roomId: room.id, actions }))
