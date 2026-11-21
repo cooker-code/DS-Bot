@@ -8,7 +8,7 @@
 
 | 操作 | 业务及入参 | 出参与生效判断 |
 | --- | --- | --- |
-| `connector-add` / `connector-remove` | 新建用 `name` 加 `url,headers?` 或 `command,args?,env?`。删除自定义连接用 `id`。 | 返回连接器视图。操作后按 id 核对存在性及连接状态。 |
+| `connector-add` / `connector-remove` | 新建用 `name` 加 `url,headers?,oauth?`（布尔值，默认 false；仅远程地址可设 true。保存后用 connector-connect 登录，令牌覆盖自定义 Authorization 请求头） 或 `command,args?,env?`。删除自定义连接用 `id`。 | 返回连接器视图。操作后按 id 核对存在性及连接状态。 |
 | `connector-connect` / `connector-disconnect` / `connector-retry` / `connector-cancel` | 均按连接 `id`。connect 按该连接的认证方式提供 `token`、`key` 或发起登录。其他动作分别断开、重连或取消登录。 | 更新后的连接器视图；发起登录或开始连接后还须查看最终状态。 |
 | `connector-sign-in-code` / `connector-client` | 前者传 `id,input` 回交本次登录生成的码或回调。后者以 `id,clientId,clientSecret?` 配置 OAuth 客户端。 | 返回连接器视图。秘密经安全输入送达，不打印出参全集。 |
 | `connector-set` | `id,readOnly?,offFor?`。offFor 是禁用该连接的 Bot ID 列表。 | 返回连接器视图，核对保存的范围与能力。 |

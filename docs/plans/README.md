@@ -65,6 +65,7 @@
 | [Side chat（侧边对话）](2026-10-21-btw.md) | 人顺带问一句：侧栏里的常驻对话，以与会话同构的请求回答、不执行工具、不打断、不进模型可见历史；可追问、可开多条；Bot 之间的 `ask_bot` 另行提案 |
 | [消息布局和宽度](2026-10-22-message-layout.md) | 气泡 / 平铺两种布局；平铺时 Bot 的话带头像、名字、时间；气泡宽度和平铺正文宽度各用一个滑块，按正文列的百分比调 |
 | [侧边栏分组](2026-11-04-sidebar-sections.md) | 按工作把 Bot 和群聊收进分组：折叠态 3D 微缩角色簇与状态透出、选中行露出、组头 `+`（新建或选已有加入）、右键与拖拽归组、88px 窄栏角色簇方块、Main Bot 工具 `section` 参数 |
+| [搜索来源摘要](2026-11-14-search-summaries.md) | 当前路由的搜索能力与来源长摘要 |
 | [IM](2026-11-04-im.md) | 在微信、飞书、钉钉、企业微信、QQ、Telegram、Discord、Slack 里和 Bot 或群说话：IM 机器人绑一个 Bot，群绑 DS Bot 群；只认配对过的账号；回复和卡片发回聊天软件；只有占着团队锁的 dsh 连接 |
 | [Office 文档](2026-10-27-office-documents.md) | Bot 离线处理 .docx/.pptx/.xlsx：应用带的 payload、`office.js` 命令行、office 路由换成带 `office-tools` 的版本 |
 | [连接器](2026-11-04-connectors.md) | 通用连接器引擎、OAuth、网关、邮箱 |

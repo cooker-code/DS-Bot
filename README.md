@@ -101,7 +101,7 @@ Messages only flow while your computer is awake and DS Bot is running. WeChat on
 
 ### Connectors and capabilities
 
-In Settings → Connectors, you can sign in to GitHub, Gmail, QQ Mail, 163 and other mailboxes, and remote MCP servers, or import existing configs from Claude Desktop, Cursor and VS Code. Credentials stay in DS Bot's secrets so bots never see the raw values, and emails written by a bot wait for your confirmation by default.
+In Settings → Connectors, you can sign in to GitHub, Gmail, QQ Mail, 163 and other mailboxes, and remote MCP servers, or import existing configs from Claude Desktop, Cursor and VS Code. Credentials stay in DS Bot's secrets so bots never see the raw values, and emails written by a bot wait for your confirmation by default. For a custom remote MCP server, enable Sign in to connect with OAuth.
 
 In Settings → Capabilities, choose **Import skill folder** and select the folder containing `SKILL.md`. Its scripts, references and assets are saved with the skill. Enable it in each bot’s settings. Codex bots can share a working folder and still use different skills. A switch takes effect on the next turn, including for same-name copies in the project or user skill directories. You can also manage shared MCP servers and packs here. Local commands added by a bot need your approval before they run.
 

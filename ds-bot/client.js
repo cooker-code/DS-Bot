@@ -17277,10 +17277,11 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 .bt-connector-link{flex:none;padding:0;border:0;background:none;font:inherit;font-size:12px;color:var(--bt-ink-2);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .bt-connector-link:hover:not(:disabled){color:var(--bt-ink)}
 .bt-connector-wait{flex:1;min-width:0;font-size:12px;line-height:16px;color:var(--bt-ink-2)}
-.bt-connector-setup{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:10px;background:var(--bt-tag-bg);font-size:12px;line-height:16px;color:var(--bt-ink-2)}
-.bt-connector-setup p{margin:0}
-.bt-connector-setup-uri{display:flex;align-items:center;gap:6px;min-width:0}
-.bt-connector-uri{flex:1;min-width:0;padding:3px 6px;border-radius:6px;background:var(--bt-card);box-shadow:inset 0 0 0 .5px var(--bt-line-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:15px;color:var(--bt-ink);word-break:break-all}
+.bt-connector-setup{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;background:var(--bt-hover);box-shadow:inset 0 0 0 .5px var(--bt-line);font-size:12px;line-height:18px;color:var(--bt-ink-2)}
+.bt-connector-steps{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.bt-connector-steps li::marker{color:var(--bt-ink-3);font-weight:500}
+.bt-connector-setup-uri{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;min-width:0}
+.bt-connector-uri{flex:1;min-width:180px;padding:5px 8px;border-radius:6px;background:var(--bt-card);box-shadow:inset 0 0 0 .5px var(--bt-line-2);font-family:var(--bt-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11px;line-height:16px;color:var(--bt-ink);word-break:break-all;user-select:all}
 .bt-connector-aside{align-self:flex-start}
 .bt-connector-error{padding-left:48px;font-size:12px;line-height:16px;color:var(--bt-danger)}
 .bt-connector-banner{padding:0 0 8px}
@@ -17494,6 +17495,9 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 .bt-select{-webkit-appearance:none;appearance:none;width:auto;min-width:148px;max-width:100%;height:34px;box-sizing:border-box;border-radius:8px;border:.5px solid var(--bt-line-2);background-color:var(--bt-hover);background-image:var(--bt-select-arrow);background-repeat:no-repeat;background-position:right 10px center;color:var(--bt-ink);padding:0 30px 0 12px;font:inherit;font-size:13px;font-weight:450;cursor:pointer;outline:none;transition:background-color .14s ease,border-color .14s ease,box-shadow .14s ease}
 .bt-select:hover:not(:disabled){background-color:var(--bt-active)}
 .bt-select:disabled{opacity:.45;cursor:default}
+/* The open list is drawn by the system, which follows color-scheme rather than the theme's colors. */
+body[data-ds-dark-theme] .bt-select{color-scheme:dark}
+.bt-select option{background-color:var(--bt-card);color:var(--bt-ink)}
 :is(.bt-input,.bt-select):focus-visible{border-color:var(--bt-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--bt-accent) 22%,transparent)}
 :is(.bt-round,.bt-icon-btn,.bt-soft,.bt-send,.bt-mini,.bt-pill,.bt-plus,.bt-mic,.bt-voice,.bt-account,.bt-title-toggle,.bt-settings-close,.bt-avatar-trigger,.bt-shape,.bt-color,.bt-swatch,.bt-more,.bt-mem-row,.bt-mem-send):focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 :is(.bt-row,.bt-tile,.bt-tab,.bt-avedit-tab,.bt-settings-item,.bt-menu button,.bt-option,.bt-palette-row,button.bt-set-row):focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
@@ -17704,8 +17708,10 @@ var CONVERSATION_CSS = `
 /* The menus above the composer ("@", "/", and the picker a command such as /model
    opens): DSH paints them translucent and leans on a backdrop blur to keep the chat
    behind them unreadable. Where the blur does not take, the chat shows through the
-   rows (issues 1113 and 935), so they get a solid fill. */
-[data-composer-overlay] [data-menu-material]{--dsw-menu-surface-fill:var(--bt-card)}
+   rows (issues 1113 and 935), so they get a solid fill. The "@" menu is the trigger
+   menu, whose root carries data-trigger-menu rather than data-menu-material, so it
+   needs naming too (issue 1698). */
+[data-composer-overlay] [data-menu-material],[data-trigger-menu]{--dsw-menu-surface-fill:var(--bt-card);--dsw-specific-menu:var(--bt-card)}
 /* DSH's row spans share no semantic hooks beyond the option; keep descriptions
    beside their labels without changing their flex sizing or overflow. */
 [data-trigger-menu] [role=option]>span{text-align:left}
@@ -17765,7 +17771,7 @@ header[class*="_header"] .bt-head{flex:1 1 auto;width:100%}
    keep no-drag. The data-slot anchor must not take no-drag, or the bar inherits it. */
 html[data-platform=darwin] header[class*="_header"]:has(.bt-head) .bt-head{pointer-events:auto;-webkit-app-region:drag}
 html[data-platform=darwin] header[class*="_header"]:has(.bt-head) :is(a,button,input,textarea,select,[role=button],[role=menuitem],[role=menu],[contenteditable=true]){-webkit-app-region:no-drag}
-[class*="_body"]:has(> [class*="_scrollBody"]){--dsh-chat-content-width:min(960px,100%)}
+[data-slot="main.conversation"]>[class*="_root"]>[class*="_body"]{--dsh-chat-content-width:min(960px,100%)}
 /* The shell writes the column's width on the conversation root at every resize, only to
    derive the content width that the rule above replaces. Inherited, each write restyled
    the whole conversation: once a frame while the details panel glides, most in a long
@@ -17859,8 +17865,9 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
 [data-composer-card] [class*="_trailing"]{gap:8px!important}
 /* No display here: DSH hides these controls with [hidden] while the Bot works. */
 [data-composer-card] [class*="_standardControls"]{align-items:center!important;gap:8px!important}
-[data-composer-card] button[class*="_primary"]{width:28px!important;height:28px!important;background:var(--bt-accent)!important;color:var(--bt-accent-ink,#fff)!important;border-radius:50%!important;transition:opacity .15s ease,${spring(SPRING_TAP, "scale")};animation:bt-icon-swap ${SPRING_POP.duration}ms ${SPRING_POP.easing}}
-[data-composer-card] button[class*="_primary"]:hover:not(:disabled){opacity:.9}
+[data-composer-card] button[class*="_primary"]{width:28px!important;height:28px!important;background:var(--bt-accent)!important;color:var(--bt-accent-ink,#fff)!important;border-radius:50%!important;transition:background-color .15s ease,${spring(SPRING_TAP, "scale")};animation:bt-icon-swap ${SPRING_POP.duration}ms ${SPRING_POP.easing}}
+/* Hover tints the background instead of lowering opacity: an opacity change inside the blurred composer is suspected of making Windows repaint the whole window, so the UI flickers (#901). */
+[data-composer-card] button[class*="_primary"]:hover:not(:disabled){background-color:color-mix(in srgb,var(--bt-accent) 90%,transparent)!important}
 [data-composer-card] button[class*="_primary"]:active:not(:disabled){scale:.9}
 @keyframes bt-icon-swap{from{opacity:0;transform:scale(.5) rotate(-30deg)}}
 [data-composer-card] button[class*="_primary"] svg{width:14px;height:14px}
@@ -17872,7 +17879,7 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
 .bt-mic[aria-pressed=true]{background:#ff3e51;color:#fff;animation:bt-mic-pulse 1.4s ease-in-out infinite}
 @keyframes bt-mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,62,81,.35)}50%{box-shadow:0 0 0 5px rgba(255,62,81,0)}}
 .bt-voice{display:none;background:var(--bt-accent);color:var(--bt-accent-ink,#fff);animation:bt-icon-swap ${SPRING_POP.duration}ms ${SPRING_POP.easing}}
-.bt-voice:hover{opacity:.9}
+.bt-voice:hover{background-color:color-mix(in srgb,var(--bt-accent) 90%,transparent)}
 .bt-mic:active,.bt-voice:active{scale:.9}
 /* Touch devices never hover: tap-open toolbars (data-open on the message), always
    visible icon buttons and 44px targets replace the hover affordances. The message
@@ -27234,27 +27241,35 @@ function ClientPanel({ connector, actions, run: run2 }) {
     (0, import_react30.createElement)(
       "div",
       { className: "bt-connector-setup" },
-      (0, import_react30.createElement)("p", null, setup?.kind === "slack" ? t("In OAuth & Permissions at {app}, add this redirect URL:", { app }) : t("In the app settings, add this redirect URL:")),
-      uri ? (0, import_react30.createElement)(
-        "div",
-        { className: "bt-connector-setup-uri" },
-        (0, import_react30.createElement)("code", { className: "bt-connector-uri" }, uri),
-        (0, import_react30.createElement)("button", { type: "button", className: "bt-connector-link", onClick: () => void copyCode(uri) }, t("Copy")),
-        copies > 0 ? (0, import_react30.createElement)(
-          "span",
-          { className: "bt-connector-copied", role: "status" },
-          (0, import_react30.createElement)("span", { key: copies, className: "bt-connector-copied-text" }, (0, import_react30.createElement)(CheckIcon), t("Copied to clipboard"))
-        ) : null
-      ) : null,
-      setup?.kind === "slack" ? (0, import_react30.createElement)("p", null, t("Turn on the MCP features and scopes the app needs.")) : null,
-      (0, import_react30.createElement)("p", null, t("Copy the Client ID and Client Secret here.")),
-      setup?.appUrl ? (0, import_react30.createElement)("button", { type: "button", className: "bt-connector-link", onClick: () => openPage(setup.appUrl) }, t("Open app settings")) : null
+      (0, import_react30.createElement)(
+        "ol",
+        { className: "bt-connector-steps" },
+        (0, import_react30.createElement)(
+          "li",
+          null,
+          (0, import_react30.createElement)("span", null, setup?.kind === "slack" ? t("In OAuth & Permissions at {app}, add this redirect URL:", { app }) : t("In the app settings, add this redirect URL:")),
+          uri ? (0, import_react30.createElement)(
+            "div",
+            { className: "bt-connector-setup-uri" },
+            (0, import_react30.createElement)("code", { className: "bt-connector-uri" }, uri),
+            (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => void copyCode(uri) }, t("Copy")),
+            copies > 0 ? (0, import_react30.createElement)(
+              "span",
+              { className: "bt-connector-copied", role: "status" },
+              (0, import_react30.createElement)("span", { key: copies, className: "bt-connector-copied-text" }, (0, import_react30.createElement)(CheckIcon), t("Copied to clipboard"))
+            ) : null
+          ) : null
+        ),
+        setup?.kind === "slack" ? (0, import_react30.createElement)("li", null, t("Turn on the MCP features and scopes the app needs.")) : null,
+        (0, import_react30.createElement)("li", null, t("Copy the Client ID and Client Secret here."))
+      )
     ),
     (0, import_react30.createElement)("input", { className: "bt-input", "aria-label": t("Client ID"), placeholder: t("Client ID"), value: clientId, spellCheck: false, autoComplete: "off", onChange: (e) => setClientId(e.target.value) }),
     (0, import_react30.createElement)("label", { className: "bt-q-field bt-secret-field" }, (0, import_react30.createElement)(MaskedInput, { value: clientSecret, onChange: setClientSecret, label: t("Client secret (optional)") })),
     (0, import_react30.createElement)(
       "div",
       { className: "bt-connector-form-row" },
+      setup?.appUrl ? (0, import_react30.createElement)("button", { type: "button", className: "bt-connector-link", onClick: () => openPage(setup.appUrl) }, t("Open app settings")) : (0, import_react30.createElement)("span", { className: "bt-connector-wait" }),
       (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => void run2(actions.connectorCancel(connector.id)) }, t("Cancel")),
       (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: clientId.trim() === "", onClick: () => void run2(actions.connectorClient(connector.id, clientId.trim(), clientSecret.trim() || void 0)) }, t("Continue"))
     )
@@ -27321,14 +27336,16 @@ function ConnectorRow({ connector, actions }) {
   };
   const button = (label, onClick) => (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick }, label);
   let actionsNode = null;
-  if (pending || form) actionsNode = null;
+  if (pending || form || connector.state === "needs-client") actionsNode = null;
   else if (connector.state === "needs-sign-in") actionsNode = [button(t("Sign in again"), signIn), button(t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)))];
   else if (connector.state === "error") actionsNode = [button(t("Try again"), () => void run2(actions.connectorRetry(connector.id))), button(connector.custom ? t("Remove") : t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)))];
   else if (on) actionsNode = button(connector.custom ? t("Remove") : t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)));
   else {
     actionsNode = [
       connector.auth?.kind === "oauth" && connector.auth.token === true && connector.auth.client?.id ? (0, import_react30.createElement)("button", { key: "token", type: "button", className: "bt-connector-link", disabled: busy, onClick: () => setForm("token") }, t("Use a token instead")) : null,
-      (0, import_react30.createElement)("button", { key: "connect", type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: connect }, busy ? t("Connecting…") : t("Connect"))
+      (0, import_react30.createElement)("button", { key: "connect", type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: connect }, busy ? t("Connecting…") : t("Connect")),
+      // An added server that has no sign-in token yet still needs a way to be removed.
+      connector.custom ? (0, import_react30.createElement)("button", { key: "remove", type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => void run2(actions.connectorDisconnect(connector.id)) }, t("Remove")) : null
     ];
   }
   return (0, import_react30.createElement)(
@@ -27584,6 +27601,7 @@ function AddMenu({ actions, run: run2 }) {
   const [kind, setKind] = (0, import_react30.useState)(null);
   const [name, setName] = (0, import_react30.useState)("");
   const [url, setUrl] = (0, import_react30.useState)("");
+  const [oauth, setOauth] = (0, import_react30.useState)(false);
   const [command, setCommand] = (0, import_react30.useState)("");
   const [found, setFound] = (0, import_react30.useState)(null);
   const [picked, setPicked] = (0, import_react30.useState)([]);
@@ -27593,12 +27611,14 @@ function AddMenu({ actions, run: run2 }) {
     setKind(null);
     setName("");
     setUrl("");
+    setOauth(false);
     setCommand("");
     setFound(null);
     setPicked([]);
   };
   const choose = (next) => {
     setKind(next);
+    if (next !== "url") setOauth(false);
     if (next === "import" && found === null) void Promise.resolve(actions.connectorImportScan()).then((list) => setFound(Array.isArray(list) ? list : list?.items ?? []), () => setFound([]));
   };
   const key = (item) => `${item.source}:${item.name}`;
@@ -27638,13 +27658,15 @@ function AddMenu({ actions, run: run2 }) {
         (0, import_react30.createElement)(Switch, { label: item.name, on: picked.some((p) => key(p) === key(item)), onChange: (on) => setPicked((list) => on ? [...list, { source: item.source, name: item.name }] : list.filter((p) => key(p) !== key(item))) })
       ))) : [
         (0, import_react30.createElement)("input", { key: "name", className: "bt-input", "aria-label": t("Name"), placeholder: t("Name"), value: name, onChange: (e) => setName(e.target.value) }),
-        kind === "url" ? (0, import_react30.createElement)("input", { key: "url", className: "bt-input", "aria-label": t("Server address"), placeholder: "https://…", value: url, spellCheck: false, onChange: (e) => setUrl(e.target.value) }) : (0, import_react30.createElement)("input", { key: "cmd", className: "bt-input", "aria-label": t("Command"), placeholder: t("Command, e.g. npx -y some-mcp"), value: command, spellCheck: false, onChange: (e) => setCommand(e.target.value) })
+        kind === "url" ? (0, import_react30.createElement)("input", { key: "url", className: "bt-input", "aria-label": t("Server address"), placeholder: "https://…", value: url, spellCheck: false, onChange: (e) => setUrl(e.target.value) }) : (0, import_react30.createElement)("input", { key: "cmd", className: "bt-input", "aria-label": t("Command"), placeholder: t("Command, e.g. npx -y some-mcp"), value: command, spellCheck: false, onChange: (e) => setCommand(e.target.value) }),
+        // A command has nowhere to send a browser sign-in; only an address offers it.
+        kind === "url" ? (0, import_react30.createElement)(SwitchRow, { key: "oauth", label: t("Sign in"), on: oauth, onChange: setOauth }) : null
       ],
       (0, import_react30.createElement)(
         "div",
         { className: "bt-secret-row-actions" },
         (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: reset }, t("Cancel")),
-        kind === "import" ? (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: picked.length === 0, onClick: () => void run2(actions.connectorImport(picked), reset) }, t("Import {count}", { count: picked.length })) : (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: !ready, onClick: () => void run2(kind === "url" ? actions.connectorAdd({ name: name.trim(), url: url.trim() }) : actions.connectorAdd({ name: name.trim(), command: command.trim() }), reset) }, t("Add"))
+        kind === "import" ? (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: picked.length === 0, onClick: () => void run2(actions.connectorImport(picked), reset) }, t("Import {count}", { count: picked.length })) : (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: !ready, onClick: () => void run2(kind === "url" ? actions.connectorAdd({ name: name.trim(), url: url.trim(), ...oauth ? { oauth: true } : {} }) : actions.connectorAdd({ name: name.trim(), command: command.trim() }), reset) }, t("Add"))
       )
     )
   );
@@ -27914,6 +27936,7 @@ function MailDock({ sessionId, useRoster, useCards, useHeldCards, actions }) {
   return (0, import_react30.createElement)("div", { className: "bt-q-dock bt-secret-dock" }, waiting.map((request) => (0, import_react30.createElement)(MailSendCard, { key: request.id, sessionId, bot, request, roster, actions })));
 }
 var CONNECTOR_CSS = `
+.bt-connector-form .bt-set-row{padding:0}
 .bt-connector-mono{display:inline-flex;width:20px;height:20px;border-radius:6px;align-items:center;justify-content:center;background:var(--bt-accent);color:var(--bt-card);font-size:12px;font-weight:600;filter:hue-rotate(calc(var(--bt-hue,0)*1deg))}
 .bt-connector-name{display:inline-flex;align-items:center;gap:6px}
 .bt-connector-search{display:flex;flex-direction:column;gap:8px;padding:12px}
@@ -33012,27 +33035,35 @@ function titleOf2(range, bucket) {
   if (bucket.end && (new Date(bucket.start).getUTCDate() !== 1 || new Date(bucket.end).getUTCDate() !== 1)) return spanText(dayKey(bucket.start), dayKey(bucket.end - DAY_MS));
   return dates({ year: "numeric", month: "long" }).format(bucket.start);
 }
-function useTween(value) {
-  const [shown, setShown] = (0, import_react43.useState)(0);
-  const from = (0, import_react43.useRef)(0);
-  (0, import_react43.useEffect)(() => {
-    if (reducedMotion() || typeof requestAnimationFrame !== "function") {
+function useTween(value, rangeKey) {
+  const instant = reducedMotion() || typeof requestAnimationFrame !== "function";
+  const [shown, setShown] = (0, import_react43.useState)(() => instant ? value : 0);
+  const from = (0, import_react43.useRef)(instant ? value : 0);
+  const key = (0, import_react43.useRef)(rangeKey);
+  (0, import_react43.useLayoutEffect)(() => {
+    if (key.current !== rangeKey || reducedMotion() || typeof requestAnimationFrame !== "function" || from.current === value) {
+      key.current = rangeKey;
       from.current = value;
       setShown(value);
       return void 0;
     }
     const begin = from.current;
     const started = performance.now();
+    let active = true;
     let frame2;
     const step = (now) => {
-      const progress = Math.min(1, (now - started) / 650);
+      if (!active) return;
+      const progress = Math.min(1, Math.max(0, (now - started) / 650));
       from.current = begin + (value - begin) * (1 - (1 - progress) ** 3);
       setShown(from.current);
       if (progress < 1) frame2 = requestAnimationFrame(step);
     };
     frame2 = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame2);
-  }, [value]);
+    return () => {
+      active = false;
+      cancelAnimationFrame(frame2);
+    };
+  }, [value, rangeKey]);
   return shown;
 }
 var glyphBox = (size, icon2) => (0, import_react43.createElement)("span", { className: "bt-us-glyph", style: { width: size, height: size } }, (0, import_react43.createElement)(icon2));
@@ -33094,7 +33125,8 @@ ${names}`, { box: boxRef });
   );
 }
 function Stats({ range, total, previous }) {
-  const shown = useTween(total.total);
+  const rangeKey = `${range.id}:${range.from ?? ""}:${range.to ?? ""}`;
+  const shown = useTween(total.total, rangeKey);
   const change = previous > 0 ? Math.round((total.total - previous) / previous * 100) : null;
   const cell = (label, value) => (0, import_react43.createElement)("div", { className: "bt-us-stat" }, (0, import_react43.createElement)("span", { className: "bt-us-stat-label" }, label), (0, import_react43.createElement)("span", { className: "bt-us-stat-value" }, value));
   return (0, import_react43.createElement)(
@@ -33103,18 +33135,17 @@ function Stats({ range, total, previous }) {
     (0, import_react43.createElement)(
       "div",
       { className: "bt-us-stat bt-us-stat-main" },
-      (0, import_react43.createElement)("span", { className: "bt-us-stat-label" }, lastText(range)),
       (0, import_react43.createElement)(
-        "span",
-        { className: "bt-us-stat-value" },
-        compact(shown),
-        (0, import_react43.createElement)("small", null, t("tokens")),
+        "div",
+        { className: "bt-us-stat-head" },
+        (0, import_react43.createElement)("span", { className: "bt-us-stat-label" }, lastText(range)),
         change === null ? null : (0, import_react43.createElement)(
           "span",
           { className: "bt-us-delta", title: compareText(range) },
           `${change >= 0 ? "↑" : "↓"} ${Math.abs(change)}%`
         )
-      )
+      ),
+      (0, import_react43.createElement)("span", { className: "bt-us-stat-value" }, compact(shown), (0, import_react43.createElement)("small", null, t("tokens")))
     ),
     cell(t("Cache hit rate"), `${hitRate(total)}%`),
     cell(t("Output"), compact(total.output)),
@@ -33727,11 +33758,12 @@ var USAGE_CSS = `
 .bt-us-stats{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;border-radius:16px;border:1px solid var(--bt-line);background:var(--bt-card);animation:bt-us-in .45s var(--bt-us-ease) backwards}
 .bt-us-stat{display:flex;flex-direction:column;justify-content:flex-end;gap:6px;min-width:0;padding:16px 18px}
 .bt-us-stat+.bt-us-stat{border-left:1px solid var(--bt-line)}
-.bt-us-stat-label{overflow:hidden;font-size:12px;line-height:16px;color:var(--bt-ink-3);white-space:nowrap;text-overflow:ellipsis}
+.bt-us-stat-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:20px}
+.bt-us-stat-label{min-width:0;overflow:hidden;font-size:12px;line-height:16px;color:var(--bt-ink-3);white-space:nowrap;text-overflow:ellipsis}
 .bt-us-stat-value{display:flex;align-items:baseline;gap:6px;min-width:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bt-us-stat-main .bt-us-stat-value{font-size:34px;line-height:40px;letter-spacing:-.025em}
 .bt-us-stat-value small{font-size:13px;font-weight:400;letter-spacing:0;color:var(--bt-ink-3)}
-.bt-us-delta{align-self:center;margin-left:2px;padding:0 8px;border-radius:999px;background:var(--bt-tag-bg);color:var(--bt-ink-2);font-size:11px;line-height:20px;font-weight:500;letter-spacing:0}
+.bt-us-delta{flex:none;max-width:60%;overflow:hidden;padding:0 8px;border-radius:999px;background:var(--bt-tag-bg);color:var(--bt-ink-2);font-size:11px;line-height:20px;font-weight:500;letter-spacing:0;font-variant-numeric:tabular-nums;white-space:nowrap;text-overflow:ellipsis}
 .bt-us-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px 18px 16px;border-radius:16px;border:1px solid var(--bt-line);background:var(--bt-card);animation:bt-us-in .45s var(--bt-us-ease) backwards;animation-delay:calc(var(--i,0) * 45ms)}
 .bt-us-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px}
 .bt-us-card-head h3{display:flex;align-items:baseline;gap:8px;min-width:0;margin:0;font-size:13px;line-height:18px;font-weight:600}
@@ -34065,7 +34097,11 @@ function ConnectorsPage({ roster, actions }) {
     const featured = FEATURED.map((id) => apps.find((app) => app.id === id)).filter(Boolean);
     body = [
       (0, import_react44.createElement)(Section, { key: "featured", place: "featured", signInPlaces, title: t("Recommended"), apps: featured, actions, open }),
-      ...CATEGORIES.map(([id, label]) => (0, import_react44.createElement)(Section, { key: id, place: id, signInPlaces, title: t(label), apps: inCategory(id), actions, open, onAll: () => setCategory(id) }))
+      ...CATEGORIES.map(([id, label]) => (0, import_react44.createElement)(Section, { key: id, place: id, signInPlaces, title: t(label), apps: inCategory(id), actions, open, onAll: () => setCategory(id) })),
+      // An added server has no catalog category. Without its own section a new OAuth
+      // entry, which stays off until its sign-in finishes, would be on neither the
+      // default page nor Connected, leaving Connect and Remove reachable by search only.
+      (0, import_react44.createElement)(Section, { key: "custom", place: "custom", signInPlaces, title: t("Other MCP server"), apps: inCategory("custom"), actions, open, onAll: () => setCategory("custom") })
     ];
   }
   return (0, import_react44.createElement)(

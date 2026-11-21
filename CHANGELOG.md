@@ -6,6 +6,16 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### Upstream changes adopted on 2026-11-21
+
+The [sync record](upstream-changelog.md#2026-11-21--macos-插件同步) lists the source pull requests and deferred changes.
+
+- WeChat passes quoted messages to Bots. QQ retries only undelivered chunks, reports platform errors in successful HTTP responses, and formats tables without outer pipes. Discord conversations prefer channel names.
+- Custom remote MCP servers support optional OAuth sign-in. The setup guide for custom clients is easier to follow.
+- Web search can use DeepSeek Search on the active route's own HTTPS origin and retain provider summaries for the model.
+- Local agents use the context window reported by their CLI and retain upstream error details. The launcher filters host-only variables regardless of case. Provider-owned Qoder model selections survive restart.
+- The usage page updates totals when switching ranges. Chat width on DSH 0.2.2-rc.3, mention-menu backgrounds, dark-theme model options and the send button hover are corrected.
+
 ### Upstream changes adopted on 2026-11-20
 
 The [sync record](upstream-changelog.md#已合入本地工作区) lists the source pull requests for these changes.
