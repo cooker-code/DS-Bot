@@ -40437,6 +40437,10 @@ var TASK_CSS = `
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}
 .bt-project-detail .bt-project-markdown ol{padding-inline-start:3.5em;list-style-position:outside}
 .bt-project-markdown img,.bt-task-image img{max-width:100%;height:auto}
+.bt-result-items{padding-inline-start:2.2em;list-style:decimal outside;margin:6px 0}
+.bt-result-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px}
+.bt-result-gallery .bt-task-image-open img{width:100%;max-height:140px;object-fit:contain}
+.bt-result-document{cursor:pointer;color:var(--bt-accent);text-decoration:underline;margin-top:8px}
 .bt-task-image{display:grid;justify-items:start;gap:4px;margin-top:8px}
 .bt-task-image img{display:block;border-radius:8px}
 .bt-task-image-open{display:block;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in}
@@ -43607,7 +43611,7 @@ async function stageTaskImage(file) {
   const { id } = await call("stage-image", { name: file.name, mediaType: file.type, data });
   return id;
 }
-function TaskImage({ roomId, taskId, image, file, label, onRemove, disabled }) {
+function TaskImage({ roomId, taskId, image, receiptFile, file, label, onRemove, disabled }) {
   const [url, setUrl] = (0, import_react73.useState)();
   const [failed, setFailed] = (0, import_react73.useState)(false);
   const [open, setOpen] = (0, import_react73.useState)(false);
@@ -43621,13 +43625,13 @@ function TaskImage({ roomId, taskId, image, file, label, onRemove, disabled }) {
       return () => URL.revokeObjectURL(local);
     }
     const abort = new AbortController();
-    call("project-task-detail", { roomId, taskId, imageId: id }, abort.signal).then((value) => {
+    call("project-task-detail", { roomId, taskId, ...receiptFile ? { receiptFile } : { imageId: id } }, abort.signal).then((value) => {
       if (!abort.signal.aborted) setUrl(value);
     }, () => {
       if (!abort.signal.aborted) setFailed(true);
     });
     return () => abort.abort();
-  }, [roomId, taskId, id, file]);
+  }, [roomId, taskId, id, receiptFile, file]);
   return (0, import_react73.createElement)(
     "div",
     { className: "bt-task-image" },
@@ -43672,39 +43676,43 @@ function ResultDocument({ roomId, taskId, file }) {
   const [open, setOpen] = (0, import_react74.useState)(false);
   const [text, setText] = (0, import_react74.useState)(null);
   const [error, setError] = (0, import_react74.useState)("");
-  const documentId = file.ref.attachmentId;
+  const documentId = file.ref?.attachmentId;
   (0, import_react74.useEffect)(() => {
     if (!open || text !== null) return;
     const abort = new AbortController();
     setError("");
-    call("project-task-detail", { roomId, taskId, documentId }, abort.signal).then((value) => {
+    call("project-task-detail", { roomId, taskId, ...file.receiptFile ? { receiptFile: file.receiptFile } : { documentId } }, abort.signal).then((value) => {
       if (!abort.signal.aborted) setText(value);
     }, (failure) => {
       if (!abort.signal.aborted) setError(failure.message);
     });
     return () => abort.abort();
-  }, [open, text, roomId, taskId, documentId]);
+  }, [open, text, roomId, taskId, documentId, file.receiptFile]);
   return (0, import_react74.createElement)(
     "details",
     { onToggle: (event) => setOpen(event.currentTarget.open) },
-    (0, import_react74.createElement)("summary", null, file.name),
+    (0, import_react74.createElement)("summary", { className: "bt-result-document" }, file.name),
     open && (error ? (0, import_react74.createElement)("p", { role: "alert" }, error) : text === null ? (0, import_react74.createElement)("p", { role: "status" }, t("Loading…")) : (0, import_react74.createElement)("div", { className: "bt-project-markdown" }, (0, import_react74.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text, labels: mdLabels(), variant: "compact" })))
   );
 }
 function TaskResults({ roomId, taskId, detail }) {
-  const entries2 = (detail.rounds ?? []).flatMap((round, index) => {
-    const binding = round.planNode;
-    const feedback = binding?.feedback;
-    if (!round.result && !feedback) return [];
-    const node = detail.plans?.find((plan) => plan.version === binding?.version)?.nodes.find((node2) => node2.no === binding?.node);
-    const title = [t("Round {round}", { round: index + 1 }), node?.title, feedback && t("Returned for changes")].filter(Boolean).join(" · ");
-    return (0, import_react74.createElement)(
-      MarkdownField,
-      { key: index, title, value: [round.result, feedback, feedback && binding.block?.evidence].filter(Boolean).join("\n\n") },
-      (round.resultFiles ?? []).map((file) => file.kind === "image" ? (0, import_react74.createElement)(TaskImage, { key: file.path, roomId, taskId, image: file.ref, label: file.name }) : (0, import_react74.createElement)(ResultDocument, { key: file.path + file.ref.attachmentId, roomId, taskId, file }))
-    );
-  }).reverse();
-  return (0, import_react74.createElement)(MarkdownField, { title: t("Acceptance results"), placeholder: entries2.length ? null : t("No results submitted yet") }, entries2);
+  const groups = detail.results ?? [];
+  const items = [...new Set(groups.flatMap((group) => group.items))];
+  const files = groups.flatMap((group) => group.files);
+  return (0, import_react74.createElement)(
+    MarkdownField,
+    { title: t("Acceptance results"), placeholder: groups.length ? null : t("No results submitted yet") },
+    items.length ? (0, import_react74.createElement)("ol", { className: "bt-result-items" }, items.map((item) => (0, import_react74.createElement)("li", { key: item }, item))) : null,
+    files.filter((file) => file.kind === "markdown").map((file) => (0, import_react74.createElement)(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file })),
+    (0, import_react74.createElement)("div", { className: "bt-result-gallery" }, files.filter((file) => file.kind === "image").map((file) => (0, import_react74.createElement)(TaskImage, {
+      key: file.receiptFile ?? file.ref.attachmentId + file.name,
+      roomId,
+      taskId,
+      image: file.ref,
+      receiptFile: file.receiptFile,
+      label: file.name
+    })))
+  );
 }
 
 // src/client/task-workspace.js
@@ -43954,9 +43962,15 @@ function ValidationProgress({ detail }) {
   return nodes.filter((node) => node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && node.round && node.status !== "omitted").map((node) => {
     const round = detail.rounds?.[node.round - 1];
     if (!round) return null;
+    if (round.result) return (0, import_react76.createElement)(
+      "details",
+      { key: node.round },
+      (0, import_react76.createElement)("summary", null, t("Test receipt submitted")),
+      (0, import_react76.createElement)("p", null, round.result)
+    );
     const progress = round.validation;
     const checkpoint = round.planNode;
-    if (!progress && !checkpoint?.completed && !round.result) return null;
+    if (!progress && !checkpoint?.completed) return null;
     return (0, import_react76.createElement)(
       "section",
       { key: node.round, "aria-label": t("Validation progress") },
@@ -43971,11 +43985,10 @@ function ValidationProgress({ detail }) {
         check.evidence
       ))) : null,
       progress?.checksComplete && !progress.cleanup && !checkpoint?.block ? (0, import_react76.createElement)("p", null, t("Checks passed · awaiting cleanup")) : null,
-      progress?.cleanup ? (0, import_react76.createElement)("p", null, round.submittedAt ? t("Test receipt submitted") + " · " : "", t("Cleanup: {result}", { result: progress.cleanup })) : null,
+      progress?.cleanup ? (0, import_react76.createElement)("p", null, t("Cleanup: {result}", { result: progress.cleanup })) : null,
       progress ? (0, import_react76.createElement)("p", null, t("Candidate"), " · ", progress.candidates.join(", ")) : null,
       !progress && checkpoint?.completed ? (0, import_react76.createElement)("p", null, checkpoint.completed) : null,
-      !progress && !round.result && checkpoint?.remaining ? (0, import_react76.createElement)("p", null, checkpoint.remaining) : null,
-      !progress && round.result ? (0, import_react76.createElement)("details", null, (0, import_react76.createElement)("summary", null, t("Test receipt submitted")), (0, import_react76.createElement)("p", null, round.result)) : null
+      !progress && checkpoint?.remaining ? (0, import_react76.createElement)("p", null, checkpoint.remaining) : null
     );
   });
 }
@@ -43990,7 +44003,7 @@ function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack
     const abort = new AbortController();
     activeRead.current = abort;
     setError("");
-    call("project-task-detail", { roomId: room2.id, taskId }, abort.signal).then((value) => {
+    call("project-task-detail", { roomId: room2.id, taskId, withResults: true }, abort.signal).then((value) => {
       if (!abort.signal.aborted) setDetail(value);
     }, (failure) => {
       if (!abort.signal.aborted) setError(failure.message);

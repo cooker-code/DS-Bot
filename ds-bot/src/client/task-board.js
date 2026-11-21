@@ -457,6 +457,10 @@ export const TASK_CSS = `
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}
 .bt-project-detail .bt-project-markdown ol{padding-inline-start:3.5em;list-style-position:outside}
 .bt-project-markdown img,.bt-task-image img{max-width:100%;height:auto}
+.bt-result-items{padding-inline-start:2.2em;list-style:decimal outside;margin:6px 0}
+.bt-result-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px}
+.bt-result-gallery .bt-task-image-open img{width:100%;max-height:140px;object-fit:contain}
+.bt-result-document{cursor:pointer;color:var(--bt-accent);text-decoration:underline;margin-top:8px}
 .bt-task-image{display:grid;justify-items:start;gap:4px;margin-top:8px}
 .bt-task-image img{display:block;border-radius:8px}
 .bt-task-image-open{display:block;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in}
