@@ -15346,7 +15346,7 @@ function countCards(state, sessionId, callIds, delta) {
 }
 
 // src/client/team-actions.js
-function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
+function teamActions({ call: call2, after, partFor, mainView, show: show2, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
   let pastes = 0;
   const pasteState = (state, sessionId, blocks) => ({ ...state, paste: { ...state.paste, [sessionId]: blocks } });
@@ -15360,9 +15360,12 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
   return {
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
     openMemberSession: (roomId, botId, sessionId) => {
-      ui2.set((state) => ({ ...state, memberChat: { roomId, botId, sessionId }, details: botId, view: "details", tab: null, renaming: false, panelYield: false, leftDrawer: false }));
+      ui2.set((state) => ({ ...state, memberChat: { roomId, botId, sessionId, returnSession: state.memberChat?.returnSession ?? mainView?.() }, details: botId, view: "details", tab: null, renaming: false, panelYield: false, leftDrawer: false }));
     },
-    closeMemberSession: (returnSession) => ui2.set((state) => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details })),
+    closeMemberSession: (returnSession) => {
+      ui2.set((state) => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details }));
+      if (returnSession && mainView?.() !== returnSession) show2?.(returnSession);
+    },
     openNewChat: (mode, sectionId = null) => {
       ui2.set((state) => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false }));
     },
@@ -17007,7 +17010,8 @@ body[data-ds-dark-theme] .bt-q.bt-q-settled[data-expandable]:not([data-open]):ho
 .bt-pane{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:var(--bt-font)}
 .bt-dialog{flex:1;display:flex;flex-direction:column;min-width:0}
 .bt-panel:not([data-overlay]):not([data-leaving]){anchor-name:--bt-member-panel}
-.bt-member-pane{right:anchor(--bt-member-panel left,0px);z-index:39}
+[data-rightbar-col]{anchor-name:--bt-native-rightbar}
+.bt-member-pane{right:max(anchor(--bt-member-panel left,0px),anchor(--bt-native-rightbar left,0px));z-index:39}
 .bt-member-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 .bt-member-conversation [data-composer-seat]{display:none}
 .bt-dialog .bt-head{height:62px}
@@ -44606,7 +44610,8 @@ function DetailsDrawer({ sessionId, viewingMember, memberSessionId, startRenamin
       key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
       icon: entry.icon ?? PlugIcon,
       label: entry.title(),
-      onPick: () => actions.openConversationTab(entry.kind, room2?.id ?? sessionId)
+      disabled: viewingMember && !memberSessionId,
+      onPick: () => actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room2?.sessionId ?? part)
     });
   }
   const top = (0, import_react77.createElement)(
@@ -44803,6 +44808,7 @@ function PanelMenu({ items, className, "aria-label": label }) {
         type: "button",
         role: "menuitem",
         className: "bt-pmenu-item",
+        disabled: item.disabled,
         onClick: () => {
           setOpen(false);
           item.onPick();
@@ -45565,10 +45571,15 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
   const frameSnap = useFrame ? useFrame((value) => value) : { viewport: window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0 };
   const pref = useSidebarPref ? useSidebarPref((value) => value) : "open";
   const current = useSessions((list) => Object.values(list.byId).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)?.id ?? null);
+  const memberRoom = roster.roomsById[ui2.memberChat?.roomId];
+  const memberBot = roster.byId[ui2.memberChat?.botId];
+  const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? [];
+  const member = ui2.memberChat?.sessionId ? parts.find((part) => part.id === ui2.memberChat.sessionId) : parts.find((part) => part.current);
   const previous = (0, import_react80.useRef)(current);
   (0, import_react80.useEffect)(() => {
     if (previous.current === current) return;
     previous.current = current;
+    if (member && current === member.id) return;
     if (ui2.memberChat) actions.closeMemberSession();
     if (current) actions.followPanel?.(current);
   }, [current]);
@@ -45591,10 +45602,6 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
     return () => clearTimeout(timer);
   }, [ui2.details, ui2.view, ui2.renaming, ui2.tab, shown === null]);
   const pane = shown ?? kept;
-  const memberRoom = roster.roomsById[ui2.memberChat?.roomId];
-  const memberBot = roster.byId[ui2.memberChat?.botId];
-  const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? [];
-  const member = ui2.memberChat?.sessionId ? parts.find((part) => part.id === ui2.memberChat.sessionId) : parts.find((part) => part.current);
   const listedMember = useSessions((list) => !!member && !!list.byId[member.id]);
   const memberRunning = useSessionStatus((map) => member && (map.get(member.id)?.running ?? roster.partsRunning?.[member.id]) === true);
   const shellHeld = useSettingsShellHeld ? useSettingsShellHeld((value) => value) : false;
@@ -45644,7 +45651,7 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
         member,
         running: memberRunning,
         paneLeft: layout.column,
-        returnSession: current,
+        returnSession: ui2.memberChat.returnSession ?? current,
         actions
       }) : null
     ), document.body),
@@ -48142,7 +48149,7 @@ function apply(ctx) {
     }
   };
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
+    ...teamActions({ call, after, partFor, mainView, show: show2, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
     // The files a group row names open DSH's own review tab for that turn. The tab reads
     // the changes of the Session the shell shows, so that Session is opened first; the same
     // call then retries until its right column is mounted. This jump is the one place a
@@ -48187,6 +48194,7 @@ function apply(ctx) {
       setPlain(false);
       const target = partFor(id);
       show2(target);
+      if (roster.getSnapshot().roomsById[id]) actions.showDetails(target);
     },
     // The conversation replacements withdraw for a plain Session; set the surface
     // before the navigation so the Bot skin never flashes.
@@ -48513,11 +48521,15 @@ function apply(ctx) {
       };
     }, "ds-bot: conversation sidebar guide");
   });
-  actions.openConversationTab = async (kind, conversationId) => {
+  actions.openConversationTab = async (kind, target) => {
     try {
       const sidebar = ctx.get("sidebarRight");
-      const target = partFor(conversationId);
+      if (!target) return;
+      const selection = ui2.getSnapshot().memberChat;
       if (sidebar.mounted.getSnapshot() !== target) {
+        if (!ctx.sessions.list.getSnapshot().byId[target]) await ctx.sessions.refresh();
+        if (ui2.getSnapshot().memberChat !== selection) return;
+        if (!ctx.sessions.list.getSnapshot().byId[target]) throw new Error(t("The conversation workspace is not open yet. Try again."));
         await new Promise((resolve2, reject) => {
           const finish = (error) => {
             off();
@@ -48531,7 +48543,7 @@ function apply(ctx) {
           const off = sidebar.mounted.subscribe(check);
           const timer = setTimeout(() => finish(new Error(t("The conversation workspace is not open yet. Try again."))), 5e3);
           try {
-            actions.openSession(conversationId);
+            show2(target);
             check();
           } catch (error) {
             finish(error);
@@ -48539,6 +48551,7 @@ function apply(ctx) {
         });
         await new Promise((resolve2) => requestAnimationFrame(resolve2));
       }
+      if (ui2.getSnapshot().memberChat !== selection) return;
       if (sidebar.mounted.getSnapshot() !== target) throw new Error(t("The conversation workspace is not open yet. Try again."));
       sidebar.openTab(kind);
       actions.closePanel();

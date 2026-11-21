@@ -101,7 +101,8 @@ const bot = { id: 'a', name: 'Chief', sessionId: 'a' }
 const room = { id: 'g', name: 'Writers', named: true, members: ['a'] }
 const roster = { byId: { a: bot }, roomsById: { g: room }, bots: [], exchangeTurns: {}, questions: {}, memory: false }
 const hook = value => select => select(value)
-const drawer = (sessionId, actions, liveRoster = roster) => DetailsDrawer({
+const drawer = (sessionId, actions, liveRoster = roster, options = {}) => DetailsDrawer({
+  ...options,
   sessionId, roster: liveRoster, actions,
   useSessions: hook({ byId: {} }),
   useSessionStatus: hook(new Map()),
@@ -445,4 +446,21 @@ test('member details highlight the viewed segment and let the user return to the
   assert.equal(Boolean(personal.props.disabled), false)
   await personal.props.onClick()
   assert.deepEqual(calls, ['a'])
+})
+
+test('context uses the visible group part or private chat without substituting the Bot identity', () => {
+  const calls = []
+  const guide = [{ providerId: 'context', kind: 'ctx', id: 'inspect', title: () => 'Context' }]
+  const actions = {
+    sidebarGuide: { getSnapshot: () => guide, subscribe: () => () => {} },
+    openConversationTab: (...args) => calls.push(args),
+  }
+  const key = JSON.stringify(['context', 'inspect'])
+  for (const memberSessionId of ['group-2', 'group-1']) {
+    menuItem(drawer('a', actions, roster, { viewingMember: true, memberSessionId }), key).onPick()
+  }
+  const privateRoster = { ...roster, byId: { a: { ...bot, sessionId: 'private-3' } } }
+  menuItem(drawer('a', actions, privateRoster), key).onPick()
+  assert.deepEqual(calls, [['ctx', 'group-2'], ['ctx', 'group-1'], ['ctx', 'private-3']])
+  assert.equal(menuItem(drawer('a', actions, roster, { viewingMember: true }), key).disabled, true)
 })

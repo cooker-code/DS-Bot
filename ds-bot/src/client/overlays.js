@@ -26,12 +26,17 @@ export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSes
   const frameSnap = useFrame ? useFrame(value => value) : { viewport: window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0 }
   const pref = useSidebarPref ? useSidebarPref(value => value) : 'open'
   const current = useSessions(list => Object.values(list.byId).find(session => (session?.retainedBy?.mainView ?? 0) > 0)?.id ?? null)
+  const memberRoom = roster.roomsById[ui.memberChat?.roomId]
+  const memberBot = roster.byId[ui.memberChat?.botId]
+  const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? []
+  const member = ui.memberChat?.sessionId ? parts.find(part => part.id === ui.memberChat.sessionId) : parts.find(part => part.current)
   // An open panel follows the conversation in the main view. Only a change of the
   // main view moves it, so opening details for another id (Rename) is not undone.
   const previous = useRef(current)
   useEffect(() => {
     if (previous.current === current) return
     previous.current = current
+    if (member && current === member.id) return
     if (ui.memberChat) actions.closeMemberSession()
     if (current) actions.followPanel?.(current)
   }, [current])
@@ -52,10 +57,6 @@ export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSes
     return () => clearTimeout(timer)
   }, [ui.details, ui.view, ui.renaming, ui.tab, shown === null])
   const pane = shown ?? kept
-  const memberRoom = roster.roomsById[ui.memberChat?.roomId]
-  const memberBot = roster.byId[ui.memberChat?.botId]
-  const parts = memberRoom?.memberSessions?.[memberBot?.id] ?? []
-  const member = ui.memberChat?.sessionId ? parts.find(part => part.id === ui.memberChat.sessionId) : parts.find(part => part.current)
   const listedMember = useSessions(list => !!member && !!list.byId[member.id])
   const memberRunning = useSessionStatus(map => member && (map.get(member.id)?.running ?? roster.partsRunning?.[member.id]) === true)
   // The settings shell draws the dialog while DS Bot holds the seat.
@@ -83,7 +84,7 @@ export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSes
         useActivity, useWork, useComputer, useBrowserTabs, useBrowserPages }) : null,
       ui.memberChat ? h(MemberHistory, { key: JSON.stringify([ui.memberChat.roomId, ui.memberChat.botId, member?.id]),
         listed: listedMember, SessionProvider, renderSlot, room: memberRoom, bot: memberBot, member,
-        running: memberRunning, paneLeft: layout.column, returnSession: current, actions }) : null), document.body),
+        running: memberRunning, paneLeft: layout.column, returnSession: ui.memberChat.returnSession ?? current, actions }) : null), document.body),
     ui.newChat ? createPortal(h(NewChat, { key: `${ui.newChat}:${ui.newChatSection ?? ''}`, mode: ui.newChat, sectionId: ui.newChatSection ?? null, paneLeft: layout.column, roster, actions }), document.body) : null,
     ui.palette ? createPortal(h(CommandPalette, { key: ui.palette.token, start: ui.palette.query, token: ui.palette.token, roster, actions, useSessions }), document.body) : null,
     ui.groupArchive && roster.roomsById[ui.groupArchive.roomId] ? createPortal(h(DiscussionArchive, { key: ui.groupArchive.token,

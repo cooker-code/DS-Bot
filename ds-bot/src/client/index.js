@@ -572,7 +572,7 @@ export function apply(ctx) {
     }
   }
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
+    ...teamActions({ call, after, partFor, mainView, show, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     // The files a group row names open DSH's own review tab for that turn. The tab reads
     // the changes of the Session the shell shows, so that Session is opened first; the same
     // call then retries until its right column is mounted. This jump is the one place a
@@ -607,6 +607,7 @@ export function apply(ctx) {
       setPlain(false)
       const target = partFor(id)
       show(target)
+      if (roster.getSnapshot().roomsById[id]) actions.showDetails(target)
     },
     // The conversation replacements withdraw for a plain Session; set the surface
     // before the navigation so the Bot skin never flashes.
@@ -955,11 +956,15 @@ export function apply(ctx) {
       return () => { off(); sidebarGuide.set([]) }
     }, 'ds-bot: conversation sidebar guide')
   })
-  actions.openConversationTab = async (kind, conversationId) => {
+  actions.openConversationTab = async (kind, target) => {
     try {
       const sidebar = ctx.get('sidebarRight')
-      const target = partFor(conversationId)
+      if (!target) return
+      const selection = ui.getSnapshot().memberChat
       if (sidebar.mounted.getSnapshot() !== target) {
+        if (!ctx.sessions.list.getSnapshot().byId[target]) await ctx.sessions.refresh()
+        if (ui.getSnapshot().memberChat !== selection) return
+        if (!ctx.sessions.list.getSnapshot().byId[target]) throw new Error(t('The conversation workspace is not open yet. Try again.'))
         await new Promise((resolve, reject) => {
           const finish = error => {
             off()
@@ -972,11 +977,12 @@ export function apply(ctx) {
           }
           const off = sidebar.mounted.subscribe(check)
           const timer = setTimeout(() => finish(new Error(t('The conversation workspace is not open yet. Try again.'))), 5000)
-          try { actions.openSession(conversationId); check() } catch (error) { finish(error) }
+          try { show(target); check() } catch (error) { finish(error) }
         })
         // The sidebar publishes its Session before React commits that Session's pane.
         await new Promise(resolve => requestAnimationFrame(resolve))
       }
+      if (ui.getSnapshot().memberChat !== selection) return
       if (sidebar.mounted.getSnapshot() !== target) throw new Error(t('The conversation workspace is not open yet. Try again.'))
       sidebar.openTab(kind)
       actions.closePanel()

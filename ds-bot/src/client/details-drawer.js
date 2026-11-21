@@ -386,7 +386,8 @@ export function DetailsDrawer({ sessionId, viewingMember, memberSessionId, start
       key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
       icon: entry.icon ?? PlugIcon,
       label: entry.title(),
-      onPick: () => actions.openConversationTab(entry.kind, room?.id ?? sessionId),
+      disabled: viewingMember && !memberSessionId,
+      onPick: () => actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room?.sessionId ?? part),
     })
   }
   const top = h('div', { className: 'bt-drawer-top', 'data-move': side },

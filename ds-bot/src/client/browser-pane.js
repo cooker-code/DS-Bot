@@ -91,7 +91,7 @@ export function PanelMenu({ items, className, 'aria-label': label }) {
       items.map((item, index) => (item.sep
         ? h('span', { key: `sep-${index}`, className: 'bt-pmenu-sep', role: 'separator' })
         : h('button', {
-          key: item.key, type: 'button', role: 'menuitem', className: 'bt-pmenu-item',
+          key: item.key, type: 'button', role: 'menuitem', className: 'bt-pmenu-item', disabled: item.disabled,
           onClick: () => { setOpen(false); item.onPick() },
         }, h(item.icon, { size: 15 }), h('span', null, item.label))))) : null)
 }

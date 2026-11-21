@@ -5,7 +5,7 @@ import { noteClientError } from './diagnostics.js'
 // source), requests to the host, and the notes the transcript keeps. The shell around the
 // views adds navigation and its own panels. `after` reads the team again once a request
 // is done; `partFor` maps a Bot id, or any part of its chat, to its current part.
-export function teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }) {
+export function teamActions({ call, after, partFor, mainView, show, roster, ui, live, cards, heldCards, turnClock, panelFolded }) {
   // A memory is a Bot's or a group chat's; both are opened by id.
   const memoryOf = id => (roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id })
   // Cards of long pastes, numbered as they come; each waits for the shell's attachment.
@@ -25,9 +25,12 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
   return {
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
     openMemberSession: (roomId, botId, sessionId) => {
-      ui.set(state => ({ ...state, memberChat: { roomId, botId, sessionId }, details: botId, view: 'details', tab: null, renaming: false, panelYield: false, leftDrawer: false }))
+      ui.set(state => ({ ...state, memberChat: { roomId, botId, sessionId, returnSession: state.memberChat?.returnSession ?? mainView?.() }, details: botId, view: 'details', tab: null, renaming: false, panelYield: false, leftDrawer: false }))
     },
-    closeMemberSession: returnSession => ui.set(state => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details })),
+    closeMemberSession: returnSession => {
+      ui.set(state => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details }))
+      if (returnSession && mainView?.() !== returnSession) show?.(returnSession)
+    },
     openNewChat: (mode, sectionId = null) => { ui.set(state => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },
     // The token keeps a late exit timer from closing a palette opened again since.
