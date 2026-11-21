@@ -145,9 +145,9 @@ test('one capsule names who waits and who works, without the round\'s speaker, a
   assert.equal(dock('r1', { bots: {}, rooms: { r1: [{ botId: 'd', since: 1, speaking: true }] }, approvals: [] }), null)
 })
 
-test('a Bot\'s own chat shows the groups it is at work in, unless its own chat runs', () => {
+test('a Bot\'s own chat keeps group work out of the private composer', () => {
   const away = { bots: { a: { since: 1, roomId: 'r1', tool: 'pwsh' } }, rooms: { r1: [{ botId: 'a', since: 1, tool: 'pwsh' }], r2: [{ botId: 'a', since: 1 }] }, approvals: [] }
-  assert.deepEqual(plain(dock('a', away)), { label: 'in Ops · Running shell commands… +1', calls: [['session', 'r1']] })
+  assert.equal(dock('a', away), null)
   assert.equal(dock('a', { ...away, bots: { a: { since: 1 } } }), null)
   assert.equal(dock('b', away), null)
 })

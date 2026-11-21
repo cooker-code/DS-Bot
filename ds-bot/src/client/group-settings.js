@@ -137,7 +137,7 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
   const mode = shownMode(room, roster)
   const modeHint = ROOM_MODES.find(([id]) => id === mode)?.[2] ?? ''
   const update = patch => run(actions.updateRoom(room.id, patch))
-  const openBot = (id) => { actions.closeSettings(); actions.openSession(id) }
+  const openBot = (id) => { actions.closeSettings(); actions.openMemberSession(room.id, id) }
   const remove = () => {
     if (!confirming) { setConfirming(true); return }
     void Promise.resolve(run(actions.deleteRoom(room.id))).then((done) => { if (done) onDeleted?.() })

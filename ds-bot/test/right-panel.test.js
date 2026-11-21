@@ -400,7 +400,7 @@ test('one activity-sorted list names each private or group part by owner and num
     { id: 'data', name: 'Data', memberSessions: { a: [{ id: 'd-now', number: 1, current: true }] } },
   ]
   const rendered = sessions.type({ ...sessions.props, rooms, running: { 'd-now': true },
-    openMember: (member, label) => opened.push([member.id, label]),
+    actions: { openMemberSession: (...args) => opened.push(args) },
     useSessions: hook({ byId: Object.fromEntries(['a', 'g-old', 'g-now', 'd-now'].map((id, i) =>
       [id, { createdAt: 1000, updatedAt: 2000 + i }])) }) })
   assert.equal(named(rendered, 'section').length, 0)
@@ -416,6 +416,17 @@ test('one activity-sorted list names each private or group part by owner and num
   assert.match(textOf(rows[0]), /Running/)
   assert.doesNotMatch(textOf(rows[2]), /Current|Running/)
   for (const row of rows.slice(0, 3)) row.props.onClick()
-  assert.deepEqual(opened, [['d-now', 'Data-1'], ['g-now', 'Engineering-2'], ['g-old', 'Engineering-1']])
+  assert.deepEqual(opened, [['data', 'a', 'd-now'], ['eng', 'a', 'g-now'], ['eng', 'a', 'g-old']])
   assert.equal(rows[3].props.disabled, true)
+})
+
+test('a member in group details opens that group’s current member session', () => {
+  const calls = []
+  const actions = { openMemberSession: (...args) => calls.push(args) }
+  const [overview] = named(drawer('g-part2', actions, movedRoster()), 'GroupOverview')
+  const [section] = named(overview.type(overview.props), 'MembersSection')
+  const [row] = named(section.children, 'MemberRow')
+  const open = buttonsOf(row.type(row.props)).find(button => button.props.className === 'bt-member-open')
+  open.props.onClick()
+  assert.deepEqual(calls, [['g', 'a']])
 })
