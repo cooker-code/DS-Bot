@@ -40,9 +40,9 @@ const clipboardText = ref => '@' + JSON.parse(ref).title
 
 // Each occurrence occupies its own quotation, even in the middle of a sentence.
 // The group must only act on Bot mentions and routing IDs the user wrote outside it.
-function taskQuotation(task) {
+function taskQuotation(task, projectCard) {
   const lines = [t('Task details') + ' · ' + (task.title || t('Original request')),
-    [task.room, statusOf(task.status), ...(task.owners ?? []), task.id].join(' · ')]
+    [task.room, statusOf(task.status), ...(task.owners ?? []), projectCard ? '[task:' + task.id + ']' : task.id].join(' · ')]
   for (const [key, label] of [
     ['requirement', 'Requirement'], ['acceptance', 'Acceptance criteria'], ['branch', 'Working revision'],
     ['plan', task.version ? 'Plan v{version}' : 'Instructions'], ['progress', 'Progress'], ['reason', 'Details'], ['result', 'Results'],
@@ -68,7 +68,9 @@ export function taskMentionSource(roster, read = call) {
       clipboardText,
       async serialize(ref, signal) {
         const { sessionId, roomId, kind, id } = JSON.parse(ref)
-        return taskQuotation(await read('task-reference', { sessionId, roomId, kind, id }, signal))
+        const task = await read('task-reference', { sessionId, roomId, kind, id }, signal)
+        const groupCard = kind === 'project' && roster.getSnapshot().roomsById[sessionId]?.id === roomId
+        return taskQuotation(task, groupCard)
       },
     },
   }

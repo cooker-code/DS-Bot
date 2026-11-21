@@ -3066,6 +3066,35 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   await assert.rejects(project('ga', { action: 'plan' }), { code: 'TASK_ASSISTANT_INVALID' })
 })
 
+test('mentioning a blocked project card continues its intake and delegates only to its assistant', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  const intakeId = 'intake-' + cardA
+  const original = rt.logRoom(room, { who: 'User', intakeId, text: 'Implement the label', session: true })
+  room.projectInbox = [{ id: intakeId, seq: original.seq, title: 'Label', receivedAt: 1, status: 'accepted' }]
+  room.projectCards = { [cardA]: { id: cardA, title: 'Label', intakes: [intakeId], acceptance: 'Verified label',
+    rounds: [{ ownerId: 'b', plan: 'Implement', planNode: { version: 1, node: 1, inputs: [], block: { at: 1, cause: 'dependency', by: 'b', reason: 'Branch conflict', decisions: [] } } }],
+    plans: [{ version: 1, by: 'c', at: 1, nodes: [{ no: 1, title: 'Implement', ownerId: 'b', instructions: 'Implement', deliverable: 'Label', acceptance: 'Verified label', dependsOn: [] }] }] } }
+  const message = '> Task details · Label\n> Ops · Blocked · Writer · [task:' + cardA + ']\n> Requirement: @all implement the label\n\ntask 继续推进'
+  const group = host.round('continue-mention', host.say(message))
+  await until(() => group() !== undefined)
+  assert.equal(host.begin('ga').source.taskId, cardA)
+  await host.tool('project_task', { action: 'reply', acceptWork: true, message: 'Checking the original task.' }, 'ga')
+  assert.equal(host.agentOf('gc').calls.length, 0)
+  await host.tool('project_task', { action: 'delegate', taskId: cardA, plan: 'Continue the label', acceptance: 'Verified label' }, 'ga')
+  assert.equal(host.begin('gc').source.taskId, cardA)
+  assert.equal(host.agentOf('gb').calls.length, 0)
+  assert.deepEqual(Object.keys(room.projectCards), [cardA])
+  assert.deepEqual(room.projectInbox.map(item => item.id), [intakeId])
+  const update = { group: 'Ops', taskId: cardA, message: '@Chief I will check this.' }
+  assert.match(await host.tool('post_to_group', { ...update, report_back: true }, 'ga'), /Nobody would answer/)
+  await host.tool('post_to_group', update, 'ga')
+  const status = host.round('status-without-assignment', host.takePost())
+  await until(() => status() !== undefined)
+  assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.equal(host.agentOf('gb').calls.length, 0)
+})
+
 test('a project manager answers the original group input once before planning, without waking the workers', async t => {
   const host = await start(t, taskNotice)
   const room = rt.roomOf('r1')

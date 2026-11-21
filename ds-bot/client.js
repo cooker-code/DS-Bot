@@ -40270,10 +40270,10 @@ function candidates(roster, sessionId, query) {
   });
 }
 var clipboardText = (ref) => "@" + JSON.parse(ref).title;
-function taskQuotation(task) {
+function taskQuotation(task, projectCard) {
   const lines = [
     t("Task details") + " · " + (task.title || t("Original request")),
-    [task.room, statusOf(task.status), ...task.owners ?? [], task.id].join(" · ")
+    [task.room, statusOf(task.status), ...task.owners ?? [], projectCard ? "[task:" + task.id + "]" : task.id].join(" · ")
   ];
   for (const [key, label] of [
     ["requirement", "Requirement"],
@@ -40307,7 +40307,9 @@ function taskMentionSource(roster, read = call) {
       clipboardText,
       async serialize(ref, signal) {
         const { sessionId, roomId, kind, id } = JSON.parse(ref);
-        return taskQuotation(await read("task-reference", { sessionId, roomId, kind, id }, signal));
+        const task = await read("task-reference", { sessionId, roomId, kind, id }, signal);
+        const groupCard = kind === "project" && roster.getSnapshot().roomsById[sessionId]?.id === roomId;
+        return taskQuotation(task, groupCard);
       }
     }
   };

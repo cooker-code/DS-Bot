@@ -838,7 +838,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'post_to_group',
-    description: 'Post a message into a group chat as yourself. A Main Bot may post into any group, any other Bot into a group it is in. A Main Bot\'s or the group admin\'s post starts a round: members reply in the group, where the user reads them. Another member\'s post calls only the members it names with "@Name"; without one it is only written into the group.',
+    description: 'Post a message into a group chat as yourself. A Main Bot may post into any group, any other Bot into a group it is in. A Main Bot\'s or the group admin\'s post starts a round: members reply in the group, where the user reads them. In admin-led groups, a task-scoped admin post calls only explicitly mentioned members. Another member\'s post calls only the members it names with "@Name"; without one it is only written into the group.',
     parameters: {
       group: GROUP_REF,
       taskId: { type: 'string', description: 'Persistent card UUID for project work. Inherited inside a card execution.' },
@@ -872,7 +872,8 @@ export function install(rt) {
       }
       const mentions = { ids: named, all: spans.some(span => span.all === true) }
       const reportBack = args.report_back === true
-      if (member && reportBack && named.length === 0) {
+      const adminTaskPost = key && room.mode === 'admin' && rt.isAdminOf(room, self)
+      if ((member || (adminTaskPost && !mentions.all)) && reportBack && named.length === 0) {
         return 'Nobody would answer: your post only calls the members you name. Write "@Name" for each member who should answer, or post without report_back.'
       }
       const long = await rt.attachLong(text, `Post from ${sender.name}.txt`)

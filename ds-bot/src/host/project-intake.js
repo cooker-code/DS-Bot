@@ -131,7 +131,7 @@ export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
       ...(assistant ? [
         'You handle the user conversation. Answer questions directly, use context to resolve references, use clarify for missing human input, and attach a genuine supplement to its existing card. Once the goal and acceptance are clear, call project_task delegate with plan (the clarified requirement) and acceptance. The host sends the original sources to ' + assistant.name + '. End this handoff turn after delivery. The assistant owns planning, dispatch, recovery and artifact review. You communicate decisions and results to the user.',
         ...(previousUser?.status === 'chat' ? ['Preceding conversation: ' + JSON.stringify(previousUser)] : []),
-        ...(card ? ['Existing card: ' + JSON.stringify(projectCardSummary(card))] : []),
+        ...(card ? ['Existing card: ' + JSON.stringify(projectCardSummary(card)), 'For a continuation, reply on this card and delegate recovery to the appointed assistant using this taskId in this group session.'] : []),
       ] : [
       'Eligible node owners (id, name, role): ' + JSON.stringify(owners),
       ...(card ? [

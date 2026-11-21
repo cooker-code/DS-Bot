@@ -18,7 +18,7 @@ import { scopedModelInput } from './project-execution.js'
 // turn keeps running in its group Session, and what it ends with is posted to the group,
 // where the member that asked for it answers.
 import { randomUUID } from 'node:crypto'
-import { inboundScope, outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
+import { inboundScope, mentionedContinuation, outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { isIntakeReceipt, taskMessage } from '../shared/task-message.js'
 import { forwardProjectIntake, projectDestination } from './project-intake.js'
 import { projectRoomForCard } from './project-tasks.js'
@@ -979,6 +979,10 @@ export function install(rt) {
   function scopeRoomPost(room, post, earlier) {
     if (post.botId || post.kickoff || post.goal) return post
     const manager = projectDestination(rt, room)?.manager
+    if (manager && !scopeOf(post)) {
+      const continuation = mentionedContinuation(post.text)
+      if (continuation) post = { ...post, ...continuation }
+    }
     const reminder = !scopeOf(post) && bareManagerMention(post, post.text, manager)
     if (reminder) {
       const prior = earlier.findLast(item => !item.botId && !item.replyReminder)
@@ -988,6 +992,7 @@ export function install(rt) {
       const card = Object.hasOwn(room.projectCards ?? {}, post.taskId) && room.projectCards[post.taskId]
       if (!card) throw new Error('No such task in this group.')
       const intakeId = card.intakes?.at(-1)
+      if (post.continueTask && !intakeId) throw new Error('This task has no original group intake.')
       if (intakeId && (post.continueTask || card.clarification)) return { ...post, intakeId, taskId: undefined, linkedTaskId: card.id }
     }
     const calls = mentionsIn(post.text ?? '', room.members.map(rt.botOf).filter(Boolean), post.references)
@@ -1910,8 +1915,8 @@ export function install(rt) {
     const members = everyone.filter(bot => bot.id !== opener.botId)
     const admin = members.find(bot => rt.isAdminOf(room, bot.id))
     const at = speakers => ({ speakers, ordered: false })
-    if (opener.kickoff || (opener.intakeId && admin)) return at(admin ? [admin] : [])
     if (opener.quiet) return at([])
+    if (opener.kickoff || (opener.intakeId && admin)) return at(admin ? [admin] : [])
     if (opener.done) return at(members.filter(bot => bot.id === opener.askedBy))
     // A goal post — the user's draft ask, an idle goal check, a resume — is the admin's alone.
     if (opener.goal !== undefined) return at(admin ? [admin] : [])
@@ -1921,6 +1926,7 @@ export function install(rt) {
     if (opener.late) return at(found.length > 0 ? found : members.filter(bot => bot.id === opener.askedBy))
     if (opener.member) return at(found)
     if (found.length > 0 && !all) return at(found)
+    if (!all && room.mode === 'admin' && scopeOf(opener) && rt.isAdminOf(room, opener.botId)) return at([])
     if (!all && room.mode === 'admin' && admin) return at([admin])
     const speakers = admin ? [admin, ...members.filter(bot => bot !== admin)] : members
     return { speakers, ordered: !all && speakers.length > 1 }
