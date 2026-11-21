@@ -946,6 +946,8 @@ export function apply(ctx) {
   actions.canOpenFiles = () => canOpenSidebarTab('files')
   actions.openFiles = () => openSidebarTab('files')
   const sidebarGuide = createSource([])
+  actions.isArchivedSession = id => ctx.get('workspaces')?.list.getSnapshot().archivedSessionIds.includes(id) === true
+  actions.hasContextView = () => ctx.slots.entries('conversation.view').some(entry => entry.options.id === 'context')
   actions.sidebarGuide = sidebarGuide
   ctx.inject(['sidebarRight', 'sidebarRightTabs'], scope => {
     scope.effect(() => {

@@ -127,31 +127,35 @@ function MemberLog({ member, room, bot, actions }) {
         : h(MarkdownText, { text: row.text, labels: mdLabels(), variant: 'compact' }))))
 }
 
-function ListedTranscript({ member, actions, SessionProvider, renderSlot, fallback }) {
+export function RetainedConversation({ sessionId, view = 'chat', retain, SessionProvider, renderSlot, fallback }) {
   const [reference, setReference] = useState(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let current = true
     let retained
     try {
-      retained = actions.retainMember(member.id)
+      retained = retain(sessionId)
       retained.ready.then(() => { if (current) setReference(retained) }, () => { if (current) setFailed(true) })
     } catch { setFailed(true) }
     return () => { current = false; retained?.release() }
-  }, [member.id, actions])
+  }, [sessionId, retain])
   if (failed) return fallback
   if (!reference) return h('div', { role: 'status' }, t('Loading…'))
   return h('div', { className: 'bt-member-conversation' },
-    h(SessionProvider, { session: reference }, renderSlot('ds-bot.member-conversation', {})))
+    h(SessionProvider, { session: reference }, renderSlot('ds-bot.member-conversation', { view })))
 }
 
 function MemberChatView({ renderSlot }) {
   return renderSlot('conversation.session', { view: 'chat' })
 }
 
-export function MemberConversation({ renderFactorySlot }) {
+function MemberContextView({ renderSlot }) {
+  return renderSlot('conversation.session', { view: 'context' })
+}
+
+export function MemberConversation({ renderFactorySlot, view }) {
   return renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false }, {
-    slots: { views: MemberChatView },
+    slots: { views: view === 'context' ? MemberContextView : MemberChatView },
   })
 }
 
@@ -168,5 +172,5 @@ export function MemberHistory({ member, room, bot, paneLeft, returnSession, runn
         h('button', { ref: back, type: 'button', className: 'bt-icon-btn', 'aria-label': t('Back to details'), onClick: close }, h(ChevronLeftIcon)),
         h('button', { type: 'button', className: 'bt-soft bt-subhead-title', disabled: !bot, onClick: () => actions.toggleDetails(bot.id) }, title),
         running && h('span', { className: 'bt-agent-session-run', role: 'status' }, t('Running'))),
-      listed ? h(ListedTranscript, { member, actions, SessionProvider, renderSlot, fallback }) : fallback))
+      listed ? h(RetainedConversation, { sessionId: member.id, retain: actions.retainMember, SessionProvider, renderSlot, fallback }) : fallback))
 }

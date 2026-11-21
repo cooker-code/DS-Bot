@@ -1275,6 +1275,7 @@ const ZH = {
   'New browser tab': '新建浏览器页',
   Terminal: '终端',
   Files: '文件树',
+  'Enable the conversation tab in Context plugin settings to view archived sessions.': '请在「上下文」插件设置中启用会话标签页，以查看已归档会话的上下文。',
   'The conversation workspace is not open yet. Try again.': '会话工作区尚未打开，请重试。',
   'Bot browser': 'Bot 专属浏览器',
   'Bot side chat': 'Bot 侧边对话',
