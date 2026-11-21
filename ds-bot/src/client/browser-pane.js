@@ -92,8 +92,10 @@ export function PanelMenu({ items, className, 'aria-label': label }) {
         ? h('span', { key: `sep-${index}`, className: 'bt-pmenu-sep', role: 'separator' })
         : h('button', {
           key: item.key, type: 'button', role: 'menuitem', className: 'bt-pmenu-item', disabled: item.disabled,
-          onClick: () => { setOpen(false); item.onPick() },
-        }, h(item.icon, { size: 15 }), h('span', null, item.label))))) : null)
+          title: item.reason, 'aria-description': item.reason, onClick: () => { setOpen(false); item.onPick() },
+        }, h(item.icon, { size: 15 }), h('span', null, item.label)))),
+      [...new Set(items.map(item => item.reason).filter(Boolean))].map(reason =>
+        h('span', { key: reason, className: 'bt-pmenu-note' }, reason))) : null)
 }
 
 // The menu builders in side-model.js give keys; each maps to an icon, a label
@@ -116,7 +118,7 @@ const sideTitle = chat => chat?.entries?.[0]?.question?.trim() || t('Side chat')
 // The strip across the panel's top: the Bot's own tab first (the details view,
 // collapsed), then one tab per browser page, one per side chat, then `···` and
 // close.
-function PanelStrip({ bot, subject, view, ids, active, sides, side, canBrowse, reading, onView, actions, useBrowserPages }) {
+function PanelStrip({ bot, viewingMember, memberSessionId, archivedReason, subject, view, ids, active, sides, side, canBrowse, reading, onView, actions, useBrowserPages }) {
   const pages = useBrowserPages(map => map)
   const wrap = useRef(null)
   const ind = useRef(null)
@@ -178,7 +180,12 @@ function PanelStrip({ bot, subject, view, ids, active, sides, side, canBrowse, r
     canBrowse,
     canTerminal: actions.canOpenTerminal?.() === true,
     canFiles: actions.canOpenFiles?.() === true,
-  }).map(key => menuItemFor(key, actions, subject))
+  }).map(key => {
+    const item = menuItemFor(key, actions, subject)
+    if (!viewingMember || (key !== 'files' && key !== 'terminal')) return item
+    return { ...item, disabled: !memberSessionId || !!archivedReason, reason: archivedReason,
+      onPick: () => actions.openConversationTab(key, memberSessionId) }
+  })
   return h('div', { className: 'bt-ptabs', role: 'tablist', 'aria-label': t('Panel tabs') },
     h('div', { className: 'bt-ptabs-in', ref: wrap },
       h('button', {
@@ -337,7 +344,7 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
  * Session id the panel follows and `side` the open chat's id. Without the
  * Desktop bridge the browser view never shows; side chats need no bridge.
  */
-export function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSessionId, leaving, room, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+export function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSessionId, historicalMember, leaving, room, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const bot = roster.byId[pane.id]
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow)
   const sideChats = bot ? sideChatsOf(roster, bot.id) : []
@@ -539,6 +546,9 @@ export function BotPanel({ pane, SessionProvider, renderSlot, memberChat, member
     })
   }
 
+  const viewingMember = memberChat?.botId === pane.id
+  const archivedReason = viewingMember && (historicalMember || actions.isArchivedSession?.(memberSessionId))
+    ? t('Dimmed plugins require an active session. This group session is archived.') : undefined
   const hasStrip = panelHasStrip(canBrowse, tabState.ids.length, sideChats.length)
   return h('aside', {
     ref: root, className: 'bt-panel', 'data-view': view,
@@ -551,14 +561,14 @@ export function BotPanel({ pane, SessionProvider, renderSlot, memberChat, member
     // Over the whole window while dragging: the cursor stays a resize cursor and the
     // pages underneath (the chat, the guest) see no pointer.
     dragging ? createPortal(h('div', { className: 'bt-drag-shield', 'aria-hidden': true }), document.body) : null,
-    hasStrip ? h(PanelStrip, { bot, subject: pane.id, view, ids: tabState.ids, active, sides: sideChats, side: pane.side, canBrowse, reading, onView: switchView, actions: panelActions, useBrowserPages }) : null,
+    hasStrip ? h(PanelStrip, { bot, viewingMember, memberSessionId, archivedReason, subject: pane.id, view, ids: tabState.ids, active, sides: sideChats, side: pane.side, canBrowse, reading, onView: switchView, actions: panelActions, useBrowserPages }) : null,
     view === 'browser' && bot
       ? h(BrowserView, { key: `browser:${active}`, bot, tabId: active, leaving, landed: landed && !settling, actions, useBrowserPages })
       : view === 'side' && sideChat
         ? h('div', { key: `side:${sideChat.id}`, className: 'bt-panel-view' }, h(SideChatView, { subject: pane.id, chat: sideChat, roster, actions: panelActions }))
         : h('div', { key: `details:${pane.id}:${pane.renaming ? 'rename' : ''}:${pane.tab ?? ''}`, className: 'bt-panel-view' },
             h(DetailsDrawer, {
-              sessionId: pane.id, SessionProvider, renderSlot, viewingMember: memberChat?.botId === pane.id, memberSessionId, startRenaming: pane.renaming, startTab: pane.tab, hasStrip,
+              sessionId: pane.id, SessionProvider, renderSlot, viewingMember, memberSessionId, archivedReason, startRenaming: pane.renaming, startTab: pane.tab, hasStrip,
               roster, actions: panelActions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer,
             })))
 }

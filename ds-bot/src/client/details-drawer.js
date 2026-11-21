@@ -319,7 +319,7 @@ function BotSessions({ bot, part, viewingMember, memberSessionId, rooms = [], ru
 }
 const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt)
 
-export function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+export function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, archivedReason, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId]
   const part = owner ? currentPart(owner) : sessionId
   const isMainBot = isMainOf(roster, owner?.id)
@@ -393,19 +393,18 @@ export function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingM
     if (entries.length) more.push({ sep: true })
   }
   for (const entry of entries) {
+    const memberContext = viewingMember && entry.kind === 'dsh-context'
+    const embedded = memberContext && actions.hasContextView()
+    const reason = archivedReason && !embedded ? (memberContext
+      ? t('Enable the conversation tab in Context plugin settings to view archived sessions.') : archivedReason) : undefined
     more.push({
       key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
       icon: entry.icon ?? PlugIcon,
       label: entry.title(),
-      disabled: viewingMember && !memberSessionId,
+      disabled: (viewingMember && !memberSessionId) || !!reason,
+      reason,
       onPick: () => {
-        if (viewingMember && entry.kind === 'dsh-context') {
-          if (actions.hasContextView()) { setView('context'); return }
-          if (actions.isArchivedSession(memberSessionId)) {
-            actions.notice(t('Enable the conversation tab in Context plugin settings to view archived sessions.'))
-            return
-          }
-        }
+        if (embedded) { setView('context'); return }
         actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room?.sessionId ?? part)
       },
     })

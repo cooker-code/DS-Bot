@@ -79,7 +79,7 @@ export function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSes
     opening ? createPortal(h(OpeningCover, { model: opening, column: layout.column }), document.body) : null,
     // The panel must precede its CSS-anchored transcript, including after reopening it.
     createPortal(h(Fragment, null,
-      pane ? h(BotPanel, { pane, SessionProvider, renderSlot, memberChat: ui.memberChat, memberSessionId: member?.id, leaving: shown === null,
+      pane ? h(BotPanel, { pane, SessionProvider, renderSlot, memberChat: ui.memberChat, memberSessionId: member?.id, historicalMember: !!member && !member.current, leaving: shown === null,
         room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus,
         useActivity, useWork, useComputer, useBrowserTabs, useBrowserPages }) : null,
       ui.memberChat ? h(MemberHistory, { key: JSON.stringify([ui.memberChat.roomId, ui.memberChat.botId, member?.id]),
