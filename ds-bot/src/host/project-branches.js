@@ -182,7 +182,7 @@ async function prepare(rt, repo, args, target, exec) {
   }
   const policy = exec && rt.ctx.get?.('sandboxPolicy')?.resolve({ session: exec.agent.session })
   if (policy?.mode === 'read-only') throw new Error('A read-only session cannot create a Git working tree.')
-  const path = join(repo, '.worktrees', encodeURIComponent(branch.replaceAll('/', '-')))
+  const path = join(repo, '.worktrees', encodeURIComponent(branch))
   if (policy?.mode === 'workspace-write') {
     const folder = rt.sessionFolder(exec.agent.session)
     if (!folder || !within(repo, await realpath(folder))) {
