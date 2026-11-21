@@ -40418,7 +40418,7 @@ var TASK_CSS = `
 .bt-task-checkout code,.bt-task-checkout-edit code{font-size:12px;overflow-wrap:anywhere;color:var(--bt-ink-2)}
 .bt-task-checkout-edit{display:grid;gap:4px;margin-top:8px}
 .bt-task-checkout-edit select{max-width:100%;width:100%;min-width:0}
-.bt-project-detail textarea{box-sizing:border-box;width:100%;resize:vertical}
+.bt-project-detail textarea{font-family:ui-monospace,monospace;tab-size:4}
 .bt-task-goal{margin-top:2px;font-size:13px;line-height:18px;color:var(--bt-ink)}
 .bt-task-progress{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
 .bt-task-result{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2);white-space:pre-wrap}
@@ -43628,8 +43628,8 @@ function TaskImage({ roomId, taskId, image, file, label, onRemove, disabled }) {
 // src/client/project-task-detail.js
 var import_react75 = require("react");
 function taskList(text) {
-  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\||\d+[.)] )/m.test(text)) return text;
-  return text.split(/\n+/).map((line) => line.trim().replace(/^[-*+]\s+/, "")).filter(Boolean).map((line, index) => index + 1 + ". " + line).join("\n");
+  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\|| {0,3}(?:[-*+]|\d+[.)])\s)/m.test(text)) return text;
+  return text.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line, index) => index + 1 + ". " + line).join("\n");
 }
 function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
   const [version, setVersion] = (0, import_react75.useState)(null);
@@ -43649,13 +43649,15 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     setDraft(null);
     setError("");
   };
+  const markdown = taskList(value);
   const save = async () => {
     setBusy(true);
     setError("");
     try {
       const added = [];
       for (const file of draft.files) added.push(await stageTaskImage(file));
-      await onSave(draft.original, draft.text, added, draft.removed);
+      const text = draft.text === draft.initialText ? draft.original : draft.text;
+      await onSave(draft.original, text, added, draft.removed);
       finish();
     } catch (failure) {
       setError(failure.message);
@@ -43690,10 +43692,11 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       onRemove: () => setDraft({ ...draft, files: draft.files.filter((other) => other !== file) })
     }))
   ];
-  const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length);
+  const changed = draft && (draft.text !== draft.initialText || draft.files.length || draft.removed.length);
   return (0, import_react75.createElement)(MarkdownField, {
     title: label,
-    value: taskList(value),
+    autoSize: true,
+    value: markdown,
     headerControl: versions && (0, import_react75.createElement)("select", {
       className: "bt-select",
       "aria-label": t("Requirement version"),
@@ -43710,7 +43713,10 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     busy,
     error,
     disableSave: !changed || required && !draft?.text.trim(),
-    onEdit: readOnly ? void 0 : () => setDraft({ original: value, text: value, removed: [], files: [] }),
+    onEdit: readOnly ? void 0 : () => {
+      const initialText = maxLength && markdown.length > maxLength ? value : markdown;
+      setDraft({ original: value, initialText, text: initialText, removed: [], files: [] });
+    },
     onChange: (text) => setDraft({ ...draft, text }),
     onSave: save,
     onCancel: finish,

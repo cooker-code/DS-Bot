@@ -457,7 +457,7 @@ export const TASK_CSS = `
 .bt-task-checkout code,.bt-task-checkout-edit code{font-size:12px;overflow-wrap:anywhere;color:var(--bt-ink-2)}
 .bt-task-checkout-edit{display:grid;gap:4px;margin-top:8px}
 .bt-task-checkout-edit select{max-width:100%;width:100%;min-width:0}
-.bt-project-detail textarea{box-sizing:border-box;width:100%;resize:vertical}
+.bt-project-detail textarea{font-family:ui-monospace,monospace;tab-size:4}
 .bt-task-goal{margin-top:2px;font-size:13px;line-height:18px;color:var(--bt-ink)}
 .bt-task-progress{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
 .bt-task-result{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2);white-space:pre-wrap}

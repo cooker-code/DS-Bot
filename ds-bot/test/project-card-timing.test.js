@@ -249,7 +249,7 @@ test('task detail shows only the three fields and switches to a read-only requir
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
   const fields = body.children[0].children[1].children
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskWorkspace'])
-  const show = () => { hook = 3; return fields[0].type(fields[0].props).props }
+  const show = (field = fields[0]) => { hook = 3; return field.type(field.props).props }
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')
   assert.equal(latest.headerControl.props.value, 1)
@@ -258,4 +258,23 @@ test('task detail shows only the three fields and switches to a read-only requir
   assert.equal(show().onEdit, undefined)
   show().headerControl.props.onChange({ target: { value: '1' } })
   assert.equal(typeof show().onEdit, 'function')
+  for (const source of fields.slice(0, 2)) {
+    const saved = []
+    const field = { ...source, props: { ...source.props, onSave: (...args) => saved.push(args) } }
+    for (const value of ['First item\nSecond item', '- First item\n  - Nested **item**', '## Goal\n\n1. Check `value`']) {
+      field.props.value = value
+      const preview = show(field)
+      assert.equal(preview.autoSize, true)
+      preview.onEdit()
+      assert.equal(show(field).draft, value.startsWith('First') ? '1. First item\n2. Second item' : value)
+      assert.equal(show(field).disableSave, true)
+      show(field).onChange('## Updated\n\n- Check the result')
+      await show(field).onSave()
+      assert.deepEqual(saved.at(-1).slice(0, 2), [value, '## Updated\n\n- Check the result'])
+    }
+  }
+  const full = { ...fields[1], props: { ...fields[1].props, value: 'A'.repeat(2000) } }
+  show(full).onEdit()
+  assert.equal(show(full).draft, full.props.value)
+  assert.equal(show(full).disableSave, true)
 })

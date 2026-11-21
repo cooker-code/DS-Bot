@@ -8,8 +8,8 @@ import { t } from './i18n.js'
 
 // Preserve authored Markdown blocks. Plain legacy notes can be listed without changing their saved text.
 function taskList(text) {
-  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\||\d+[.)] )/m.test(text)) return text
-  return text.split(/\n+/).map(line => line.trim().replace(/^[-*+]\s+/, '')).filter(Boolean)
+  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\|| {0,3}(?:[-*+]|\d+[.)])\s)/m.test(text)) return text
+  return text.split(/\n+/).map(line => line.trim()).filter(Boolean)
     .map((line, index) => (index + 1) + '. ' + line).join('\n')
 }
 
@@ -31,13 +31,15 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     setDraft(null)
     setError('')
   }
+  const markdown = taskList(value)
   const save = async () => {
     setBusy(true)
     setError('')
     try {
       const added = []
       for (const file of draft.files) added.push(await stageTaskImage(file))
-      await onSave(draft.original, draft.text, added, draft.removed)
+      const text = draft.text === draft.initialText ? draft.original : draft.text
+      await onSave(draft.original, text, added, draft.removed)
       finish()
     } catch (failure) {
       setError(failure.message)
@@ -59,8 +61,8 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     onRemove: draft && !originals.has(image.attachmentId ?? image.id) ? () => setDraft({ ...draft, removed: [...draft.removed, image.attachmentId] }) : undefined })),
   ...(draft?.files ?? []).map((file, index) => h(TaskImage, { key: 'file-' + index, file, label: file.name,
     disabled: busy || readOnly, onRemove: () => setDraft({ ...draft, files: draft.files.filter(other => other !== file) }) }))]
-  const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length)
-  return h(MarkdownField, { title: label, value: taskList(value),
+  const changed = draft && (draft.text !== draft.initialText || draft.files.length || draft.removed.length)
+  return h(MarkdownField, { title: label, autoSize: true, value: markdown,
     headerControl: versions && h('select', { className: 'bt-select', 'aria-label': t('Requirement version'),
       disabled: !!draft, value: snapshot ? version : currentVersion, onChange: event => {
         const selected = Number(event.target.value)
@@ -68,7 +70,11 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index }, 'v' + (index + 1)))),
     placeholder: visible.length ? null : '—', maxLength,
     draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
-    onEdit: readOnly ? undefined : () => setDraft({ original: value, text: value, removed: [], files: [] }),
+    onEdit: readOnly ? undefined : () => {
+      // Generated numbering must not push a legacy criterion past its saved-text limit.
+      const initialText = maxLength && markdown.length > maxLength ? value : markdown
+      setDraft({ original: value, initialText, text: initialText, removed: [], files: [] })
+    },
     onChange: text => setDraft({ ...draft, text }), onSave: save, onCancel: finish,
     onPaste: event => {
       const files = Array.from(event.clipboardData.files)
