@@ -18,7 +18,7 @@
 | `set-project-workspace-policy` / `project-branches` | 前者用 `roomId,policy`（auto/current/worktree）设置已启用 task 群的默认 Git 工作区策略。auto 由该群任命的任务助理决定，未任命时由主 Bot 兼任。后者用 `roomId,repository?` 读取分支。 | `setProjectWorkspacePolicy` 返回策略字符串；`branchReport` 返回 `count,observedAt,branches`。 |
 | `task-reference` / `project-task-detail` | 引用用 `sessionId,roomId,kind,id`，kind 为 member/project/intake。明细用 `roomId,taskId`，可选 `imageId,textOnly,workspaceOnly,workspaceChoices` 指定投影。 | `readTaskReference` 返回同群可见摘要。`projectCardDetail` 默认返回需求、节点、版本、轮次及结果。指定投影分别返回附件、文字或工作区信息。 |
 | `select-task-workspace` / `update-project-task-text` | 前者用 `roomId,taskId,previous,selection`，以已读工作区对照选择；后者用 `roomId,taskId,field,previous,value,addImages?,removeImages?` 修订 requirement 或 acceptance。 | `selectTaskWorkspace/updateProjectTaskText` 校验旧值和当前轮次；成功后回读 task 的工作区选择或文本。版本冲突重读。 |
-| `continue-project-task` | roomId、taskId、text、requestId 均为字符串。 | 校验任务开启与本群任务归属后，按 requestId 去重，向群当前会话发送带 taskId 的用户消息。返回 true，回读群账本与卡片需求。群内 @ 单张项目卡并明确发送“task 继续推进”也按原卡收件，交给本群管理员处理。 |
+| `continue-project-task` | roomId、taskId、text、requestId 均为字符串。 | 校验任务开启与本群任务归属后，按 requestId 去重，向群当前会话发送带 taskId 的用户消息。返回 true，回读群账本与卡片需求。群内 @ 单张项目卡并填写正文时，按选中的卡号收件；明确点名其他成员时仍按群聊点名规则投递，交给本群管理员处理。 |
 | `set-task-node-constraint` | roomId、taskId、version、node、field（fixedOwner 或 independentReview）、value（布尔值）。 | 派工前在原计划上新增一版，保存节点约束；拒绝过期版本。成功返回 true，回读 project-task-detail 的 plans。 |
 | `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。已有验收记录或完成后拒绝更改。用 project-task-detail 回读。 |
 | `project-acceptance` | `roomId,taskId,reviewId,decision,feedback?`。decision 为 approve 或 return，退回需明确 feedback。 | `decideAcceptance` 仅处理当前候选的人工终验，回读 `humanReview` 和 task 状态。 |

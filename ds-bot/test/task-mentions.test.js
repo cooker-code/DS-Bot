@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { parseSessionReferenceText } from '@deepseek-ai/dsh-session-reference'
 import { indexRoster } from '../src/client/sources.js'
 import { readTaskReference } from '../src/host/task-reference.js'
-import { inboundScope, mentionedContinuation } from '../src/host/task-routing.js'
+import { inboundScope, mentionedProjectCard } from '../src/host/task-routing.js'
 import { mentionSpans } from '../src/shared/mentions.js'
 
 const { outputFiles } = await build({
@@ -81,9 +81,10 @@ test('same-name selections resolve by kind and ID at send time without routing t
   assert.match(inboundScope({ text: quote + '继续' }, 'prior-task'), /^intake-/)
   const [groupCard] = await search('r-2', cardId)
   const groupQuote = await source.codec.serialize(source.onPick({ candidate: groupCard }).insert.ref)
-  assert.deepEqual(mentionedContinuation(groupQuote + 'task 继续推进'), { taskId: cardId, text: 'task 继续推进', continueTask: true })
-  for (const other of [quote + '继续', groupQuote + '为什么受阻？', groupQuote + groupQuote + '继续', groupQuote + '@Writer 继续'])
-    assert.equal(mentionedContinuation(other), undefined)
+  for (const body of ['推进任务', '请核对上次的阻塞原因后再交给助理', 'task 继续推进', '为什么受阻？'])
+    assert.deepEqual(mentionedProjectCard(groupQuote + body), { taskId: cardId, text: body })
+  for (const other of [quote + '继续', groupQuote, groupQuote + groupQuote + '继续'])
+    assert.equal(mentionedProjectCard(other), undefined)
   const memberQuote = await source.codec.serialize(member.ref)
   assert.match(memberQuote, /Testing/)
   assert.match(memberQuote, /Test Linux/)

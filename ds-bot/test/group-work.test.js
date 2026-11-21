@@ -3075,7 +3075,7 @@ test('mentioning a blocked project card continues its intake and delegates only 
   room.projectCards = { [cardA]: { id: cardA, title: 'Label', intakes: [intakeId], acceptance: 'Verified label',
     rounds: [{ ownerId: 'b', plan: 'Implement', planNode: { version: 1, node: 1, inputs: [], block: { at: 1, cause: 'dependency', by: 'b', reason: 'Branch conflict', decisions: [] } } }],
     plans: [{ version: 1, by: 'c', at: 1, nodes: [{ no: 1, title: 'Implement', ownerId: 'b', instructions: 'Implement', deliverable: 'Label', acceptance: 'Verified label', dependsOn: [] }] }] } }
-  const message = '> Task details · Label\n> Ops · Blocked · Writer · [task:' + cardA + ']\n> Requirement: @all implement the label\n\ntask 继续推进'
+  const message = '> Task details · Label\n> Ops · Blocked · Writer · [task:' + cardA + ']\n> Requirement: @all implement the label\n\n  推进任务'
   const group = host.round('continue-mention', host.say(message))
   await until(() => group() !== undefined)
   assert.equal(host.begin('ga').source.taskId, cardA)
@@ -3093,6 +3093,19 @@ test('mentioning a blocked project card continues its intake and delegates only 
   await until(() => status() !== undefined)
   assert.equal(host.agentOf('gc').calls.length, 1)
   assert.equal(host.agentOf('gb').calls.length, 0)
+
+  host.finish('ga', 'Delegated')
+  room.projectCards[cardA].clarification = 'Which branch should be reviewed?'
+  const question = host.round('question-about-card', host.say(message.replace('推进任务', '为什么受阻？')))
+  await until(() => question() !== undefined)
+  const request = host.begin('ga')
+  assert.equal(request.source.taskId, cardA)
+  assert.match(text(request), /Latest message:\n为什么受阻？/)
+  await host.tool('project_task', { action: 'reply', message: 'There is a branch conflict.' }, 'ga')
+  assert.equal(room.projectCards[cardA].clarification, 'Which branch should be reviewed?')
+  assert.equal(room.projectCards[cardA].rounds.length, 1)
+  assert.deepEqual(Object.keys(room.projectCards), [cardA])
+  assert.equal(host.agentOf('gc').calls.length, 1)
 })
 
 test('a project manager answers the original group input once before planning, without waking the workers', async t => {

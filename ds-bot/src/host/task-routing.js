@@ -13,18 +13,15 @@ export function scopeFields(key) {
 }
 
 const quotedCard = new RegExp(' · \\[task:(' + uuid + ')\\]$', 'i')
-const resumeCommand = /^(?:请\s*)?(?:(?:task|任务)\s*)?(?:继续(?:推进|执行|处理|开发|跟进)?|恢复(?:推进|执行|处理|开发)|(?:please\s+)?(?:continue|resume)(?:\s+(?:this|the))?(?:\s+task)?)[。.!！]?$/iu
-
-// Only a single selected card and an explicit instruction outside its quotation
-// constitute a continuation. A discussion of quotations remains an ordinary intake.
-export function mentionedContinuation(text = '') {
+// The selected card determines the subject. The user's own words determine the action.
+export function mentionedProjectCard(text = '') {
   const quotes = [...text.matchAll(/^>[^\n]*(?:\n>[^\n]*)*/gm)]
   if (quotes.length !== 1) return
   const [quote] = quotes
   const id = quotedCard.exec(quote[0].split('\n', 2)[1])?.[1]
   if (!id) return
   const body = (text.slice(0, quote.index) + ' ' + text.slice(quote.index + quote[0].length)).trim()
-  if (resumeCommand.test(body)) return { taskId: id.toLowerCase(), text: body, continueTask: true }
+  if (body) return { taskId: id.toLowerCase(), text: body }
 }
 
 export function inboundScope(post) {

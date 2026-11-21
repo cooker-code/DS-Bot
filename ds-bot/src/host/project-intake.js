@@ -81,7 +81,7 @@ async function recordIntake(rt, room, intakeId, throughSeq, lines) {
     inbox.sort((a, b) => a.id < b.id ? -1 : 1)
   } else if (throughSeq > receipt.seq) {
     receipt.seq = throughSeq
-    if (linked?.clarification) delete linked.clarification
+    if (linked?.clarification && !lines.at(-1)?.taskReference) delete linked.clarification
     if (!linked) { receipt.status = 'pending'; delete receipt.reason }
   }
   await rt.save({ required: true })
@@ -148,6 +148,7 @@ export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
       'For engineering work, inspect project_task branches first. For small changes with a known, disjoint write scope use the current branch. For independent review/merge, a different baseline, or conflicting or uncertain write scopes, as the Main Bot handling Git planning when no assistant is appointed, call prepare_worktree with workRef, baseRef and reason first. Use the returned repository, workDir and branch in the plan. Declare workspaceMode (current or worktree), workRef and workspaceReason once on the task plan. Every Git step uses that same checkout. Declare writePaths per step, including generated files; use [] for read-only. Multiple owners may share a branch when their write paths are disjoint. Sequence steps with overlapping files. Use workspaceMode none for non-repository tasks.',
       'Read the saved plan. For each ready node call project_task dispatch with taskId, version and node. Independent ready nodes can be dispatched together. If a node is blocked, continue its independent siblings. Use clarify for missing human context at any stage. Approve the final node to finish automatically, or use request_acceptance instead only if the user explicitly requires human acceptance. Use inspect_recovery to review the artifact and both worktrees before resuming or changing its owner. After a worker submits, verify the result and call approve with version, node, round and artifact. Send message_bot to the owner with taskId, card_round=dispatchRound, reply_to=user and request_id. The plugin forwards the saved handoff and original attachments. Distinguish delivery from the owner explicitly confirming start with project_task start. Pass the card ID in the taskId tool argument. Report the task title and actual status to the group in readable Markdown. Keep routing IDs and forwarding receipts out of the message body.',
       ]),
+      ...(input.taskReference ? ['The user selected this existing card. Respond to their latest message below. For a question, answer using project_task reply and leave the plan and dispatch unchanged. Continue work only when requested. Latest message:\n' + taskMessage(input.text, room).body] : []),
       ...original.flatMap(line => (line.images || []).map(image => `Group #${line.seq} image: ${image.name || ''} ${image.attachmentId || image.id || ''}`)),
       ...(card?.goal !== undefined ? ['Current requirement:\n' + projectRequirement(room, card, original)]
         : original.map(line => `Group message #${line.seq}\n${line.text}`)),

@@ -18,7 +18,7 @@ import { scopedModelInput } from './project-execution.js'
 // turn keeps running in its group Session, and what it ends with is posted to the group,
 // where the member that asked for it answers.
 import { randomUUID } from 'node:crypto'
-import { inboundScope, mentionedContinuation, outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
+import { inboundScope, mentionedProjectCard, outgoingScope, scopeFields, scopeOf, tagged, taskRoom } from './task-routing.js'
 import { isIntakeReceipt, taskMessage } from '../shared/task-message.js'
 import { forwardProjectIntake, projectDestination } from './project-intake.js'
 import { projectRoomForCard } from './project-tasks.js'
@@ -980,8 +980,12 @@ export function install(rt) {
     if (post.botId || post.kickoff || post.goal) return post
     const manager = projectDestination(rt, room)?.manager
     if (manager && !scopeOf(post)) {
-      const continuation = mentionedContinuation(post.text)
-      if (continuation) post = { ...post, ...continuation }
+      const reference = mentionedProjectCard(post.text)
+      if (reference) {
+        const calls = mentionsIn(reference.text, room.members.map(rt.botOf).filter(Boolean), post.references)
+        if (!calls.all && calls.found.every(member => member.id === manager.id))
+          post = { ...post, ...reference, taskReference: true }
+      }
     }
     const reminder = !scopeOf(post) && bareManagerMention(post, post.text, manager)
     if (reminder) {
@@ -992,8 +996,9 @@ export function install(rt) {
       const card = Object.hasOwn(room.projectCards ?? {}, post.taskId) && room.projectCards[post.taskId]
       if (!card) throw new Error('No such task in this group.')
       const intakeId = card.intakes?.at(-1)
-      if (post.continueTask && !intakeId) throw new Error('This task has no original group intake.')
-      if (intakeId && (post.continueTask || card.clarification)) return { ...post, intakeId, taskId: undefined, linkedTaskId: card.id }
+      const linked = post.continueTask || post.taskReference
+      if (linked && !intakeId) throw new Error('This task has no original group intake.')
+      if (intakeId && (linked || card.clarification)) return { ...post, intakeId, taskId: undefined, linkedTaskId: card.id }
     }
     const calls = mentionsIn(post.text ?? '', room.members.map(rt.botOf).filter(Boolean), post.references)
     if (!manager || calls.all || calls.found.some(member => member.id !== manager.id)) return post
@@ -1412,7 +1417,7 @@ export function install(rt) {
       }
       const text = [post.text, referenceNote(post.references ?? []), ...(post.files ?? []).map(fileLine)].filter(Boolean).join('\n')
       const line = say(room, { who: 'User', intakeId: post.intakeId, ...(post.linkedTaskId && { taskId: post.linkedTaskId }), text, session: true,
-        ...reminderLink(room, post),
+        ...(post.taskReference && { taskReference: true }), ...reminderLink(room, post),
         ...(post.images ? { images: post.images } : {}), ...(post.files ? { files: post.files } : {}),
         ...(post.via ? { via: post.via } : {}) })
       unpauseRoomIdle(room)

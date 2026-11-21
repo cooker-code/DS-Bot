@@ -469,6 +469,19 @@ await step('admin hands an image requirement to the assistant and reports its ve
     ?? expect(card?.plans[0].by === assistant && card.rounds[0]?.ownerId === botNamed('Coder').id && card.rounds[0]?.planNode.acceptedBy === assistant, 'the assistant did not plan, dispatch and review the worker')
     ?? expect(report.results.filter(row => row.botId === chief().id).length === 1, 'missing final group report from the admin')
 })
+await step('a marked task quote with 推进任务 stays on the selected card', async () => {
+  const room = state().rooms[devRoomId]
+  const card = Object.values(room.projectCards)[0]
+  const inboxIds = room.projectInbox.map(item => item.id)
+  await send(devRoomId, '> 任务详情 · ' + card.title + '\n> 研发群 · [task:' + card.id + ']\n\n  推进任务')
+  return { taskId: card.id, inboxIds, cardIds: Object.keys(room.projectCards) }
+}, async before => {
+  const room = state().rooms[devRoomId]
+  const card = await api('project-task-detail', { roomId: devRoomId, taskId: before.taskId })
+  return expect(card.requirements.some(row => row.text?.endsWith('推进任务')), 'the group message did not bind to the selected card')
+    ?? expect(JSON.stringify(before.inboxIds) === JSON.stringify(room.projectInbox.map(item => item.id)), 'the quote opened a new intake')
+    ?? expect(JSON.stringify(before.cardIds) === JSON.stringify(Object.keys(room.projectCards)), 'the quote created another card')
+})
 await step('delete the group', () => api('delete-room', { id: devRoomId }), () => expect(Object.keys(state().rooms).length === 0, 'group still there')
   ?? expect(memoryFile('groups', devRoomId) === '', 'the group memory is still in place')
   ?? expect(readdirSync(join(HOME, 'bot', 'memory', 'archive')).some(entry => entry.startsWith(`group-${devRoomId}`)), 'the group memory is not in the archive'))
