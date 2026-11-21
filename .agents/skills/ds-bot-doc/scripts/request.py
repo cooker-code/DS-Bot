@@ -46,6 +46,45 @@ def announced_login(stream, base, root):
     return latest
 
 
+def desktop_base():
+    """Discover the local team's Desktop writer, without using any credential to probe ports."""
+    lock = Path.home() / ".dsh/bot/state.lock"
+    pid = json.loads(lock.read_text()).get("pid")
+    if type(pid) is not int or pid <= 1:
+        raise RequestError("desktop_writer_not_found")
+    executable = "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness"
+
+    def parent(process):
+        result = subprocess.run(["/bin/ps", "-p", str(process), "-o", "uid=,ppid=,comm="],
+                                capture_output=True, text=True)
+        fields = result.stdout.strip().split(None, 2)
+        if len(fields) != 3 or fields[0] != str(os.getuid()) or fields[2] != executable:
+            raise RequestError("writer_is_not_local_desktop")
+        return int(fields[1])
+
+    parent(parent(pid))
+    listeners = subprocess.run(["/usr/sbin/lsof", "-nP", "-a", "-p", str(pid), "-iTCP",
+                                "-sTCP:LISTEN", "-Fn"], capture_output=True, text=True)
+    ports = set(re.findall(r"^n127\.0\.0\.1:(\d+)$", listeners.stdout, re.MULTILINE))
+    # The documented Web gate rejects anonymous API POSTs before dispatch.
+    # Do not send login material to the inspector or any unknown listener.
+    candidates = []
+    for port in ports:
+        conn = http.client.HTTPConnection("127.0.0.1", int(port), timeout=2)
+        try:
+            conn.request("POST", "/api/bot", body=b'{"endpoint":"state","payload":{}}',
+                         headers={"Content-Type": "application/json"})
+            if conn.getresponse().status == 401:
+                candidates.append("http://127.0.0.1:" + port)
+        except (OSError, http.client.HTTPException):
+            continue
+        finally:
+            conn.close()
+    if len(candidates) != 1:
+        raise RequestError("desktop_api_listener_not_unique")
+    return candidates[0]
+
+
 class Operator:
     def __init__(self, base, login_file=None, cookie_jar=None, web_log=None, timeout=20):
         self.base = urlsplit(base)
@@ -121,12 +160,16 @@ def main():
     auth.add_argument("--web-log", help="Operator's DSH Web startup output containing the login announcement for --base")
     parser.add_argument("--payload", help="JSON object from a file, or - for standard input (default {})")
     parser.add_argument("--jq", help="Print only this jq projection of value. Default prints a receipt")
+    parser.add_argument("--desktop", action="store_true",
+                        help="Discover the current macOS Desktop writer and its loopback API")
     args = parser.parse_args()
-    if not args.base:
+    if not args.desktop and not args.base:
         parser.error("set --base or DS_BOT_BASE_URL")
     sources = (args.login_file, args.cookie_jar, args.web_log)
     if not any(sources):
         sources = tuple(os.getenv(key) for key in ("DS_BOT_LOGIN_FILE", "DS_BOT_COOKIE_JAR", "DS_BOT_WEB_LOG"))
+    if args.desktop and not any(sources):
+        sources = (None, None, str(Path.home() / ".local/state/ds-bot/desktop-web.log"))
     if sum(bool(item) for item in sources) != 1:
         parser.error("supply exactly one operator authentication source")
     if args.jq and not shutil.which("jq"):
@@ -146,7 +189,12 @@ def main():
                 parser.error("payload must be a readable UTF-8 JSON document")
         if not isinstance(payload, dict):
             parser.error("payload must be a JSON object")
-        value = Operator(args.base, *sources).call(args.endpoint, payload)
+        base = desktop_base() if args.desktop else args.base
+        api = Operator(base, *sources)
+        if args.desktop and args.endpoint != "state":
+            if api.call("state", {}).get("readOnly") is not None:
+                raise RequestError("desktop_is_read_only")
+        value = api.call(args.endpoint, payload)
         if args.jq:
             output = subprocess.run(["jq", "-c", args.jq], input=json.dumps(value).encode(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             if output.returncode:

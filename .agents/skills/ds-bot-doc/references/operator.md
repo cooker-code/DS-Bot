@@ -16,17 +16,17 @@ DSH Web 启动时给操作者一个含 `token` 参数的**登录地址**。客�
 
 Desktop 通常由操作系统启动，Electron 在 `dsh-app://app/` 内转发已认证请求。查当前桌面实例应先识别监听端口和启动方式，再找为操作者公开的同一实例登录材料。若 Desktop 没有发布该入口，单凭端口不能完成认证。需要长期程序化管理时，在正常维护交接中以持锁的 DSH Web 运行团队，保留本人可读的启动输出。日用宿主正在工作时不要为拿登录地址另起同目录写宿主。
 
-本机 Desktop 已在用户 profile 的 `cordis.patch.yml` 中把 `webserver.config.host` 和 `port` 固定为 `127.0.0.1:31450`。Desktop 默认的端口 0 表示每次启动由操作系统选择空闲端口。固定地址后，宿主仍在每次启动时签发新登录凭据。使用脚本管理时，正常退出后通过本机启动入口保留最新公告，再发起已认证请求：
+### macOS 日用 Desktop（Dock 启动）
+
+用户照常打开应用。命令无须预先加载 `operator.env`：
 
 ```sh
-~/.local/bin/dsh-desktop-start
-(
-  . ~/.local/state/ds-bot/operator.env
-  python3 .agents/skills/ds-bot-doc/scripts/request.py state --jq '{readOnly,revision}'
-)
+python3 .agents/skills/ds-bot-doc/scripts/request.py state --desktop --jq '{readOnly,revision}'
 ```
 
-启动入口使用 macOS 的 `open --stdout` 和仅本人可读的固定日志。若从访达或程序坞直接启动，端口设置依然生效，但旧日志不能代替本次登录公告。此时只读回查用 SQLite；写操作需要当前实例签发的认证材料。端口冲突时检查占用者，保留现有进程。
+`--desktop` 每次从默认团队写锁取得 PID，以 `ps` 核对后端及其 Desktop 父进程属于当前用户，用 `lsof` 枚举该后端的本机监听。脚本向候选端口发送无凭据的只读 `state` 请求；只有唯一返回 401 的候选才进入正式认证。多个候选、未知进程或无可用监听均停止。本机配置的固定端口是 31450；该命令按进程实况选端口。
+
+有操作者配置的官方启动公告、登录文件或 Cookie jar 时，脚本按原有认证方式接入。未指定来源时尝试本机预先配置的私有公告文件。Dock 启动不保证刷新它。旧进程的登录令牌会失效；同源且仍有效的已授权会话可通过 `--cookie-jar` 使用。正常认证失败即停止 API 操作；查询持久资料可用[只读 SQLite](storage.md)，需写入时报告缺少哪种正式登录材料。不从应用或浏览器内部提取 Cookie，不使用调试端口或界面自动化。脚本不改变 Desktop 的启动方式。
 
 在已完成写锁交接的本机维护时段，可以自行准备 Web 登录入口。选择一个空闲端口，使用目标团队已安装 DS Bot 的 Web profile，在目标终端启动。下面的例子把宿主输出留在本人可读的临时目录中。启动后，下一条 `state` 成功且 `readOnly` 为空，才表明该宿主能接受设置。结束临时维护时正常停止该宿主并释放写锁，再恢复原宿主。
 

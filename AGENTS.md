@@ -26,7 +26,7 @@ Bot 团队的工作方式如下。
 
 - 每次改动前先看项目技能 [ds-bot-doc](.agents/skills/ds-bot-doc/SKILL.md)，判断是否影响业务操作、API、鉴权、运行时副作用或数据存储。能够通过已授权 API、命令行或 SQLite 完成的设置、查询和核查，直接走程序化入口。Computer Use 仅用于交付目标确实包含界面行为的场景。
 - 设置优先调用持有团队写锁的宿主 API。SQLite 适合按需只读核查和已授权的离线维护。先识别目标实例、库和 `state.lock`，保留 SQLite 事务日志及所有权。测试继续使用隔离实例。
-- 本机日用 Desktop 的操作入口见[认证与命令](.agents/skills/ds-bot-doc/references/operator.md)。在子 shell 加载 `~/.local/state/ds-bot/operator.env`，用 `request.py state` 核对团队与写锁。本机固定回环端口，供脚本管理时用 `~/.local/bin/dsh-desktop-start` 启动已退出的 Desktop，保留该进程的官方登录公告。日常只读核查可走 SQLite；登录材料失效时保留认证边界。
+- 用户从 Dock 正常打开 Desktop。脚本调用先用 `python3 .agents/skills/ds-bot-doc/scripts/request.py state --desktop --jq '{readOnly,revision}'`。每次根据本机团队写锁定位当前用户的 Desktop 后端，核对父进程与回环监听，用匿名只读请求识别 API，再用官方登录公告或操作者提供的同源有效会话认证。后续操作也带 `--desktop`。缺少本次登录材料或有效会话时，只读核查走 SQLite；写操作报告具体认证缺口。保留用户的 Dock 启动习惯，不为获取凭据重启、切换宿主、操作界面或读取浏览器私有存储。详见[认证与命令](.agents/skills/ds-bot-doc/references/operator.md)。
 - 新增、修改或移除 API 时，同一改动更新技能中的业务入口、请求与返回字段含义、服务函数、存储位置、副作用和回读示例。仓库 CI 运行技能中的接口名覆盖检查；字段或行为变化还要逐项核对服务与例子。现有 API 无法表达某项设置时，先核对鉴权、宿主版本和锁，确认业务入口缺失后，在插件服务和通道补齐，复用原有权限与校验，并用隔离实例验证。
 
 ## 开发命令
