@@ -1,13 +1,13 @@
 import { execFileSync } from 'node:child_process'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { test } from 'node:test'
 import { savedTeam } from './team-state.js'
 import { afterRound } from './relay-rows.js'
-import { inspectIntegratedWriter } from '../src/host/project-recovery.js'
+import { inspectReplannedWriter } from '../src/host/project-recovery.js'
 import { forwardProjectIntake } from '../src/host/project-intake.js'
 import { createRuntime } from '../index.js'
 import { fakeAttachments, fakeContext } from './fake-ctx.js'
@@ -4276,17 +4276,91 @@ test('a delegated feature candidate returns with feedback then integrates the re
       const archive = { ...card.plans.at(-1).nodes[0], no: 3, dependsOn: [2] }
       const writer = { status: 'busy' }
       const runtime = { live: new Map(), resolveAgent: async () => writer, inData: async () => false }
-      assert.equal(await inspectIntegratedWriter(runtime, card, archive), undefined)
+      assert.equal(await inspectReplannedWriter(runtime, card, archive), undefined)
       writer.status = 'idle'
       writeFileSync(join(dir, 'untracked'), 'work')
-      assert.equal(await inspectIntegratedWriter(runtime, card, archive), undefined)
+      assert.equal(await inspectReplannedWriter(runtime, card, archive), undefined)
       rmSync(join(dir, 'untracked'))
-      const transfer = await inspectIntegratedWriter(runtime, card, archive)
+      const transfer = await inspectReplannedWriter(runtime, card, archive)
       writer.status = 'busy'
       assert.throws(() => transfer.apply(card), /writer or plan changed/)
       writer.status = 'idle'
       transfer.apply(card)
       assert.equal(history.ownershipTransfer.commit, commit)
+      delete history.ownershipTransfer
+      const revised = { ...archive, dependsOn: [] }
+      assert.equal(await inspectReplannedWriter(runtime, card, revised), undefined)
+      history.reviewBase = commit
+      writer.inbox = { nextTurn: [{ source: { exchangeId: history.dispatchId } }] }
+      assert.equal(await inspectReplannedWriter(runtime, card, revised), undefined)
+      writer.inbox.nextTurn = []
+      const unchanged = await inspectReplannedWriter(runtime, card, revised)
+      unchanged.apply(card)
+      assert.deepEqual(history.ownershipTransfer, { version: card.plans.at(-1).version, node: revised.no, commit })
     }
   }
+})
+
+test('editing an active project card wakes its coordinator and reclaims the stopped writer in the revised plan', async t => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'project-tested-dev-')))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const git = (dir, ...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture',
+    '-c', 'user.email=test@example.invalid', '-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  git(repo, 'init', '-b', 'dev')
+  git(repo, 'commit', '--allow-empty', '-m', 'Initial')
+  const host = await start(t, { ...taskNotice, workDir: repo, projectAssistantId: 'd', members: ['a', 'b', 'c', 'd'],
+    sessions: { a: 'ga', b: 'gb', c: 'gc', d: 'gd' } }, {}, {}, { b: { workDir: repo }, c: { workDir: repo }, d: { workDir: repo } })
+  const request = host.round('arrow', host.say('Add a collapse arrow to the members section'))
+  await until(() => request() !== undefined)
+  host.begin('ga')
+  const act = (who, args) => host.tool('project_task', args, who).then(JSON.parse)
+  const response = await act('ga', { action: 'reply', acceptWork: true, message: 'We will check the members toggle.',
+    plan: 'Add the members arrow', acceptance: 'Click and keyboard toggle; integrate into dev.' })
+  assert.equal(response.delegated, true)
+  host.begin('gd')
+  const manager = args => act('gd', args)
+  const branch = 'feat/members-arrow'
+  const inventory = await manager({ action: 'prepare_worktree', workRef: branch, baseRef: 'dev', reason: 'Feature candidate' })
+  const dir = inventory.branches.find(b => b.branch === branch).workDir
+  const nodes = [
+    { ownerId: 'b', title: 'Develop', instructions: 'Implement the toggle', acceptance: 'Build passes', deliverable: 'Candidate', writePaths: ['toggle.js'] },
+    { ownerId: 'c', title: 'Test and integrate', instructions: 'Test click and keyboard', acceptance: 'Tested commit on dev',
+      deliverable: 'Report and dev receipt', independentReview: true, writePaths: [], dependsOn: [1], mergeToDev: true },
+  ]
+  const plan = { action: 'plan', workspaceMode: 'worktree', workRef: branch, workspaceReason: 'Test one candidate', title: 'Members arrow',
+    acceptance: 'Toggle works on dev', version: 1, nodes }
+  const { taskId } = await manager(plan)
+  const dispatch = async (version, node, name, session) => {
+    const { dispatchRound: round } = await manager({ action: 'dispatch', taskId, version, node })
+    await host.tool('message_bot', { taskId, card_round: round, to: name, request_id: 'arrow-' + round, reply_to: 'user', message: 'Execute node.' }, 'gd')
+    host.agentOf(session).session.header = { cwd: dir }
+    host.begin(session)
+    await act(session, { action: 'start', taskId, round })
+    return round
+  }
+
+  const first = await dispatch(1, 1, 'Writer', 'gb')
+  writeFileSync(join(dir, 'toggle.js'), 'in progress')
+  await act('gb', { action: 'block', taskId, round: first, reason: 'Need updated inputs', waitingFor: 'Revised scope', evidence: 'Partial toggle in checkout' })
+  host.finish('gb', 'Stopped before editing')
+  host.agentOf('gb').status = 'idle'
+  const edit = { roomId: 'r1', taskId, field: 'acceptance', previous: plan.acceptance, value: 'New acceptance' }
+  const calls = host.agentOf('gd').calls.length
+  assert.equal((await host.call('update-project-task-text', edit)).ok, true)
+  assert.equal((await host.call('update-project-task-text', edit)).ok, true)
+  assert.equal(host.agentOf('gd').calls.length, calls + 1)
+  host.begin('gd')
+  await manager({ ...plan, taskId, version: 2, reason: 'Revised inputs', acceptance: edit.value })
+  await manager({ ...plan, taskId, version: 3, reason: 'Clarified verification', acceptance: edit.value })
+  writeFileSync(join(dir, 'unrelated'), 'other work')
+  await assert.rejects(manager({ action: 'dispatch', taskId, version: 3, node: 1 }), /overlapping files/)
+  rmSync(join(dir, 'unrelated'))
+  const second = await dispatch(3, 1, 'Writer', 'gb')
+  const saved = savedTeam(rt.home).rooms.r1.projectCards[taskId]
+  assert.equal(saved.rounds.length, 2)
+  assert.equal(saved.rounds[first - 1].ownershipTransfer.retainedChanges, true)
+  assert.equal(readFileSync(join(dir, 'toggle.js'), 'utf8'), 'in progress')
+  assert.equal(saved.rounds[first - 1].ownershipTransfer.version, 3)
+  assert.ok(saved.rounds[second - 1].startedAt)
+  assert.equal(saved.rounds[second - 1].ownerId, 'b')
 })

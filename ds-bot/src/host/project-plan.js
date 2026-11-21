@@ -300,6 +300,8 @@ export function nodeHandoff(card, round) {
       'Completed checks: ' + (old.planNode.completed || 'No checks recorded'), 'Remaining checks: ' + decision.remaining,
       'Verified working folder: ' + decision.targetTree.dir, 'Worktree review: ' + decision.worktreeReview,
       ...(decision.targetTree.commit ? ['Expected commit: ' + decision.targetTree.commit] : [])] : []),
+    ...(card.rounds.some(r => r.ownershipTransfer?.version === binding.version && r.ownershipTransfer.node === node.no && r.ownershipTransfer.retainedChanges)
+      ? ['Continue with the existing uncommitted changes in this checkout. Inspect the diff against the revised requirement and preserve the previous work.'] : []),
     'Plan v' + binding.version + ' · Node ' + node.no + ': ' + node.title,
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),

@@ -37,7 +37,7 @@ export function recoveryOf(card, round) {
   return no ? card.rounds[no - 1]?.planNode?.block?.decisions.at(-1) : undefined
 }
 
-async function worktree(rt, directory) {
+async function worktree(rt, directory, includePaths = false) {
   if (!directory) throw new Error('The working folder could not be verified.')
   const dir = await existingProjectDir(directory)
   if (await rt.inData(dir)) throw new Error('Choose a Bot working folder outside protected application data.')
@@ -60,6 +60,10 @@ async function worktree(rt, directory) {
       git('diff', '--cached', '--no-ext-diff', '--raw', '--no-abbrev', 'HEAD', '--', ':/'),
       git('ls-files', '--full-name', '--modified', '--others', '--exclude-standard', '-z', '--', ':/'),
     ])
+    if (includePaths) {
+      const stagedPaths = await git('diff', '--cached', '--name-only', '--no-renames', '-z', 'HEAD', '--', ':/')
+      tree.changedPaths = [...new Set([...stagedPaths.split('\0'), ...files.split('\0')].filter(Boolean))]
+    }
     const versions = []
     for (const file of new Set(files.split('\0').filter(Boolean))) {
       const stat = await lstat(join(root, file), { bigint: true }).catch(error => {
@@ -91,18 +95,18 @@ function idleWriter(rt, agent, sessionId, exchangeId) {
   return ![...(agent.inbox?.nextTurn ?? []), ...(agent.inbox?.nextStep ?? [])].some(m => m.source?.exchangeId === exchangeId)
 }
 
-// A historical blocked writer can hand its clean checkout back to the same developer
-// after independent integration. A revision alone never releases a live writer.
-export async function inspectIntegratedWriter(rt, card, node) {
+// Hand a clean checkout back to its developer at the original start commit or
+// an accepted integration. Revising the plan alone never releases a live writer.
+export async function inspectReplannedWriter(rt, card, node) {
   if (!node?.writePaths?.length || node.round) return
   const plan = card.plans.at(-1)
   const views = nodeViews(card, plan)
   const accepted = node.dependsOn.map(no => card.rounds[views[no - 1].round - 1])
     .filter(r => r?.integration?.branch === 'dev' && r.integration.repository === node.repository && r.planNode.acceptedAt)
-  if (!accepted.length) return
+  const transfers = []
   for (const [index, prior] of card.rounds.entries()) {
     const b = prior.planNode
-    if (!b?.block?.resolvedAt || b.version >= plan.version || prior.result || prior.ownershipTransfer ||
+    if (!b || !prior.startedAt || b.version >= plan.version || prior.result || b.lateResult || b.supersededBy || prior.ownershipTransfer ||
         prior.ownerId !== node.ownerId || prior.workspace?.workDir !== node.workDir || prior.workspace.workRef !== node.workRef) continue
     const oldNode = card.plans.find(p => p.version === b.version)?.nodes[b.node - 1]
     if (!oldNode?.writePaths?.length || !pathsOverlap(oldNode.writePaths, node.writePaths)) continue
@@ -111,16 +115,23 @@ export async function inspectIntegratedWriter(rt, card, node) {
     const writer = await rt.resolveAgent(session)
     const idle = () => idleWriter(rt, writer, session, prior.dispatchId)
     if (!idle()) continue
-    const tree = await worktree(rt, node.workDir)
+    const tree = await worktree(rt, node.workDir, true)
     const receipt = accepted.find(r => r.integration.commit === tree.commit)
-    if (tree.changes || tree.branch !== node.workRef || !receipt) continue
-    return { apply(fresh) {
+    if (tree.branch !== node.workRef || (!receipt && tree.commit !== prior.reviewBase)) continue
+    if (tree.changes) {
+      // Keep in-progress edits in place only for the same node and authorized paths.
+      const covers = (paths, file) => paths.some(path => file === path || file.startsWith(path + '/'))
+      if (b.node !== node.no || tree.commit !== prior.reviewBase || !tree.changedPaths?.length ||
+          !tree.changedPaths.every(file => covers(oldNode.writePaths, file) && covers(node.writePaths, file))) continue
+    }
+    transfers.push(fresh => {
       const original = fresh.rounds[index]
       if (!idle() || fresh.plans.at(-1).version !== plan.version || original.dispatchId !== prior.dispatchId)
         throw new Error('The original writer or plan changed before dispatch.')
-      original.ownershipTransfer = { version: plan.version, node: node.no, commit: tree.commit, integrationRound: card.rounds.indexOf(receipt) + 1 }
-    } }
+      original.ownershipTransfer = { version: plan.version, node: node.no, commit: tree.commit, ...(tree.changes && { retainedChanges: true }), ...(receipt && { integrationRound: card.rounds.indexOf(receipt) + 1 }) }
+    })
   }
+  if (transfers.length) return { apply(fresh) { for (const transfer of transfers) transfer(fresh) } }
 }
 
 function checkTarget(card, args) {
