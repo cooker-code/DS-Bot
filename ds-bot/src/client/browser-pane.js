@@ -8,7 +8,7 @@ import { createElement as h, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom'
 import { BotMark } from './mark.js'
 import { STORAGE } from './storage.js'
-import { MIN_CHAT } from './frame-layout.js'
+import { DEFAULT_WIDTH, DETAILS_WIDTH, widthRange, fitWidth, draggedWidth, trackPanelResize } from './panel-width.js'
 import { chatRoom } from './frame-watch.js'
 import { SPRING_LEAD, SPRING_SHAPE, SPRING_TRAIL, reducedMotion, stepMenuFocus, useLinger } from './motion.js'
 import { FLIGHT_ENDS, INTENT_MS, createFlight, flightEnd, flightStart, planFlight, uniqueIds } from './mark-flight.js'
@@ -21,13 +21,7 @@ import { rectsOverlap } from './browser-overlap.js'
 
 export const PANEL_LINGER_MS = 300
 const WIDTH_KEY = STORAGE.browserWidth
-// One width for the panel, shared by both views. The Bot page keeps it within
-// DETAILS_WIDTH..DETAILS_MAX, so a wider browser comes back to DETAILS_MAX and a
-// narrower one keeps its width; the browser takes any width from MIN_WIDTH.
-const DEFAULT_WIDTH = 520
-const DETAILS_WIDTH = 320
-const DETAILS_MAX = 520
-const MIN_WIDTH = 360
+// A saved width is shared by the panel views, each clamped to its own range.
 // How long the Bot's mark shows that it read the page.
 const READ_FLASH_MS = 2400
 const EMPTY_PAGE = { url: '', title: '', favicon: null, loading: false, canGoBack: false, canGoForward: false, error: null, excerpt: '' }
@@ -61,13 +55,6 @@ const savedWidth = () => {
     return Number.isFinite(value) && value >= DETAILS_WIDTH ? value : null
   } catch { return null }
 }
-// `room` is what the panel and the conversation share: the viewport minus the
-// left column's footprint (frame-layout.js). The panel never takes the last
-// MIN_CHAT px of it; below that it covers the conversation instead.
-const widthRange = (view, room) => (view === 'browser'
-  ? [MIN_WIDTH, room - MIN_CHAT]
-  : [DETAILS_WIDTH, Math.min(DETAILS_MAX, room - MIN_CHAT)])
-const fitWidth = (width, [low, high]) => Math.round(Math.max(low, Math.min(width, high)))
 // The address as the bar shows it while not editing: no scheme, no trailing slash.
 const shortAddress = url => String(url ?? '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
 
@@ -373,8 +360,17 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
   const instant = dragging || resizing
   const [reading, setReading] = useState(false)
 
+  const resize = useRef(null)
+  const resizeContext = useRef(null)
+  resizeContext.current = { view, room, leaving, overlay }
+  // Stop before the new layout owns the chat margin; unmount uses the same cleanup.
+  useLayoutEffect(() => {
+    resize.current?.()
+  }, [view, room, leaving, overlay, pane.id])
+  useLayoutEffect(() => () => { resize.current?.() }, [])
+
   const panelWidth = fitWidth(width ?? (view === 'browser' ? DEFAULT_WIDTH : DETAILS_WIDTH), widthRange(view, room))
-  // Once the browser has shown, the Bot page keeps its width (up to DETAILS_MAX).
+  // Once the browser has shown, the details page keeps its width within its range.
   useLayoutEffect(() => { if (view === 'browser' && width === null) setWidth(DEFAULT_WIDTH) }, [view, width])
   useLayoutEffect(() => { chatRoom.hold(instant) }, [instant])
   // A view switch that changes the width holds the guest back and pins both views to
@@ -508,11 +504,10 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
   // A drag writes the width into the panel's and the column's own inline styles each
   // frame (each restyles one element) and renders once, on release.
   const startResize = (event) => {
-    if (event.button !== 0 || leaving || overlay) return
+    if (event.button !== 0 || leaving || overlay || resize.current) return
     event.preventDefault()
     const panel = root.current
     const grip = event.currentTarget
-    grip.setPointerCapture?.(event.pointerId)
     const range = widthRange(view, room)
     const from = { x: event.clientX, width: panelWidth }
     let next = panelWidth
@@ -522,18 +517,18 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
     const columns = chatRoom.columns()
     for (const column of columns) column.style.setProperty('transition', 'none', 'important')
     const onMove = (move) => {
-      next = fitWidth(from.width + from.x - move.clientX, range)
+      next = draggedWidth(from.width, from.x, move.clientX, range)
       panel.style.width = `${next}px`
       if (columns.length === 0) chatRoom.setRight(next)
       for (const column of columns) column.style.setProperty('margin-right', `${next}px`, 'important')
     }
-    const ends = ['pointerup', 'pointercancel', 'lostpointercapture']
-    const onEnd = (end) => {
-      if (end.type === 'pointerup') onMove(end)
-      grip.removeEventListener('pointermove', onMove)
-      for (const name of ends) grip.removeEventListener(name, onEnd)
+    resize.current = trackPanelResize(grip, event, onMove, () => {
+      resize.current = null
+      const current = resizeContext.current
+      next = fitWidth(next, widthRange(current.view, current.room))
       // Hand the width back to the rule and the panel's variable in the same frame.
-      chatRoom.setRight(next)
+      chatRoom.setRight(current.leaving || current.overlay ? null : next)
+      chatRoom.hold(false)
       for (const column of columns) { column.style.removeProperty('margin-right'); column.style.removeProperty('transition') }
       panel.style.setProperty('--bt-panel-w', `${next}px`)
       panel.style.removeProperty('width')
@@ -541,9 +536,7 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
       if (next === from.width) return
       setWidth(next)
       try { localStorage.setItem(WIDTH_KEY, String(next)) } catch { /* storage unavailable */ }
-    }
-    grip.addEventListener('pointermove', onMove)
-    for (const name of ends) grip.addEventListener(name, onEnd)
+    })
   }
 
   const hasStrip = panelHasStrip(canBrowse, tabState.ids.length, sideChats.length)

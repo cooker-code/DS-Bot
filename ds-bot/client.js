@@ -17042,8 +17042,8 @@ body[data-ds-dark-theme] .bt-q.bt-q-settled[data-expandable]:not([data-open]):ho
 /* The conversation's margins glide with the Bot panel's slide and with our left
    column's slide in and out. */
 [class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},margin-left ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
-.bt-panel-grip{position:absolute;left:-5px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
-.bt-panel-grip:hover,.bt-panel[data-dragging] .bt-panel-grip{background:linear-gradient(to right,transparent 4px,var(--bt-line-2) 4px,var(--bt-line-2) 6px,transparent 6px)}
+.bt-panel-grip{position:absolute;left:-8px;top:0;bottom:0;width:16px;cursor:col-resize;z-index:3;touch-action:none}
+.bt-panel-grip:hover,.bt-panel[data-dragging] .bt-panel-grip{background:linear-gradient(to right,transparent 7px,var(--bt-line-2) 7px,var(--bt-line-2) 9px,transparent 9px)}
 .bt-drag-shield{position:fixed;inset:0;z-index:45;cursor:col-resize}
 .bt-panel-view{flex:1;min-height:0;display:flex;flex-direction:column}
 .bt-drawer-top{display:flex;justify-content:flex-end;gap:8px;padding:12px 17px 6px 12px}
@@ -42985,6 +42985,41 @@ function AgentMenu({ menu, roster, actions, leaving }) {
   );
 }
 
+// src/client/panel-width.js
+var DEFAULT_WIDTH = 520;
+var DETAILS_WIDTH = 320;
+var widthRange = (view, room2) => view === "browser" ? [360, room2 - MIN_CHAT] : [DETAILS_WIDTH, view === "details" ? Math.max(DETAILS_WIDTH, room2 - MIN_CHAT) : Math.min(520, room2 - MIN_CHAT)];
+var fitWidth = (width, [low, high]) => Math.round(Math.max(low, Math.min(width, high)));
+var draggedWidth = (width, startX, x, range) => fitWidth(width + startX - x, range);
+function trackPanelResize(grip, event, move, finish) {
+  let ended = false;
+  const pointerId = event.pointerId;
+  const onMove = (next) => {
+    if (next.pointerId === pointerId) move(next);
+  };
+  const ends = ["pointerup", "pointercancel", "lostpointercapture"];
+  const stop = (end) => {
+    if (ended || end && end.pointerId !== pointerId) return;
+    ended = true;
+    if (end?.type === "pointerup") onMove(end);
+    grip.removeEventListener("pointermove", onMove);
+    for (const name of ends) grip.removeEventListener(name, stop);
+    try {
+      if (grip.hasPointerCapture?.(pointerId)) grip.releasePointerCapture(pointerId);
+    } catch {
+    }
+    finish();
+  };
+  grip.addEventListener("pointermove", onMove);
+  for (const name of ends) grip.addEventListener(name, stop);
+  try {
+    grip.setPointerCapture?.(pointerId);
+  } catch {
+    stop();
+  }
+  return ended ? null : stop;
+}
+
 // src/client/mark-flight.js
 var FLIGHT_ENDS = { tab: ":scope > .bt-ptabs .bt-ptab-bot .bt-mark", drawer: ":scope > .bt-panel-view .bt-drawer-id .bt-mark" };
 var flightEnd = (next) => next === "details" ? "drawer" : "tab";
@@ -44564,10 +44599,6 @@ var import_react78 = require("react");
 var import_react_dom12 = require("react-dom");
 var PANEL_LINGER_MS = 300;
 var WIDTH_KEY = STORAGE.browserWidth;
-var DEFAULT_WIDTH = 520;
-var DETAILS_WIDTH = 320;
-var DETAILS_MAX = 520;
-var MIN_WIDTH = 360;
 var READ_FLASH_MS = 2400;
 var EMPTY_PAGE = { url: "", title: "", favicon: null, loading: false, canGoBack: false, canGoForward: false, error: null, excerpt: "" };
 var EMPTY_TABS2 = { ids: [], active: null };
@@ -44599,8 +44630,6 @@ var savedWidth = () => {
     return null;
   }
 };
-var widthRange = (view, room2) => view === "browser" ? [MIN_WIDTH, room2 - MIN_CHAT] : [DETAILS_WIDTH, Math.min(DETAILS_MAX, room2 - MIN_CHAT)];
-var fitWidth = (width, [low, high]) => Math.round(Math.max(low, Math.min(width, high)));
 var shortAddress = (url) => String(url ?? "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
 var tabLabel = (page) => page.title || shortAddress(page.url) || t("New tab");
 function PanelMenu({ items, className, "aria-label": label }) {
@@ -44995,6 +45024,15 @@ function BotPanel({ pane, leaving, room: room2, overlay, roster, actions, useSes
   const [resizing, setResizing] = (0, import_react78.useState)(false);
   const instant = dragging || resizing;
   const [reading, setReading] = (0, import_react78.useState)(false);
+  const resize = (0, import_react78.useRef)(null);
+  const resizeContext = (0, import_react78.useRef)(null);
+  resizeContext.current = { view, room: room2, leaving, overlay };
+  (0, import_react78.useLayoutEffect)(() => {
+    resize.current?.();
+  }, [view, room2, leaving, overlay, pane.id]);
+  (0, import_react78.useLayoutEffect)(() => () => {
+    resize.current?.();
+  }, []);
   const panelWidth = fitWidth(width ?? (view === "browser" ? DEFAULT_WIDTH : DETAILS_WIDTH), widthRange(view, room2));
   (0, import_react78.useLayoutEffect)(() => {
     if (view === "browser" && width === null) setWidth(DEFAULT_WIDTH);
@@ -45133,11 +45171,10 @@ function BotPanel({ pane, leaving, room: room2, overlay, roster, actions, useSes
   }, [instant, leaving]);
   (0, import_react78.useEffect)(() => flight.finish, []);
   const startResize = (event) => {
-    if (event.button !== 0 || leaving || overlay) return;
+    if (event.button !== 0 || leaving || overlay || resize.current) return;
     event.preventDefault();
     const panel = root.current;
     const grip = event.currentTarget;
-    grip.setPointerCapture?.(event.pointerId);
     const range = widthRange(view, room2);
     const from = { x: event.clientX, width: panelWidth };
     let next = panelWidth;
@@ -45147,17 +45184,17 @@ function BotPanel({ pane, leaving, room: room2, overlay, roster, actions, useSes
     const columns2 = chatRoom.columns();
     for (const column of columns2) column.style.setProperty("transition", "none", "important");
     const onMove = (move) => {
-      next = fitWidth(from.width + from.x - move.clientX, range);
+      next = draggedWidth(from.width, from.x, move.clientX, range);
       panel.style.width = `${next}px`;
       if (columns2.length === 0) chatRoom.setRight(next);
       for (const column of columns2) column.style.setProperty("margin-right", `${next}px`, "important");
     };
-    const ends = ["pointerup", "pointercancel", "lostpointercapture"];
-    const onEnd = (end) => {
-      if (end.type === "pointerup") onMove(end);
-      grip.removeEventListener("pointermove", onMove);
-      for (const name of ends) grip.removeEventListener(name, onEnd);
-      chatRoom.setRight(next);
+    resize.current = trackPanelResize(grip, event, onMove, () => {
+      resize.current = null;
+      const current = resizeContext.current;
+      next = fitWidth(next, widthRange(current.view, current.room));
+      chatRoom.setRight(current.leaving || current.overlay ? null : next);
+      chatRoom.hold(false);
       for (const column of columns2) {
         column.style.removeProperty("margin-right");
         column.style.removeProperty("transition");
@@ -45171,9 +45208,7 @@ function BotPanel({ pane, leaving, room: room2, overlay, roster, actions, useSes
         localStorage.setItem(WIDTH_KEY, String(next));
       } catch {
       }
-    };
-    grip.addEventListener("pointermove", onMove);
-    for (const name of ends) grip.addEventListener(name, onEnd);
+    });
   };
   const hasStrip = panelHasStrip(canBrowse, tabState.ids.length, sideChats.length);
   return (0, import_react78.createElement)(
