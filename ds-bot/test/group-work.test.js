@@ -3066,6 +3066,28 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   await assert.rejects(project('ga', { action: 'plan' }), { code: 'TASK_ASSISTANT_INVALID' })
 })
 
+test('the planner can relate existing cards without moving their history or execution', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  const card = (id, title) => ({ id, title, plans: [], rounds: [], intakes: ['intake-' + id] })
+  room.projectCards = { [cardA]: card(cardA, 'Collapse list'), [cardB]: card(cardB, 'Correct arrow') }
+  const relation = { action: 'relate', taskId: cardB, parentTaskId: cardA }
+  const act = (args, who = 'gc') => host.tool('project_task', args, who).then(JSON.parse)
+  await assert.rejects(act(relation, 'ga'), { code: 'TASK_ROLE_REQUIRED' })
+  await assert.rejects(act({ ...relation, parentTaskId: 'missing' }), /two existing/)
+  rt.live.set('gc', { info: { role: 'request', roomId: room.id, taskId: cardA } })
+  assert.equal((await act({ action: 'read', taskId: cardB })).taskId, cardB)
+  await Promise.all([act(relation), act(relation)])
+  assert.equal(savedTeam(host.home).rooms.r1.projectCards[cardB].parentTaskId, cardA)
+  const { value } = await host.call('project-task-detail', { roomId: 'r1', taskId: cardB })
+  assert.deepEqual([value.taskId, value.title, value.parentTaskId], [cardB, 'Correct arrow', cardA])
+  assert.deepEqual(room.projectCards[cardB].intakes, ['intake-' + cardB])
+  await assert.rejects(act({ action: 'relate', taskId: cardA, parentTaskId: cardB }), /cycle/)
+  await assert.rejects(act({ ...relation, parentTaskId: cardB }), /different card/)
+  const list = await act({ action: 'list' })
+  assert.equal(list.cards.find(c => c.taskId === cardB).parentTaskId, cardA)
+})
+
 test('mentioning a blocked project card continues its intake and delegates only to its assistant', async t => {
   const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
   const room = rt.roomOf('r1')

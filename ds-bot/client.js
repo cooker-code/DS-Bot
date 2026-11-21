@@ -12993,6 +12993,7 @@ var ZH = {
   Add: "添加",
   Close: "关闭",
   Collapse: "收起",
+  "Related tasks for {name}": "“{name}”的关联任务",
   Copy: "复制",
   Copied: "已复制",
   Content: "内容",
@@ -40046,6 +40047,73 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     setConfirmation(null);
     requestAnimationFrame(() => deleteButton.current?.focus());
   };
+  const [collapsed, setCollapsed] = (0, import_react57.useState)(() => /* @__PURE__ */ new Set());
+  const visible = new Set(cards.map((card) => card.taskId));
+  const roots = [], children = /* @__PURE__ */ new Map();
+  for (const card of cards) {
+    if (!visible.has(card.parentTaskId)) {
+      roots.push(card);
+      continue;
+    }
+    if (!children.has(card.parentTaskId)) children.set(card.parentTaskId, []);
+    children.get(card.parentTaskId).push(card);
+  }
+  function renderCard(card) {
+    const row2 = (0, import_react57.createElement)(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? void 0 : onOpen, restoreFocus: returnId === card.taskId });
+    if (editing) return pick2("project", card.taskId, card.title, row2);
+    if (card.status === "human_review" && card.acceptanceRequest) return (0, import_react57.createElement)(
+      "div",
+      { key: card.taskId },
+      row2,
+      (0, import_react57.createElement)(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room2.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room2) })
+    );
+    if (card.status === "clarify" && card.clarification) return (0, import_react57.createElement)(
+      "div",
+      { key: card.taskId },
+      row2,
+      (0, import_react57.createElement)("div", { className: "bt-task-progress" }, card.clarification)
+    );
+    if (!taskManagementEnabled(room2) || card.status !== "failed" || card.version || !card.ownerId || !actions.resume) return row2;
+    return (0, import_react57.createElement)(
+      "div",
+      { key: card.taskId },
+      row2,
+      (0, import_react57.createElement)(ProjectRetry, { key: card.round + "-" + card.updatedAt, card, roomId: room2.id, actions })
+    );
+  }
+  function renderTree(card) {
+    const row2 = renderCard(card);
+    const related = children.get(card.taskId);
+    if (!related) return row2;
+    const expanded = !collapsed.has(card.taskId);
+    const toggle = () => setCollapsed((previous) => {
+      const next = new Set(previous);
+      if (next.has(card.taskId)) next.delete(card.taskId);
+      else next.add(card.taskId);
+      return next;
+    });
+    return (0, import_react57.createElement)(
+      "div",
+      { key: card.taskId },
+      (0, import_react57.createElement)(
+        "div",
+        { className: "bt-related-parent" },
+        (0, import_react57.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "bt-mini bt-related-toggle",
+            "aria-expanded": expanded,
+            "aria-label": t("Related tasks for {name}", { name: card.title }),
+            onClick: toggle
+          },
+          (0, import_react57.createElement)(expanded ? ChevronDownIcon : ChevronRightIcon)
+        ),
+        row2
+      ),
+      expanded ? (0, import_react57.createElement)("div", { className: "bt-related-children" }, related.map(renderTree)) : null
+    );
+  }
   return (0, import_react57.createElement)(
     "div",
     { className: "bt-tasks" },
@@ -40137,29 +40205,7 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
         ),
         item.reason ? (0, import_react57.createElement)("div", { className: "bt-task-progress" }, item.reason) : null
       )),
-      cards.map((card) => {
-        const row2 = (0, import_react57.createElement)(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? void 0 : onOpen, restoreFocus: returnId === card.taskId });
-        if (editing) return pick2("project", card.taskId, card.title, row2);
-        if (card.status === "human_review" && card.acceptanceRequest) return (0, import_react57.createElement)(
-          "div",
-          { key: card.taskId },
-          row2,
-          (0, import_react57.createElement)(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room2.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room2) })
-        );
-        if (card.status === "clarify" && card.clarification) return (0, import_react57.createElement)(
-          "div",
-          { key: card.taskId },
-          row2,
-          (0, import_react57.createElement)("div", { className: "bt-task-progress" }, card.clarification)
-        );
-        if (!taskManagementEnabled(room2) || card.status !== "failed" || card.version || !card.ownerId || !actions.resume) return row2;
-        return (0, import_react57.createElement)(
-          "div",
-          { key: card.taskId },
-          row2,
-          (0, import_react57.createElement)(ProjectRetry, { key: card.round + "-" + card.updatedAt, card, roomId: room2.id, actions })
-        );
-      }),
+      roots.map(renderTree),
       open.map(row),
       !hasRows && !(statuses !== null && past.length) ? (0, import_react57.createElement)(
         "div",
@@ -40221,6 +40267,10 @@ var TASK_CSS = `
 .bt-task[data-status=failed] .bt-task-status,.bt-task[data-status=blocked] .bt-task-status{color:var(--bt-danger)}
 .bt-task-time{flex:none;margin-left:auto;font-size:12px;line-height:16px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums}
 .bt-task-list{container-type:inline-size}
+.bt-related-parent{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:start}
+.bt-related-toggle{width:24px;height:28px;margin-top:4px;display:grid;place-items:center}
+.bt-related-toggle svg{width:14px;height:14px}
+.bt-related-children{margin-inline-start:32px;padding-inline-start:16px;border-inline-start:1px solid var(--bt-line-2);display:grid;gap:2px}
 .bt-project-row{box-sizing:border-box;width:100%;min-width:0;border:0;color:var(--bt-ink);background:transparent;font:inherit;text-align:start;cursor:pointer;display:flex;align-items:flex-start;gap:6px}
 .bt-project-body{flex:1;min-width:0;display:grid;gap:2px}
 .bt-project-row .bt-task-name{flex:1}

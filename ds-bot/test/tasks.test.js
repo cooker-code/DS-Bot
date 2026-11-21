@@ -283,10 +283,10 @@ test('bulk deletion is scoped to the room and row type and survives a reload and
 })
 
 test('undoing a failed bulk delete restores the exact board, including previously absent fields', () => {
-  const room = { projectCards: { p: { intakes: ['i'] } }, projectInbox: [{ id: 'i', status: 'accepted' }] }
+  const room = { projectCards: { p: { intakes: ['i'] }, child: { parentTaskId: 'p', title: 'Child' } }, projectInbox: [{ id: 'i', status: 'accepted' }] }
   const before = structuredClone(room)
   const undo = deleteBoardTasks(room, [{ kind: 'project', id: 'p' }])
-  assert.deepEqual(room.projectCards, {})
+  assert.deepEqual(room.projectCards, { child: { title: 'Child' } })
   undo()
   assert.deepEqual(room, before)
 })

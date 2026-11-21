@@ -16,6 +16,8 @@ import { speakerOf } from '../shared/mentions.js'
 import { excerpt } from './text.js'
 import { output } from './tools.js'
 
+export const relatedTaskGuidance = 'Before planning, list the group cards and read plausible matches. Compare the actual fix, deliverables and acceptance criteria. If one implementation can satisfy both cards, call relate with taskId for the child and parentTaskId for the primary card. Inspect existing plans and rounds. Coordinate the shared fix once on the primary card and track both acceptance criteria; do not dispatch duplicate work on the child. Keep independent work separate; a similar title alone is insufficient.'
+
 export function projectRoomForCard(rt, id) {
   if (typeof id !== 'string') return undefined
   return Object.values(rt.state.rooms).find(room => Object.hasOwn(room.projectCards ?? {}, id.toLowerCase()))
@@ -110,7 +112,7 @@ export function projectSources(rt, room, intakeIds, taskId, throughSeq = Infinit
 export const projectCardSummary = (card, taskId = card.id) => {
   const round = card.rounds?.at(-1)
   return {
-    taskId, title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
+    taskId, ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
     ...(card.updatedAt !== undefined ? { textUpdatedAt: card.updatedAt } : {}),
     startedAt: round?.startedAt, submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
     ...(card.clarification ? { clarification: card.clarification } : {}),
@@ -231,7 +233,7 @@ export function install(rt) {
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
       humanAcceptanceRequired: { type: 'boolean', description: 'Record required human sign-off on the first plan.' },
       classificationReason: { type: 'string', description: 'Why this accepted request needs tracked work.' },
-      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
+      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
       message: { type: 'string', description: 'First public answer to the current group input. Use reply before planning, or chat with message and reason to answer and classify an unassigned question together. Members are not called.' },
       ...planParameters, ...recoveryParameters,
       repository: { type: 'string', description: 'Repository root inside the configured project working folder.' },
@@ -240,6 +242,7 @@ export function install(rt) {
       roomId: { type: 'string', description: 'Group ID for list outside a project turn.' },
       query: { type: 'string', description: 'For context, an optional literal excerpt to find in earlier public group messages.' },
       taskId: { type: 'string', description: 'Persistent card ID for read, attach, start, submit or handoff.' },
+      parentTaskId: { type: 'string', description: 'For relate, the existing primary project card in this group. The child keeps its ID and history.' },
       ownerId: { type: 'string', description: 'Group member ID for assign or handoff.' },
       title: { type: 'string', description: 'Short title for a new card.' },
       plan: { type: 'string', description: 'Work and planned handoffs through final user acceptance.' },
@@ -265,7 +268,9 @@ export function install(rt) {
         if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
         if (room.unresolvedTaskAssistant || (room.projectAssistantId && !assistantId(room))) throw taskError('TASK_ASSISTANT_INVALID')
       }
-      if (source?.taskId && source.taskId !== id) throw new Error('This execution belongs to a different card.')
+      const manager = runsProject(rt, room, actor) && room.sessions?.[actor] === session
+      const planningAccess = manager && (args.action === 'read' || (args.action === 'relate' && source?.taskId === args.parentTaskId))
+      if (source?.taskId && source.taskId !== id && !planningAccess) throw new Error('This execution belongs to a different card.')
       const members = room.members.map(rt.botOf).filter(Boolean).map(({ id, name, role }) => ({ id, name, role }))
       const cards = Object.values(room.projectCards ?? {})
       if (args.action === 'list') return JSON.stringify({ roomId: room.id, workspacePolicy: workspacePolicyOf(room), members, inbox: pendingIntakes(room), cards: cards.map(card => projectCardSummary(card)) })
@@ -276,10 +281,9 @@ export function install(rt) {
       if (['branches', 'describe_branch', 'prepare_worktree'].includes(args.action)) return JSON.stringify(await manageBranches(rt, room, args, actor, exec))
       const card = cards.find(item => item.id === id)
       const contact = rt.isAdminOf(room, actor) && room.sessions?.[actor] === session
-      const manager = runsProject(rt, room, actor) && room.sessions?.[actor] === session
       const assistant = assistantId(room)
       if (['delegate', 'report', 'reply', 'chat', 'attach'].includes(args.action) && !contact) throw taskError('TASK_ROLE_REQUIRED')
-      if (['plan', 'dispatch', 'approve', 'request_acceptance', 'wait', 'takeover', 'resume', 'inspect_recovery'].includes(args.action) && !manager) throw taskError('TASK_ROLE_REQUIRED')
+      if (['relate', 'plan', 'dispatch', 'approve', 'request_acceptance', 'wait', 'takeover', 'resume', 'inspect_recovery'].includes(args.action) && !manager) throw taskError('TASK_ROLE_REQUIRED')
       if (args.action === 'delegate') {
         const intakeId = original?.intakeId
         const linked = intakeId && cardForIntake(room, intakeId)
@@ -294,8 +298,9 @@ export function install(rt) {
         const scope = linked ? { taskId: linked.id } : { intakeId }
         const text = [
           'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
+          relatedTaskGuidance,
           'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
-          linked ? 'Read and continue the existing card: ' + linked.id : 'Save the complete plan with project_task plan (version 1).',
+          linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
           'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
           'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Normally approve the final node; request_acceptance only for explicit human sign-off.',
           ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
@@ -503,6 +508,18 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
   const receipt = room.projectInbox?.find(item => item.id === source?.intakeId)
   const linked = source?.intakeId && cardForIntake(room, source.intakeId)
   let dispatchRound
+  if (args.action === 'relate') {
+    const parentId = args.parentTaskId
+    if (!manager || !runsProject(rt, room, actor)) throw taskError('TASK_ROLE_REQUIRED')
+    if (!card || typeof parentId !== 'string' || !Object.hasOwn(room.projectCards, parentId))
+      throw new Error('Choose two existing project cards in this group.')
+    if (linked && linked.id !== id && linked.id !== parentId) throw new Error('This intake belongs to a different card.')
+    for (let cursor = parentId; cursor; cursor = room.projectCards[cursor]?.parentTaskId)
+      if (cursor === id) throw new Error('Related tasks cannot form a cycle.')
+    if (card.parentTaskId && card.parentTaskId !== parentId) throw new Error('This card already belongs to another primary task.')
+    card.parentTaskId = parentId
+    return JSON.stringify(projectCardSummary(card))
+  }
   if (args.action === 'clarify' && id && !card) throw new Error('No such card in this group.')
   if (args.action === 'clarify' && (card || linked)) {
     card ??= linked

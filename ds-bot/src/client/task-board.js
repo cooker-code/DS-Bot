@@ -307,6 +307,43 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     setConfirmation(null)
     requestAnimationFrame(() => deleteButton.current?.focus())
   }
+  const [collapsed, setCollapsed] = useState(() => new Set())
+  const visible = new Set(cards.map(card => card.taskId))
+  const roots = [], children = new Map()
+  for (const card of cards) {
+    if (!visible.has(card.parentTaskId)) { roots.push(card); continue }
+    if (!children.has(card.parentTaskId)) children.set(card.parentTaskId, [])
+    children.get(card.parentTaskId).push(card)
+  }
+  function renderCard(card) {
+    const row = h(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? undefined : onOpen, restoreFocus: returnId === card.taskId })
+    if (editing) return pick('project', card.taskId, card.title, row)
+    if (card.status === 'human_review' && card.acceptanceRequest) return h('div', { key: card.taskId }, row,
+      h(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room) }))
+    if (card.status === 'clarify' && card.clarification) return h('div', { key: card.taskId }, row,
+      h('div', { className: 'bt-task-progress' }, card.clarification))
+    if (!taskManagementEnabled(room) || card.status !== 'failed' || card.version || !card.ownerId || !actions.resume) return row
+    return h('div', { key: card.taskId }, row,
+      h(ProjectRetry, { key: card.round + '-' + card.updatedAt, card, roomId: room.id, actions }))
+  }
+  function renderTree(card) {
+    const row = renderCard(card)
+    const related = children.get(card.taskId)
+    if (!related) return row
+    const expanded = !collapsed.has(card.taskId)
+    const toggle = () => setCollapsed(previous => {
+      const next = new Set(previous)
+      if (next.has(card.taskId)) next.delete(card.taskId)
+      else next.add(card.taskId)
+      return next
+    })
+    return h('div', { key: card.taskId },
+      h('div', { className: 'bt-related-parent' },
+        h('button', { type: 'button', className: 'bt-mini bt-related-toggle', 'aria-expanded': expanded,
+          'aria-label': t('Related tasks for {name}', { name: card.title }), onClick: toggle },
+        h(expanded ? ChevronDownIcon : ChevronRightIcon)), row),
+      expanded ? h('div', { className: 'bt-related-children' }, related.map(renderTree)) : null)
+  }
   return h('div', { className: 'bt-tasks' },
     h('div', { className: 'bt-tasks-head' },
       h('div', { className: 'bt-task-heading' },
@@ -334,17 +371,7 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
         h('div', { className: 'bt-task-head' }, h('span', { className: 'bt-task-name', title: item.title }, item.title || t('Original request')),
           h('span', { className: 'bt-task-status' }, t(TASK_STATUS[item.status]))),
         item.reason ? h('div', { className: 'bt-task-progress' }, item.reason) : null)),
-      cards.map(card => {
-        const row = h(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? undefined : onOpen, restoreFocus: returnId === card.taskId })
-        if (editing) return pick('project', card.taskId, card.title, row)
-        if (card.status === 'human_review' && card.acceptanceRequest) return h('div', { key: card.taskId }, row,
-          h(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room) }))
-        if (card.status === 'clarify' && card.clarification) return h('div', { key: card.taskId }, row,
-          h('div', { className: 'bt-task-progress' }, card.clarification))
-        if (!taskManagementEnabled(room) || card.status !== 'failed' || card.version || !card.ownerId || !actions.resume) return row
-        return h('div', { key: card.taskId }, row,
-          h(ProjectRetry, { key: card.round + '-' + card.updatedAt, card, roomId: room.id, actions }))
-      }),
+      roots.map(renderTree),
       open.map(row),
       !hasRows && !(statuses !== null && past.length) ? h('div', { className: 'bt-muted bt-tasks-empty' },
         statuses === null ? t('No task is running in this group.') : t('No results')) : null),
@@ -399,6 +426,10 @@ export const TASK_CSS = `
 .bt-task[data-status=failed] .bt-task-status,.bt-task[data-status=blocked] .bt-task-status{color:var(--bt-danger)}
 .bt-task-time{flex:none;margin-left:auto;font-size:12px;line-height:16px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums}
 .bt-task-list{container-type:inline-size}
+.bt-related-parent{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:start}
+.bt-related-toggle{width:24px;height:28px;margin-top:4px;display:grid;place-items:center}
+.bt-related-toggle svg{width:14px;height:14px}
+.bt-related-children{margin-inline-start:32px;padding-inline-start:16px;border-inline-start:1px solid var(--bt-line-2);display:grid;gap:2px}
 .bt-project-row{box-sizing:border-box;width:100%;min-width:0;border:0;color:var(--bt-ink);background:transparent;font:inherit;text-align:start;cursor:pointer;display:flex;align-items:flex-start;gap:6px}
 .bt-project-body{flex:1;min-width:0;display:grid;gap:2px}
 .bt-project-row .bt-task-name{flex:1}

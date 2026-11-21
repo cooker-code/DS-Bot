@@ -1,5 +1,5 @@
 import { assistantId } from './project-assistant.js'
-import { cardForIntake, intakeContext, intakeLines, projectCardSummary, projectImages, projectRequirement, projectSources } from './project-tasks.js'
+import { relatedTaskGuidance, cardForIntake, intakeContext, intakeLines, projectCardSummary, projectImages, projectRequirement, projectSources } from './project-tasks.js'
 import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { taskMessage } from '../shared/task-message.js'
 import { taskRoom } from './task-routing.js'
@@ -133,6 +133,7 @@ export async function forwardProjectIntake(rt, room, intakeId, throughSeq) {
         ...(previousUser?.status === 'chat' ? ['Preceding conversation: ' + JSON.stringify(previousUser)] : []),
         ...(card ? ['Existing card: ' + JSON.stringify(projectCardSummary(card)), 'For a continuation, reply on this card and delegate recovery to the appointed assistant using this taskId in this group session.'] : []),
       ] : [
+      relatedTaskGuidance,
       'Eligible node owners (id, name, role): ' + JSON.stringify(owners),
       ...(card ? [
         'Continue this existing card: ' + JSON.stringify(projectCardSummary(card)),

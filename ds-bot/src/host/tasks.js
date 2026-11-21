@@ -44,6 +44,11 @@ export function deleteBoardTasks(room, items) {
     })
     if (remaining.length !== entries.length) changes[field] = Object.fromEntries(remaining)
   }
+  for (const [id, card] of Object.entries(changes.projectCards ?? {})) {
+    if (!selected.project.has(card.parentTaskId)) continue
+    const { parentTaskId, ...independent } = card
+    changes.projectCards[id] = independent
+  }
   for (const intake of room.projectInbox ?? []) {
     if (!selected.intake.has(intake.id)) continue
     if (!['pending', 'planning', 'clarify'].includes(intake.status)) throw new Error('The intake changed. Check the task list again.')

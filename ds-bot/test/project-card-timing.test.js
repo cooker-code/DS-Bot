@@ -55,6 +55,21 @@ test('the project board counts saved cards, keeping unassigned intakes and membe
   assert.equal(count(TaskBoard({ room: { taskManagementEnabled: false, tasks: room.tasks }, roster: {}, actions: {} })), 1)
 })
 
+test('a related card is nested under its primary card and still opens its own detail', () => {
+  const room = { projectCards: [{ taskId: 'b', parentTaskId: 'a', status: 'planning' }, { taskId: 'a', status: 'active' }] }
+  const opened = []
+  const render = statuses => TaskBoard({ room, roster: {}, actions: {}, statuses, onOpen: id => opened.push(id) })
+  const grouped = render()
+  const children = find(grouped, n => n.props?.className === 'bt-related-children')
+  const child = find(children, n => n.props?.card?.taskId === 'b')
+  child.type(child.props).props.onClick()
+  assert.deepEqual(opened, ['b'])
+  assert.equal(find(grouped, n => n.props?.className?.includes('bt-related-toggle')).props['aria-expanded'], true)
+  const filtered = render(new Set(['planning']))
+  assert.ok(find(filtered, n => n.props?.card?.taskId === 'b'))
+  assert.equal(find(filtered, n => n.props?.card?.taskId === 'a'), undefined)
+})
+
 test('status filtering updates the task list, card count and member history when the room changes', () => {
   const room = { notice: '[taskId]', projectCards: [
     { taskId: 'a', title: 'First', status: 'done' }, { taskId: 'b', title: 'Second', status: 'active' },
