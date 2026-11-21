@@ -18,7 +18,9 @@ export function useGroupContext(room, actions) {
     void refresh()
     return () => { active = false; clearTimeout(timer) }
   }, [room.id, ids, actions.roomContext])
-  return read?.roomId === room.id ? read.members : {}
+  if (read?.roomId !== room.id) return {}
+  return Object.fromEntries(Object.entries(read.members ?? {}).filter(([id, reading]) =>
+    reading?.id && reading.id === room.memberSessions?.[id]?.at(-1)?.id))
 }
 
 function Help({ label, text }) {
@@ -40,7 +42,8 @@ export function MemberContext({ room, member, stats }) {
       stats?.percent == null ? t('Context unavailable') : t('Context {percent}%', { percent: stats.percent })].join(' · '))
 }
 
-export function GroupContext({ room, members, stats, actions, run, readOnly }) {
+export function GroupContext({ room, members, actions, run, readOnly }) {
+  const stats = useGroupContext(room, actions)
   const [selected, select] = useState('')
   const target = members.find(member => member.id === selected) ?? members[0]
   const current = target && stats[target.id]
@@ -51,8 +54,8 @@ export function GroupContext({ room, members, stats, actions, run, readOnly }) {
     setBusy(true)
     try { return await run(action()) } finally { setBusy(false) }
   }
-  return h('div', { className: 'bt-group-context' },
-    h('details', null, h('summary', null, t('Session handoff')),
+  return h('div', { className: 'bt-set-row bt-bs-stack bt-group-context' },
+    h('details', null, h('summary', { className: 'bt-bs-label' }, t('Session handoff')),
       ...[['system', 'Let the system decide', 'For ongoing work, the system chooses whether to compress this session or start a new one.'],
         ['summary', 'Automatically start with a summary', 'For independent tasks. After a member reaches the warning level, start its next session with a summary at the end of its turn.']].map(([value, label, text]) =>
         h('div', { key: value }, h('label', null, h('input', { type: 'radio', name: 'context-' + room.id, checked: policy === value,

@@ -540,8 +540,6 @@ body[data-ds-dark-theme] .bt-q.bt-q-settled[data-expandable]:not([data-open]):ho
 .bt-dropzone[data-over]{border-color:var(--bt-accent);color:var(--bt-ink)}
 .bt-dropzone img{width:64px;height:64px;border-radius:50%;object-fit:cover}
 .bt-set-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.bt-about{white-space:normal;overflow-wrap:anywhere;overflow:hidden}
-.bt-about:not([data-open]){max-height:5lh}
 .bt-more{border:0;background:none;color:var(--bt-ink-3);font-size:12px;line-height:16px;cursor:pointer;padding:2px 0}
 .bt-more:hover{color:var(--bt-ink)}
 .bt-subhead{display:flex;align-items:center;gap:4px;padding:10px 12px 4px}

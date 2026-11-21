@@ -204,3 +204,19 @@ test('member role selectors read and update the group assistant binding', () => 
   roster.readOnly = true
   assert.equal(role('c').props.disabled, true)
 })
+
+test('Manage opens this group’s archive and offers its session handoff controls before deletion', () => {
+  const room = { id: 'writers', members: [bot.id] }
+  const roster = { byId: { [bot.id]: bot }, bots: [bot], readOnly: true }
+  const requests = []
+  const actions = { openArchive: (...args) => requests.push(args) }
+  const tree = walk(module.exports.GroupSettingsForm({ room, roster, actions }))
+  const [archive, handoff, remove] = tree.find(node => node.props.title === 'Manage').props.children
+  assert.ok(walk(archive).some(node => node.props.children.includes('Archived discussions')))
+  archive.props.onClick()
+  assert.deepEqual(requests, [[room.id, 'library']])
+  const controls = walk(handoff.type(handoff.props))
+  assert.ok(controls.some(node => node.type === 'summary' && node.props.children.includes('Session handoff')))
+  assert.equal(controls.find(node => node.type === 'input').props.disabled, true)
+  assert.ok(walk(remove).some(node => node.props.children.includes('Delete group')))
+})

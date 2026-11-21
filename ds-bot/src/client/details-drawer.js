@@ -5,7 +5,7 @@ import { AlertIcon, PlusIcon, PlugIcon, ShareIcon, CloseIcon, ChevronLeftIcon, G
 import { botState, BotMark, BotAvatar } from './mark.js'
 import { GlobeIcon, Favicon, PanelMenu, menuItemFor } from './browser-pane.js'
 import { useEscape } from './overlay-hooks.js'
-import { GroupContext, MemberContext, useGroupContext } from './group-context.js'
+import { MemberContext, useGroupContext } from './group-context.js'
 import { BotSettingsForm, InlineText } from './bot-settings.js'
 import { GroupSettingsForm, GroupTodos, ROOM_MODES, roomSubtitle, shownMode } from './group-settings.js'
 import { ModelMenu, modelOf } from './model-menu.js'
@@ -171,19 +171,13 @@ function MemberRow({ member, entry, room, roster, actions, stats }) {
 // remembers. Changes are made in its settings.
 function GroupOverview({ room, roster, actions, run, usage, useWork, openTask, returnId, taskFilter: [statuses, onStatusesChange] }) {
   const members = room.members.map(id => roster.byId[id]).filter(Boolean)
-  const readings = useGroupContext(room, actions)
-  const stats = Object.fromEntries(members.map(member => {
-    const reading = readings?.[member.id]
-    return [member.id, reading?.id === room.memberSessions?.[member.id]?.at(-1)?.id ? reading : undefined]
-  }))
+  const stats = useGroupContext(room, actions)
   const { entries } = useMemberWork(room, useWork)
   return [
-    h(MarkdownSetting, { key: 'notice:' + room.id, fold: true, title: t('Notice'), value: room.notice, label: t('Group notice'),
+    h(MarkdownSetting, { key: 'notice:' + room.id, title: t('Notice'), value: room.notice, label: t('Group notice'),
       maxLength: 2000, placeholder: t('Group goals, notices and background…'), readOnly: roster.readOnly,
       onSave: notice => run(actions.updateRoom(room.id, { notice })) }),
     h(GroupTodos, { key: 'todos', room, actions }),
-    h('button', { key: 'archive', type: 'button', className: 'bt-more', onClick: () => actions.openArchive(room.id, 'library') }, t('Archived discussions')),
-    h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
     h(MembersSection, { key: 'members:' + room.id,
       title: t('Members · {count}', { count: members.length }),
       controls: h(StopRoomWork, { room, entries, actions }) },
@@ -455,9 +449,9 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h('div', { className: 'bt-section-title' }, t('Working folder')),
           h(FolderMenu, { value: bot.workDir, actions, run, wide: true, onPick: workDir => run(actions.updateBot(bot.id, { workDir })) })),
         roster.readOnly
-          ? (bot.instructions ? h(MarkdownSetting, { key: `about:${bot.id}`, fold: true, title: t('About'), value: bot.instructions }) : null)
+          ? (bot.instructions ? h(MarkdownSetting, { key: `about:${bot.id}`, title: t('About'), value: bot.instructions }) : null)
           : h(MarkdownSetting, {
-              key: `about:${bot.id}`, fold: true, title: t('About'), value: bot.instructions ?? '', label: t('Instructions'), placeholder: t('What this Bot is responsible for…'),
+              key: `about:${bot.id}`, title: t('About'), value: bot.instructions ?? '', label: t('Instructions'), placeholder: t('What this Bot is responsible for…'),
               onSave: instructions => run(actions.updateBot(bot.id, { instructions })),
             }),
         roster.memory === false ? null : h(MemoryRow, { key: 'memory', owner: { id: bot.id, name: bot.name }, actions }),

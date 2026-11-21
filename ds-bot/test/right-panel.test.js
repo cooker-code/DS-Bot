@@ -269,9 +269,9 @@ test('empty instructions start in reading mode and save to the selected Bot', as
 })
 
 test('a Bot renders its Markdown instructions with a separate edit button for keyboard users', () => {
-  const instructions = '## Writing\n\n- Draft **notes** from the [brief](https://example.org/brief).'
+  const instructions = '## Writing\n\n' + '- Draft **notes** from the [brief](https://example.org/brief).\n'.repeat(12)
   const read = readSetting(markdownSetting(editable({ instructions })))
-  const text = read.children.find(child => child?.props?.className === 'bt-about')
+  const text = read.children.find(child => child?.props?.className === 'bt-project-markdown')
   assert.equal(text.props.role, undefined)
   assert.equal(text.props.onClick, undefined)
   const [markdown] = named(text, 'MarkdownText')
@@ -281,13 +281,13 @@ test('a Bot renders its Markdown instructions with a separate edit button for ke
 })
 
 test('the drawer renders the complete group notice as editable Markdown', () => {
-  const notice = '## Release\n\n- **Review** the [plan](https://example.org/plan).\n- Keep `[taskId]` in the notice.'
+  const notice = '## Release\n\n' + '- **Review** the [plan](https://example.org/plan).\n'.repeat(12)
   const noticeRoster = { ...roster, roomsById: { g: { ...room, notice } } }
   const tree = drawer('g', {}, noticeRoster)
   const about = markdownSetting(tree)
   assert.equal(typeof about.props.onSave, 'function')
   const shown = readSetting(about)
-  const text = shown.children.find(child => child?.props?.className === 'bt-about')
+  const text = shown.children.find(child => child?.props?.className === 'bt-project-markdown')
   assert.equal(text.props.role, undefined)
   assert.equal(text.props['data-editable'], undefined)
   const [markdown] = named(text, 'MarkdownText')

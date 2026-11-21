@@ -5,6 +5,7 @@ import { isMainOf } from './sources.js'
 import { PlusIcon, ChevronRightIcon } from './icons.js'
 import { AdminStar, BotAvatar, BotMark, RoomAvatar } from './mark.js'
 import { Card, Row, InlineText, SwitchRow } from './bot-settings.js'
+import { GroupContext } from './group-context.js'
 import { MarkdownSetting } from './markdown-field.js'
 import { Segmented } from './motion.js'
 import { FolderMenu } from './folder-menu.js'
@@ -207,6 +208,10 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
       h(SwitchRow, { label: t('Pin'), hint: t('Kept above the other chats.'), on: room.pinned === true, onChange: pinned => run(actions.setFlags(room.id, { pinned })) }),
       h(SwitchRow, { label: t('Hide from sidebar'), hint: t('Search still finds it.'), on: room.hidden === true, onChange: hidden => run(actions.setFlags(room.id, { hidden })) })),
     h(Card, { title: t('Manage') },
+      h('button', { type: 'button', className: 'bt-set-row bt-bs-row', onClick: () => actions.openArchive(room.id, 'library') },
+        h('span', { className: 'bt-set-copy bt-bs-label' }, t('Archived discussions')),
+        h('span', { className: 'bt-chevron' }, h(ChevronRightIcon))),
+      h(GroupContext, { key: room.id, room, members, actions, run, readOnly: roster.readOnly }),
       h('button', { type: 'button', className: 'bt-set-row bt-bs-row bt-bs-danger', 'data-confirm': confirming || undefined, onClick: remove },
         h('span', { className: 'bt-set-copy' },
           h('span', { className: 'bt-bs-label' }, confirming ? t('Delete {name}?', { name: room.name }) : t('Delete group')),
