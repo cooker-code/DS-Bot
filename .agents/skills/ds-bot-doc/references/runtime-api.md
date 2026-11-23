@@ -21,7 +21,8 @@
 | `continue-project-task` | roomId、taskId、text、requestId 均为字符串。 | 校验任务开启与本群任务归属后，按 requestId 去重，向群当前会话发送带 taskId 的用户消息。返回 true，回读群账本与卡片需求。群内 @ 项目卡并填写正文时，以首个引用为消息上下文，多卡引用保留各卡 ID 与正文顺序；明确点名其他成员时仍按群聊点名规则投递，交给本群管理员处理。 |
 | `set-task-node-constraint` | roomId、taskId、version、node、field（fixedOwner 或 independentReview）、value（布尔值）。 | 派工前在原计划上新增一版，保存节点约束；拒绝过期版本。成功返回 true，回读 project-task-detail 的 plans。 |
 | `set-task-integration-finish` | 操作者指定 roomId、taskId、version、node，以当前计划的独立测试合并节点作为结单位置。 | 保留原计划和轮次，将未派发的后续节点显示为 omitted，并通知助理处理。拒绝变更已开始的下游或过期计划；回读详情 finishAfterIntegration。 |
-| `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。已有验收记录或完成后拒绝更改。用 project-task-detail 回读。 |
+| `set-task-predecessor` | roomId、taskId、followsTaskId 指定同群前置卡。 | channel 调用 setPredecessor 保存群库任务字段，拒绝循环。返回前置卡 ID，通过 project-task-list 回读。两卡各自完成。 |
+| `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。待人工终验时传 false 会撤回请求并按自动交付条件处理，撤回记录保存在 previousReviews。用 project-task-detail 回读。 |
 | `project-acceptance` | `roomId,taskId,reviewId,decision,feedback?`。decision 为 approve 或 return，退回需明确 feedback。 | `decideAcceptance` 仅处理当前候选的人工终验，回读 `humanReview` 和 task 状态。 |
 | `room-progress` / `group-rows` / `group-search` | 查活跃群用 `roomId`；分页读群消息用 `roomId,from,to?,anchor?`；检索用 `roomId,query,before?,offset?`。 | `roomProgress/groupRowsView/groupSearch` 返回轮次及发言者、消息页或命中。活跃信息属运行时，持久依据是群账本。 |
 | `goal-draft` / `goal-control` | 草拟用 `roomId,text`。操作已有目标用 `roomId,goalId,action,stopWork?`，显式的 stopWork 同时影响执行。 | `goalDraft/goalControl` 返回团队视图。从群目标和实际执行分别回读。[goals.js](../../../../ds-bot/src/host/goals.js) |

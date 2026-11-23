@@ -142,7 +142,33 @@ export function ValidationProgress({ detail }) {
   })
 }
 
-export function ProjectTaskDetail({ room, card, readOnly, openReference, move, hasStrip, onBack, close }) {
+function AcceptanceRequest({ roomId, card, actions, readOnly }) {
+  const [feedback, setFeedback] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const review = card.acceptanceRequest
+  const decide = async decision => {
+    setBusy(true)
+    setError('')
+    try {
+      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === 'return' ? feedback.trim() : undefined)
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return h('div', { className: 'bt-task-acceptance' },
+    !readOnly ? h('div', null,
+      h('textarea', { className: 'bt-input', rows: 2, value: feedback, maxLength: 2000, disabled: busy,
+        placeholder: t('Requested changes'), 'aria-label': t('Requested changes'), onChange: e => setFeedback(e.target.value) }),
+      h('div', { className: 'bt-task-actions' },
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => decide('approve') }, t('Accept delivery')),
+        h('button', { type: 'button', className: 'bt-mini', disabled: busy || !feedback.trim(), onClick: () => decide('return') }, t('Request changes')))) : null,
+    error ? h('p', { className: 'bt-task-error', role: 'alert' }, error) : null)
+}
+
+export function ProjectTaskDetail({ room, card, actions, readOnly, openReference, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = useState()
   const [error, setError] = useState('')
   const [attempt, retry] = useState(0)
@@ -184,6 +210,7 @@ export function ProjectTaskDetail({ room, card, readOnly, openReference, move, h
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),
           h(TaskResults, { key: room.id + taskId, roomId: room.id, taskId, detail }),
+          detail.acceptanceRequest ? h(AcceptanceRequest, { key: detail.acceptanceRequest.id, roomId: room.id, card: detail, actions, readOnly }) : null,
           h(ValidationProgress, { detail }),
           h(TaskWorkspace, { room, card, readOnly }))
         : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))

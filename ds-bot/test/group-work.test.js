@@ -3917,6 +3917,8 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
   const card = await project(spec), taskId = card.taskId
   const detail = () => project({ action: 'read', taskId })
   assert.equal(card.status, 'dispatching')
+  assert.equal(card.humanAcceptanceRequired, false)
+  await host.call('set-task-human-acceptance', { roomId: 'r1', taskId, required: true })
   assert.equal((await project({ action: 'dispatch', taskId, version: 1, node: 1 })).status, 'dispatching')
   await host.tool('message_bot', { to: 'Writer', taskId, card_round: 1, request_id: 'lifecycle', message: 'Inspect', reply_to: 'user' }, 'ga')
   host.begin('gb')
@@ -3969,6 +3971,22 @@ test('loading a submitted plan finishes ordinary work and opens one decision for
   assert.equal((await read(cardA)).status, 'done')
 })
 
+test('withdrawing final sign-off completes the plan independently of its follow-up', async t => {
+  const node = { no: 1, ownerId: 'b', title: 'Plan', instructions: 'Prepare', acceptance: 'Checked', deliverable: 'Plan', dependsOn: [] }
+  const card = { id: cardA, title: 'Plan', intakes: [], humanAcceptanceRequired: true, plans: [{ version: 1, by: 'a', at: 1, nodes: [node] }],
+    rounds: [{ ownerId: 'b', startedAt: 1, submittedAt: 2, result: 'Planning document', planNode: { version: 1, node: 1, inputs: [] } }] }
+  const host = await start(t, { ...taskNotice, projectCards: { [cardA]: card, [cardB]: { id: cardB, plans: [], rounds: [], intakes: [] } } })
+  const call = (name, args) => host.call(name, { roomId: 'r1', ...args })
+  assert.equal((await call('set-task-predecessor', { taskId: cardB, followsTaskId: cardA })).ok, true)
+  assert.equal((await call('set-task-predecessor', { taskId: cardA, followsTaskId: cardB })).ok, false)
+  assert.equal((await call('set-task-human-acceptance', { taskId: cardA, required: false })).ok, true)
+  const { tasks } = (await call('project-task-list', {})).value
+  assert.equal(tasks.find(t => t.taskId === cardA).status, 'done')
+  const next = tasks.find(t => t.taskId === cardB)
+  assert.equal(next.followsTaskId, cardA)
+  assert.equal(next.status, 'planning')
+})
+
 test('loading a completed primary task closes existing descendants and preserves completion after deleting it', async t => {
   const node = { no: 1, ownerId: 'b', title: 'Fix arrow', instructions: 'Update arrow', deliverable: 'Arrow', acceptance: 'Verified', dependsOn: [] }
   const parent = { id: cardA, plans: [{ version: 1, by: 'a', at: 1, nodes: [node] }],
@@ -3998,6 +4016,7 @@ test('returned acceptance goes to the manager and an old request cannot approve 
   const read = () => project({ action: 'read' })
   const approve = { version: 1, node: 1, round: 1, artifact: 'candidate' }
   assert.equal((await project({ action: 'approve', ...approve, taskId: cardB })).status, 'done')
+  await host.call('set-task-human-acceptance', { roomId: 'r1', taskId: cardA, required: true })
   await project({ action: 'request_acceptance', ...approve })
   const reviewId = (await read()).humanReview.id
   const decision = { roomId: 'r1', taskId: cardA, reviewId, decision: 'return', feedback: 'Cover the empty case' }

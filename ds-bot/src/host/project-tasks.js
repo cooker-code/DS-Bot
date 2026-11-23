@@ -18,7 +18,17 @@ import { speakerOf } from '../shared/mentions.js'
 import { excerpt } from './text.js'
 import { output } from './tools.js'
 
-export const relatedTaskGuidance = 'Before planning, list the group cards and read plausible matches. Compare the actual fix, deliverables and acceptance criteria. If one implementation can satisfy both cards, call relate with taskId for the child and parentTaskId for the primary card. Inspect existing plans and rounds. Coordinate the shared fix once on the primary card and track both acceptance criteria; do not dispatch duplicate work on the child. Keep independent work separate; a similar title alone is insufficient.'
+export const relatedTaskGuidance = 'Before planning, list the group cards and read plausible matches. Compare the actual fix, deliverables and acceptance criteria. If one implementation can satisfy both cards, call relate with taskId for the child and parentTaskId for the primary card. Inspect existing plans and rounds. Coordinate the shared fix once on the primary card and track both acceptance criteria; do not dispatch duplicate work on the child. When a new card implements a specific previous planning delivery, pass its taskId as followsTaskId in the plan. Both cards keep independent completion. Keep independent work separate; a similar title alone is insufficient.'
+
+export function setPredecessor(room, card, id) {
+  if (typeof id !== 'string' || !Object.hasOwn(room.projectCards ?? {}, id)) throw new Error('Choose an existing preceding task in this group.')
+  const seen = new Set([card.id])
+  for (let cursor = id; cursor; cursor = room.projectCards[cursor]?.followsTaskId) {
+    if (seen.has(cursor)) throw new Error('A task sequence cannot form a cycle.')
+    seen.add(cursor)
+  }
+  card.followsTaskId = id
+}
 
 export function projectRoomForCard(rt, id) {
   if (typeof id !== 'string') return undefined
@@ -118,7 +128,7 @@ export function projectSources(rt, room, intakeIds, taskId, throughSeq = Infinit
 export const projectCardSummary = (card, taskId = card.id) => {
   const round = card.rounds?.at(-1)
   return {
-    taskId, ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
+    taskId, ...(card.followsTaskId && { followsTaskId: card.followsTaskId }), ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
     ...(card.finishAfterIntegration && { finishAfterIntegration: card.finishAfterIntegration }),
     ...(card.updatedAt !== undefined ? { textUpdatedAt: card.updatedAt } : {}),
     startedAt: round?.startedAt, submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
@@ -275,7 +285,7 @@ export function install(rt) {
     parameters: {
       acceptWork: { type: 'boolean', description: 'With reply, create the formal task card before announcing acceptance of actual work, including read-only investigation.' },
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
-      humanAcceptanceRequired: { type: 'boolean', description: 'Record required human sign-off on the first plan.' },
+      followsTaskId: { type: 'string', description: 'For plan: the existing task whose delivery this task continues.' },
       classificationReason: { type: 'string', description: 'For new work accepted by reply, specify the distinct deliverable and how its completion can be verified.' },
       action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'record_merge', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
       message: { type: 'string', description: 'First public answer to the current group input. Use reply before planning, or chat with message and reason to answer and classify an unassigned question together. Members are not called.' },
@@ -718,8 +728,8 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         card.acceptance = acceptance
         delete card.clarification
       }
-      if (args.humanAcceptanceRequired !== undefined && typeof args.humanAcceptanceRequired !== 'boolean') throw new Error('Choose a valid human acceptance setting.')
-      if (card.humanAcceptanceRequired === undefined) card.humanAcceptanceRequired = args.humanAcceptanceRequired === true || Boolean(card.humanReview)
+      if (args.followsTaskId !== undefined) setPredecessor(room, card, args.followsTaskId)
+      card.humanAcceptanceRequired ??= Boolean(card.humanReview)
       card.classificationReason ??= args.classificationReason || acceptance
       savePlan(card, args, room, actor)
       ;(room.projectCards ??= {})[card.id] = card
@@ -731,7 +741,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         reserveNodePaths(rt, room.id, card, card.rounds[dispatchRound - 1])
       }
       else if (args.action === 'request_acceptance') {
-        if (card.humanAcceptanceRequired === false) throw new Error('Human acceptance is disabled for this task.')
+        if (!card.humanAcceptanceRequired) throw new Error('Human acceptance is disabled for this task.')
         requestAcceptance(card, args)
       }
       else {

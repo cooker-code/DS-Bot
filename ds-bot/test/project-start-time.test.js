@@ -5,7 +5,7 @@ import { test } from 'node:test'
 
 const source = readFileSync(new URL('../src/client/task-board.js', import.meta.url), 'utf8')
 // Exercise the actual component and its local helpers without loading browser-only imports.
-const section = source.slice(source.indexOf('export function projectElapsed'), source.indexOf('function AcceptanceRequest'))
+const section = source.slice(source.indexOf('export function projectElapsed'), source.indexOf('function ProjectRetry'))
 const t = (label, values = {}) => label.replace(/\{(\w+)\}/g, (_, key) => values[key])
 const { ProjectCard, projectStartLabel, projectElapsed } = runInNewContext(
   `${section.replace('export function', 'function')}; ({ ProjectCard, projectStartLabel, projectElapsed })`,

@@ -1014,6 +1014,8 @@ const ZH = {
   'Goal reached: {title}': '目标已达成：{title}',
   'Goal stopped': '目标已终止',
   Reject: '拒绝',
+  'Follow-up: {task}': '后续任务：{task}',
+  'Follows {task}': '前置任务：{task}',
   'Allow once': '允许一次',
   "Couldn't message {name}": '没能给 {name} 发消息',
   Messaged: '已发消息给',

@@ -13899,6 +13899,8 @@ var ZH = {
   "Goal reached: {title}": "目标已达成：{title}",
   "Goal stopped": "目标已终止",
   Reject: "拒绝",
+  "Follow-up: {task}": "后续任务：{task}",
+  "Follows {task}": "前置任务：{task}",
   "Allow once": "允许一次",
   "Couldn't message {name}": "没能给 {name} 发消息",
   Messaged: "已发消息给",
@@ -39922,7 +39924,7 @@ function projectStartLabel(time) {
   const pad2 = (value) => String(value).padStart(2, "0");
   return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
-function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
+function ProjectCard({ card, predecessor, successors, roster, now, onOpen, restoreFocus }) {
   const owners = card.owners ?? (card.ownerId ? [card.ownerId] : []);
   const start = card.startedAt;
   const end = card.submittedAt ?? card.stoppedAt ?? (card.status === "active" ? now : void 0);
@@ -39954,13 +39956,8 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         ),
         onOpen ? (0, import_react58.createElement)("span", { className: "bt-project-arrow" }, (0, import_react58.createElement)(ChevronRightIcon)) : null
       ),
-      (card.validationProgress ?? []).map((progress) => (0, import_react58.createElement)(
-        "span",
-        { key: progress.round, className: "bt-project-meta" },
-        progress.checking ? (0, import_react58.createElement)("span", null, t("Testing: {check}", { check: progress.checking })) : null,
-        progress.lastPassed ? (0, import_react58.createElement)("span", null, t("Passed: {check}", { check: progress.lastPassed })) : null,
-        progress.submitted ? (0, import_react58.createElement)("span", null, t("Test receipt submitted")) : progress.cleaned ? (0, import_react58.createElement)("span", null, t("Cleanup verified")) : progress.checksComplete && card.status === "active" ? (0, import_react58.createElement)("span", null, t("Checks passed · awaiting cleanup")) : null
-      )),
+      predecessor ? (0, import_react58.createElement)("span", { className: "bt-project-meta" }, t("Follows {task}", { task: predecessor.title })) : null,
+      successors?.map((task) => (0, import_react58.createElement)("span", { key: task.taskId, className: "bt-project-meta" }, t("Follow-up: {task}", { task: task.title }))),
       branch || hasStart ? (0, import_react58.createElement)(
         "span",
         { className: "bt-project-meta" },
@@ -39973,49 +39970,6 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         ) : null
       ) : null
     )
-  );
-}
-function AcceptanceRequest({ roomId, card, actions, readOnly }) {
-  const [feedback, setFeedback] = (0, import_react58.useState)("");
-  const [busy, setBusy] = (0, import_react58.useState)(false);
-  const [error, setError] = (0, import_react58.useState)("");
-  const review = card.acceptanceRequest;
-  const decide = async (decision) => {
-    setBusy(true);
-    setError("");
-    try {
-      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === "return" ? feedback.trim() : void 0);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (0, import_react58.createElement)(
-    "div",
-    { className: "bt-task-acceptance" },
-    (0, import_react58.createElement)("p", null, t("Final delivery"), " · ", review.artifact),
-    !readOnly ? (0, import_react58.createElement)(
-      "div",
-      null,
-      (0, import_react58.createElement)("textarea", {
-        className: "bt-input",
-        rows: 2,
-        value: feedback,
-        maxLength: 2e3,
-        disabled: busy,
-        placeholder: t("Requested changes"),
-        "aria-label": t("Requested changes"),
-        onChange: (e) => setFeedback(e.target.value)
-      }),
-      (0, import_react58.createElement)(
-        "div",
-        { className: "bt-task-actions" },
-        (0, import_react58.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => decide("approve") }, t("Accept delivery")),
-        (0, import_react58.createElement)("button", { type: "button", className: "bt-mini", disabled: busy || !feedback.trim(), onClick: () => decide("return") }, t("Request changes"))
-      )
-    ) : null,
-    error ? (0, import_react58.createElement)("p", { className: "bt-task-error", role: "alert" }, error) : null
   );
 }
 function ProjectRetry({ card, roomId, actions }) {
@@ -40045,7 +39999,6 @@ function ProjectRetry({ card, roomId, actions }) {
   );
 }
 var OPEN = ["active", "review", "blocked", "clarify", "failed"];
-var blockedLine = (blocked) => blocked.cause === "stopped" ? t("Stopped by the user") : blocked.cause === "restarted" ? t("Not updated after a restart") : t("Its model call failed ({code})", { code: `${blocked.code}${blocked.status ? ` ${blocked.status}` : ""}` });
 function TaskRow3({ task, bot, room: room2, actions }) {
   const [writing, setWriting] = (0, import_react58.useState)(false);
   const [text, setText] = (0, import_react58.useState)("");
@@ -40057,8 +40010,6 @@ function TaskRow3({ task, bot, room: room2, actions }) {
     return () => clearTimeout(timer);
   }, [confirming]);
   const open = OPEN.includes(task.status);
-  const notes = task.notes ?? [];
-  const lastNote = notes[notes.length - 1];
   const failed = (error) => {
     setBusy(false);
     actions.reportError?.(error, "task");
@@ -40097,11 +40048,6 @@ function TaskRow3({ task, bot, room: room2, actions }) {
       (0, import_react58.createElement)("span", { className: "bt-task-time" }, clockLabel(task.startedAt))
     ),
     (0, import_react58.createElement)("div", { className: "bt-task-goal" }, task.goal),
-    open && task.progress ? (0, import_react58.createElement)("div", { className: "bt-task-progress" }, task.progress) : null,
-    task.blocked ? (0, import_react58.createElement)("div", { className: "bt-task-reason" }, blockedLine(task.blocked)) : null,
-    !open && task.result ? (0, import_react58.createElement)("div", { className: "bt-task-result" }, task.result) : null,
-    !open && task.reason ? (0, import_react58.createElement)("div", { className: "bt-task-reason" }, task.reason) : null,
-    lastNote ? (0, import_react58.createElement)("div", { className: "bt-task-note" }, t("Note: {text}", { text: lastNote.text })) : null,
     open ? (0, import_react58.createElement)(
       "div",
       { className: "bt-task-actions" },
@@ -40220,6 +40166,13 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     requestAnimationFrame(() => deleteButton.current?.focus());
   };
   const [collapsed, setCollapsed] = (0, import_react58.useState)(() => /* @__PURE__ */ new Set());
+  const byId = new Map((room2.projectCards ?? []).map((card) => [card.taskId, card]));
+  const successors = /* @__PURE__ */ new Map();
+  for (const card of byId.values()) {
+    if (!card.followsTaskId) continue;
+    if (!successors.has(card.followsTaskId)) successors.set(card.followsTaskId, []);
+    successors.get(card.followsTaskId).push(card);
+  }
   const visible = new Set(cards.map((card) => card.taskId));
   const roots = [], children = /* @__PURE__ */ new Map();
   for (const card of cards) {
@@ -40231,14 +40184,8 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     children.get(card.parentTaskId).push(card);
   }
   function renderCard(card) {
-    const row2 = (0, import_react58.createElement)(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? void 0 : onOpen, restoreFocus: returnId === card.taskId });
+    const row2 = (0, import_react58.createElement)(ProjectCard, { key: card.taskId, card, predecessor: byId.get(card.followsTaskId), successors: successors.get(card.taskId), roster, now, onOpen: editing ? void 0 : onOpen, restoreFocus: returnId === card.taskId });
     if (editing) return pick2("project", card.taskId, card.title, row2);
-    if (card.status === "human_review" && card.acceptanceRequest) return (0, import_react58.createElement)(
-      "div",
-      { key: card.taskId },
-      row2,
-      (0, import_react58.createElement)(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room2.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room2) })
-    );
     if (!taskManagementEnabled(room2) || card.status !== "failed" || card.version || !card.ownerId || !actions.resume) return row2;
     return (0, import_react58.createElement)(
       "div",
@@ -44042,7 +43989,49 @@ function ValidationProgress({ detail }) {
     );
   });
 }
-function ProjectTaskDetail({ room: room2, card, readOnly, openReference, move, hasStrip, onBack, close }) {
+function AcceptanceRequest({ roomId, card, actions, readOnly }) {
+  const [feedback, setFeedback] = (0, import_react76.useState)("");
+  const [busy, setBusy] = (0, import_react76.useState)(false);
+  const [error, setError] = (0, import_react76.useState)("");
+  const review = card.acceptanceRequest;
+  const decide = async (decision) => {
+    setBusy(true);
+    setError("");
+    try {
+      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === "return" ? feedback.trim() : void 0);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (0, import_react76.createElement)(
+    "div",
+    { className: "bt-task-acceptance" },
+    !readOnly ? (0, import_react76.createElement)(
+      "div",
+      null,
+      (0, import_react76.createElement)("textarea", {
+        className: "bt-input",
+        rows: 2,
+        value: feedback,
+        maxLength: 2e3,
+        disabled: busy,
+        placeholder: t("Requested changes"),
+        "aria-label": t("Requested changes"),
+        onChange: (e) => setFeedback(e.target.value)
+      }),
+      (0, import_react76.createElement)(
+        "div",
+        { className: "bt-task-actions" },
+        (0, import_react76.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => decide("approve") }, t("Accept delivery")),
+        (0, import_react76.createElement)("button", { type: "button", className: "bt-mini", disabled: busy || !feedback.trim(), onClick: () => decide("return") }, t("Request changes"))
+      )
+    ) : null,
+    error ? (0, import_react76.createElement)("p", { className: "bt-task-error", role: "alert" }, error) : null
+  );
+}
+function ProjectTaskDetail({ room: room2, card, actions, readOnly, openReference, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = (0, import_react76.useState)();
   const [error, setError] = (0, import_react76.useState)("");
   const [attempt, retry] = (0, import_react76.useState)(0);
@@ -44115,6 +44104,7 @@ function ProjectTaskDetail({ room: room2, card, readOnly, openReference, move, h
             onSave: (...args) => save("acceptance", ...args)
           }),
           (0, import_react76.createElement)(TaskResults, { key: room2.id + taskId, roomId: room2.id, taskId, detail }),
+          detail.acceptanceRequest ? (0, import_react76.createElement)(AcceptanceRequest, { key: detail.acceptanceRequest.id, roomId: room2.id, card: detail, actions, readOnly }) : null,
           (0, import_react76.createElement)(ValidationProgress, { detail }),
           (0, import_react76.createElement)(TaskWorkspace, { room: room2, card, readOnly })
         ) : !error ? (0, import_react76.createElement)("p", { role: "status" }, t("Loading…")) : null
@@ -44645,7 +44635,7 @@ function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, 
   }
   if (room2 && view?.taskId) {
     const card = room2.projectCards?.find((item) => item.taskId === view.taskId);
-    return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, openReference: (path2) => actions.openTaskReference(room2.sessionId ?? room2.id, path2), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
+    return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, actions, openReference: (path2) => actions.openTaskReference(room2.sessionId ?? room2.id, path2), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
   }
   if ((bot || room2) && view === "settings") {
     return [

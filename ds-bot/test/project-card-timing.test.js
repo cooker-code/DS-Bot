@@ -70,6 +70,19 @@ test('a task needing clarification opens its detail without showing the explanat
   assert.deepEqual(opened, ['a'])
 })
 
+test('the list identifies both ends of a sequence and omits review forms and validation prose', () => {
+  const plan = { taskId: 'a', title: 'Plan', status: 'human_review', acceptanceRequest: { id: 'receipt', artifact: 'Private delivery body' } }
+  const work = { taskId: 'b', title: 'Implement', status: 'active', followsTaskId: 'a', validationProgress: [{ round: 1, checking: 'Long check' }] }
+  const view = TaskBoard({ room: { projectCards: [plan, work] }, roster: {}, actions: {} })
+  for (const card of [plan, work]) {
+    const component = find(view, n => n.props?.card === card)
+    const rendered = component.type(component.props)
+    assert.ok(find(rendered, n => n.children.some(child => typeof child === 'string' && child.includes(card === plan ? work.title : plan.title))))
+    assert.equal(find(rendered, n => n.children.includes('Long check')), undefined)
+  }
+  assert.equal(find(view, n => n.type?.name === 'AcceptanceRequest'), undefined)
+})
+
 test('a related card is nested under its primary card and still opens its own detail', () => {
   const room = { projectCards: [{ taskId: 'b', parentTaskId: 'a', status: 'planning' }, { taskId: 'a', status: 'active' }] }
   const opened = []
@@ -249,7 +262,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => runtime })
   const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
-  const fields = body.children[0].children[1].children
+  const fields = body.children[0].children[1].children.filter(Boolean)
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
   assert.equal(results().props.placeholder.props.className, 'bt-empty')
