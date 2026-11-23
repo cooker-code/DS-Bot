@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
+import { fakeWsServer } from './fake-ws.js'
 import { fakeContext } from './fake-ctx.js'
 import { adapters } from '../src/host/im/platforms/index.js'
 
@@ -237,6 +238,46 @@ test('a WeCom direct chat can route to a room and return to the connection Bot',
   await bind(null)
   await send('u1', 'back to private')
   assert.equal(s.prompts.at(-1).sessionId, 'a')
+})
+
+test('a room member reply reaches the originating WeCom DM through the WebSocket adapter', async (t) => {
+  const waitFor = async condition => {
+    for (let i = 0; i < 100 && !condition(); i++) await delay(20)
+    assert.ok(condition())
+  }
+  const delivered = []
+  const gateway = await fakeWsServer({ onSocket(ws) {
+    ws.on('message', raw => {
+      const packet = JSON.parse(raw)
+      let errcode = 0
+      if (packet.cmd !== 'aibot_subscribe') {
+        if (packet.cmd === 'aibot_send_msg' && packet.body.chatid === 'u1' && packet.body.msgtype === 'markdown') {
+          delivered.push(packet.body.markdown.content)
+        } else errcode = 40058
+      }
+      ws.send(JSON.stringify({ headers: packet.headers, errcode }))
+    })
+  } })
+  t.after(() => gateway.close())
+  const s = await start({ platform: 'wecom', adapter: adapters.wecom })
+  t.after(s.stop)
+  s.rt.config.im = { wecom: { gateway: gateway.url } }
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  s.rt.state.im.connections[conn.id].paired.push({ id: 'u1', name: 'User', at: 1 })
+  await s.rt.save()
+  await waitFor(() => s.rt.imStatusView()[conn.id]?.state === 'ready')
+  const inbound = id => gateway.sockets.at(-1).send(JSON.stringify({
+    cmd: 'aibot_msg_callback', headers: { req_id: id },
+    body: { chattype: 'single', from: { userid: 'u1' }, msgtype: 'text', msgid: id, text: { content: id } },
+  }))
+  inbound('before binding')
+  await waitFor(() => s.prompts.length === 1)
+  await s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'u1', target: { roomId: 'r1' } })
+  inbound('which workspace')
+  await waitFor(() => s.prompts.at(-1)?.sessionId === 'r1')
+  s.imTurn('r1')
+  s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'room workspace' })
+  await waitFor(() => delivered.includes('**Writer**: room workspace'))
 })
 
 test('unbound group mention replies unbound and records the chat; binding routes mentions', async (t) => {
