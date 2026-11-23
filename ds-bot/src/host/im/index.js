@@ -6,6 +6,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { replaceFile } from '../files.js'
+import { isClock } from '../time-context.js'
 import { viewCardText } from '../parts.js'
 import { imPlatform, IM_PLATFORMS } from '../../shared/im-platforms.js'
 import { REPLY_KIND, SOURCE_KIND } from '../constants.js'
@@ -1589,6 +1590,8 @@ export function install(rt) {
     }
     if (event.type === 'user/message') {
       const source = event.data?.source
+      // A clock snapshot accompanies the prompt without adding a speaker.
+      if (isClock(source)) return
       const imOrigin = source?.imOrigin
       const rpcId = source?.rpcId
       // A late member result or part-switch handoff continues the work the chat asked for;
