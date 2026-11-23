@@ -12,6 +12,7 @@ description: 盘点 DS Bot upstream 的修复、功能和设计说明，核对�
 - DS Bot 独立桌面应用（`app/`、`start.ps1`）及其安装包。
 - iOS 和 Android 客户端（`mobile/`），以及手机配对、远程访问和加密中继（`link/`）。
 - Docker 部署（`docker/`、`docker-compose.yml`、`docker-compose.dev.yml`）。
+- Windows 和 Linux 专用代码、测试、夹具与 CI 作业。本地维护 macOS 插件，跨平台 PR 仍评估 macOS 适用部分。
 
 按实际用途判断，包括上述模块新增或改名的文件，以及仅服务于它们的依赖、文档、测试和构建发布任务。遇到上游修改本地已删除的模块，保留删除结果。只涉及排除范围的 PR 仍在同步记录登记为“跳过”，注明所属模块。混合 PR 在同一条目写清取舍，只移植插件需要的部分。DSH Desktop 或 DSH Web 加载插件时的修复仍参与评估，例如标题写“手机布局”的改动也可能修复 DSH Web 的窄屏显示。
 
