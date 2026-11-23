@@ -39999,7 +39999,6 @@ function ProjectRetry({ card, roomId, actions }) {
   );
 }
 var OPEN = ["active", "review", "blocked", "clarify", "failed"];
-var blockedLine = (blocked) => blocked.cause === "stopped" ? t("Stopped by the user") : blocked.cause === "restarted" ? t("Not updated after a restart") : t("Its model call failed ({code})", { code: `${blocked.code}${blocked.status ? ` ${blocked.status}` : ""}` });
 function TaskRow3({ task, bot, room: room2, actions }) {
   const [writing, setWriting] = (0, import_react58.useState)(false);
   const [text, setText] = (0, import_react58.useState)("");
@@ -40011,8 +40010,6 @@ function TaskRow3({ task, bot, room: room2, actions }) {
     return () => clearTimeout(timer);
   }, [confirming]);
   const open = OPEN.includes(task.status);
-  const notes = task.notes ?? [];
-  const lastNote = notes[notes.length - 1];
   const failed = (error) => {
     setBusy(false);
     actions.reportError?.(error, "task");
@@ -40051,11 +40048,6 @@ function TaskRow3({ task, bot, room: room2, actions }) {
       (0, import_react58.createElement)("span", { className: "bt-task-time" }, clockLabel(task.startedAt))
     ),
     (0, import_react58.createElement)("div", { className: "bt-task-goal" }, task.goal),
-    open && task.progress ? (0, import_react58.createElement)("div", { className: "bt-task-progress" }, task.progress) : null,
-    task.blocked ? (0, import_react58.createElement)("div", { className: "bt-task-reason" }, blockedLine(task.blocked)) : null,
-    !open && task.result ? (0, import_react58.createElement)("div", { className: "bt-task-result" }, task.result) : null,
-    !open && task.reason ? (0, import_react58.createElement)("div", { className: "bt-task-reason" }, task.reason) : null,
-    lastNote ? (0, import_react58.createElement)("div", { className: "bt-task-note" }, t("Note: {text}", { text: lastNote.text })) : null,
     open ? (0, import_react58.createElement)(
       "div",
       { className: "bt-task-actions" },

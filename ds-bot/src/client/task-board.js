@@ -155,11 +155,6 @@ function ProjectRetry({ card, roomId, actions }) {
 }
 
 const OPEN = ['active', 'review', 'blocked', 'clarify', 'failed']
-// A block DS Bot set from how the member's work ended, not one the Bot reported.
-const blockedLine = blocked => blocked.cause === 'stopped' ? t('Stopped by the user')
-  : blocked.cause === 'restarted' ? t('Not updated after a restart')
-  : t('Its model call failed ({code})', { code: `${blocked.code}${blocked.status ? ` ${blocked.status}` : ''}` })
-
 function TaskRow({ task, bot, room, actions }) {
   const [writing, setWriting] = useState(false)
   const [text, setText] = useState('')
@@ -171,8 +166,6 @@ function TaskRow({ task, bot, room, actions }) {
     return () => clearTimeout(timer)
   }, [confirming])
   const open = OPEN.includes(task.status)
-  const notes = task.notes ?? []
-  const lastNote = notes[notes.length - 1]
   const failed = (error) => { setBusy(false); actions.reportError?.(error, 'task') }
   const send = () => {
     const line = text.trim()
@@ -196,11 +189,6 @@ function TaskRow({ task, bot, room, actions }) {
       h('span', { className: 'bt-task-status' }, t(TASK_STATUS[task.status])),
       h('span', { className: 'bt-task-time' }, clockLabel(task.startedAt))),
     h('div', { className: 'bt-task-goal' }, task.goal),
-    open && task.progress ? h('div', { className: 'bt-task-progress' }, task.progress) : null,
-    task.blocked ? h('div', { className: 'bt-task-reason' }, blockedLine(task.blocked)) : null,
-    !open && task.result ? h('div', { className: 'bt-task-result' }, task.result) : null,
-    !open && task.reason ? h('div', { className: 'bt-task-reason' }, task.reason) : null,
-    lastNote ? h('div', { className: 'bt-task-note' }, t('Note: {text}', { text: lastNote.text })) : null,
     open ? h('div', { className: 'bt-task-actions' },
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, 'aria-expanded': writing, onClick: () => setWriting(value => !value) }, t('Add a note')),
       h('button', {
