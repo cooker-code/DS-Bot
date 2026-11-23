@@ -411,8 +411,8 @@ function decide(body) {
   }
   if (directProject && userText.includes('The owner submitted evidence for review on round'))
     return [tool('project_task', { action: 'approve', version: 1, node: 1, round: 1, artifact: 'Image receipt' })]
-  if (directProject && userText.includes('The last node is approved. The task is complete.'))
-    return [tool('project_task', { action: 'report', message: 'The assistant verified the original image. The task is complete.' })]
+  if (directProject && (userText.includes('Final delivery completed the task.') || userText.includes('The last node is approved. The task is complete.')))
+    return [tool('project_task', { action: 'report', message: 'The worker received the original image. The task is complete.' })]
   const recoveryRequest = /请核对工作树并接管测试。中断接管验收。\s*task=(\S+) candidate=(\S+)/.exec(userText)
   if (me === 'Chief' && recoveryRequest && tools.has('project_task')) {
     return [tool('project_task', { action: 'inspect_recovery', taskId: recoveryRequest[1], ownerId: recoveryRequest[2], version: 1, node: 3, round: 3 })]
