@@ -229,6 +229,7 @@ test('a WeCom direct chat can route to a room and return to the connection Bot',
   assert.equal(s.prompts.at(-1).sessionId, 'r1')
   assert.deepEqual(s.prompts.at(-1).content, [{ type: 'text', text: 'hello room' }])
   s.imTurn('r1')
+  s.emitEvent('r1', 'user/message', { source: { kind: 'ds-bot-time-context', form: 'snapshot' } })
   s.fake.sent.length = 0
   s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'reply from room' })
   await s.flush()
@@ -276,6 +277,7 @@ test('a room member reply reaches the originating WeCom DM through the WebSocket
   inbound('which workspace')
   await waitFor(() => s.prompts.at(-1)?.sessionId === 'r1')
   s.imTurn('r1')
+  s.emitEvent('r1', 'user/message', { source: { kind: 'time-context', form: 'snapshot' } })
   s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'room workspace' })
   await waitFor(() => delivered.includes('**Writer**: room workspace'))
 })
