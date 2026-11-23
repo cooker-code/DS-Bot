@@ -6,6 +6,15 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### Upstream changes adopted on 2026-11-23
+
+- Feishu discovers its long-connection endpoint and retries failed connections. Edited Discord messages retain their Markdown formatting.
+- Local ACP agents finish cancellation when a prompt stops responding and suppress stale errors. ACP and Claude clean up pending questions and worker resources. Provider-owned Antigravity model references survive a restart.
+- The Settings model picker opens reliably and its tooltip no longer flickers. Message popovers release their viewport listener when closed.
+- Bot creation handles a failed greeting, history reads reuse per-message secret redaction, and memory retries a failed journal-tail read.
+
+See the [per-PR sync record](upstream-changelog.md#2026-11-23--macos-插件同步) for scope and verification.
+
 ### Upstream changes adopted on 2026-11-21
 
 The [sync record](upstream-changelog.md#2026-11-21--macos-插件同步) lists the source pull requests and deferred changes.
