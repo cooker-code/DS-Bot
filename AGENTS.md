@@ -29,6 +29,14 @@ Bot 团队的工作方式如下。
 - 用户从 Dock 正常打开 Desktop。脚本调用先用 `python3 .agents/skills/ds-bot-doc/scripts/request.py state --desktop --jq '{readOnly,revision}'`。每次根据本机团队写锁定位当前用户的 Desktop 后端，核对父进程与回环监听，用匿名只读请求识别 API，再用官方登录公告或操作者提供的同源有效会话认证。后续操作也带 `--desktop`。缺少本次登录材料或有效会话时，只读核查走 SQLite；写操作报告具体认证缺口。保留用户的 Dock 启动习惯，不为获取凭据重启、切换宿主、操作界面或读取浏览器私有存储。详见[认证与命令](.agents/skills/ds-bot-doc/references/operator.md)。
 - 新增、修改或移除 API 时，同一改动更新技能中的业务入口、请求与返回字段含义、服务函数、存储位置、副作用和回读示例。仓库 CI 运行技能中的接口名覆盖检查；字段或行为变化还要逐项核对服务与例子。现有 API 无法表达某项设置时，先核对鉴权、宿主版本和锁，确认业务入口缺失后，在插件服务和通道补齐，复用原有权限与校验，并用隔离实例验证。
 
+### 修改 Bot 简介和群公告
+
+修改和核查这两项设置一律不用 Computer Use。先确定目标团队、Bot ID 或群 ID，以及本次应保存的完整正文。用户照常从 Dock 打开 Desktop。
+
+1. **有有效会话时走 API。** 确认当前 Desktop 持有团队写锁后，用 `update-bot` 按 Bot ID 写 `instructions`，或用 `update-room` 按群 ID 写 `notice`。写入后通过 `state` 按同一 ID 取回对应字段全文，与预期正文逐字比较。
+2. **没有有效会话时等用户退出 Desktop。** 用户退出后，确认 Desktop 已结束、团队写锁已释放且没有其他写入宿主，再按 [SQLite 离线维护流程](.agents/skills/ds-bot-doc/references/storage.md) 备份并在一致副本上修改。Bot 简介按 `bot_id` 定位；群公告先按 `room_catalog` 查群库，再按 `room_id` 定位。事务仅更新目标对象，检查命中行数、修订号和数据库完整性后应用改动。
+3. **离线修改后等用户从 Dock 重新打开 Desktop。** 核对当前团队，按原 Bot ID 或群 ID 回读简介或公告全文。有有效会话就读 API，否则用只读 SQLite 查询日用团队库。全文与预期逐字一致才报告已保存；有差异时说明差异。
+
 ## 开发命令
 
 以下是 `ds-bot/` 目录下的常用命令，按需选用。单元测试和静态检查工具从 `dev/harness/` 加载 `@deepseek-ai/*` 软件包。`npm run harness` 会按 `dev/harness/package.json` 指定的 DSH 版本从 npm 安装这些包。也可以通过 `DSH_HARNESS` 指定其他 DSH 安装目录或 DeepSeek Harness 源码检出目录。运行测试环境需要一份源码，版本以 README 为准，默认路径为 `../deepseek-harness`，也可通过 `DSH_HARNESS` 指定。
