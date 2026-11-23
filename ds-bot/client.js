@@ -13899,6 +13899,8 @@ var ZH = {
   "Goal reached: {title}": "目标已达成：{title}",
   "Goal stopped": "目标已终止",
   Reject: "拒绝",
+  "Follow-up: {task}": "后续任务：{task}",
+  "Follows {task}": "前置任务：{task}",
   "Allow once": "允许一次",
   "Couldn't message {name}": "没能给 {name} 发消息",
   Messaged: "已发消息给",
@@ -20272,7 +20274,7 @@ var COMPUTER_CSS = `
 .bt-cstep-shot-open img{max-height:280px;max-width:480px}
 `;
 
-// node_modules/deep-view/src/react/ui.js
+// ../../../ds-bot/node_modules/deep-view/src/react/ui.js
 var import_react13 = require("react");
 var FallbackMarkdown = ({ text }) => (0, import_react13.createElement)("span", null, String(text ?? ""));
 var ViewUi = (0, import_react13.createContext)({ t: (key) => key, Markdown: FallbackMarkdown });
@@ -20339,7 +20341,7 @@ function useOptionKeys2(count, onPick, ownRef) {
   return count > 0 && listening <= 1;
 }
 
-// node_modules/deep-view/src/core/formula.js
+// ../../../ds-bot/node_modules/deep-view/src/core/formula.js
 var FUNCTIONS = {
   min: { args: [1, Infinity], run: (...values) => Math.min(...values.map(num)) },
   max: { args: [1, Infinity], run: (...values) => Math.max(...values.map(num)) },
@@ -20620,7 +20622,7 @@ function evaluate(tree, lookup) {
   }
 }
 
-// node_modules/deep-view/src/core/views.js
+// ../../../ds-bot/node_modules/deep-view/src/core/views.js
 var LAYOUT = ["stack", "row"];
 var DISPLAY = ["text", "metric", "table", "chart", "progress", "callout", "sources", "html"];
 var INPUT_TYPES = ["slider", "choice", "toggle", "number"];
@@ -21252,7 +21254,7 @@ function validateForm(node, values) {
   return { fields };
 }
 
-// node_modules/deep-view/src/react/chart.js
+// ../../../ds-bot/node_modules/deep-view/src/react/chart.js
 var import_react14 = require("react");
 var PALETTE = ["var(--dv-accent)", "var(--dv-ink-tangerine)", "var(--dv-ink-green)", "var(--dv-ink-violet)", "var(--dv-ink-sky)", "var(--dv-ink-rose)", "var(--dv-ink-yellow)", "var(--dv-ink-cyan)", "var(--dv-ink-magenta)"];
 var colorAt = (index) => PALETTE[index % PALETTE.length];
@@ -21691,7 +21693,7 @@ var CHART_CSS = `
 @media (prefers-reduced-motion:reduce){.dv-chart-mark,.dv-chart-dot{transition:none}.dv-chart-tip{animation:none}}
 `;
 
-// node_modules/deep-view/src/react/frame.js
+// ../../../ds-bot/node_modules/deep-view/src/react/frame.js
 var import_react15 = require("react");
 var THEME_VARS = [
   ["--view-ink", "--bt-ink", "--dv-ink"],
@@ -21773,7 +21775,7 @@ var HTML_CSS = `
 .dv-view-frame-stopped{margin:0;font-size:13px;line-height:18px;color:var(--dv-ink-2)}
 `;
 
-// node_modules/deep-view/src/react/card.js
+// ../../../ds-bot/node_modules/deep-view/src/react/card.js
 var import_react16 = require("react");
 var mdLabels2 = (ui2) => ({ code: { copyLabel: ui2.t("Copy"), copiedLabel: ui2.t("Copied") }, footnotes: ui2.t("Footnotes") });
 var TONES2 = ["good", "warn", "bad"];
@@ -22515,7 +22517,7 @@ ${CHART_CSS}
 ${HTML_CSS}
 `;
 
-// node_modules/deep-view/src/react/styles.js
+// ../../../ds-bot/node_modules/deep-view/src/react/styles.js
 var THEME_CSS = `
 body{
 --dv-ink:var(--dsw-alias-label-primary);
@@ -22613,10 +22615,10 @@ button.dv-q-opt:active{background:var(--dv-active)}
 @media (prefers-reduced-motion:reduce){.dv-q,.dv-view-bare,.dv-q-submit,.dv-menu,.dv-q-check{animation:none}}
 `;
 
-// node_modules/deep-view/src/react/index.js
+// ../../../ds-bot/node_modules/deep-view/src/react/index.js
 var DEEP_VIEW_CSS = THEME_CSS + QUESTION_CSS + WIDGET_CSS;
 
-// node_modules/deep-view/src/core/reply.js
+// ../../../ds-bot/node_modules/deep-view/src/core/reply.js
 var REPLY_KIND = "user-question-reply";
 var REPLY_SOURCE_KIND = "deep-view-reply";
 function viewCardText(args) {
@@ -34351,7 +34353,7 @@ var CONNECTORS_PAGE_CSS = `
 @media (prefers-reduced-motion:reduce){.bt-app[data-fresh]::after,.bt-app[data-fresh] .bt-app-icon,.bt-app[data-fresh] .bt-app-btn-done{animation:none}}
 `;
 
-// node_modules/qrcode-generator/dist/qrcode.mjs
+// ../../../ds-bot/node_modules/qrcode-generator/dist/qrcode.mjs
 var qrcode = function(typeNumber, errorCorrectionLevel) {
   const PAD0 = 236;
   const PAD1 = 17;
@@ -39922,7 +39924,7 @@ function projectStartLabel(time) {
   const pad2 = (value) => String(value).padStart(2, "0");
   return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
-function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
+function ProjectCard({ card, predecessor, successors, roster, now, onOpen, restoreFocus }) {
   const owners = card.owners ?? (card.ownerId ? [card.ownerId] : []);
   const start = card.startedAt;
   const end = card.submittedAt ?? card.stoppedAt ?? (card.status === "active" ? now : void 0);
@@ -39954,13 +39956,8 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         ),
         onOpen ? (0, import_react58.createElement)("span", { className: "bt-project-arrow" }, (0, import_react58.createElement)(ChevronRightIcon)) : null
       ),
-      (card.validationProgress ?? []).map((progress) => (0, import_react58.createElement)(
-        "span",
-        { key: progress.round, className: "bt-project-meta" },
-        progress.checking ? (0, import_react58.createElement)("span", null, t("Testing: {check}", { check: progress.checking })) : null,
-        progress.lastPassed ? (0, import_react58.createElement)("span", null, t("Passed: {check}", { check: progress.lastPassed })) : null,
-        progress.submitted ? (0, import_react58.createElement)("span", null, t("Test receipt submitted")) : progress.cleaned ? (0, import_react58.createElement)("span", null, t("Cleanup verified")) : progress.checksComplete && card.status === "active" ? (0, import_react58.createElement)("span", null, t("Checks passed · awaiting cleanup")) : null
-      )),
+      predecessor ? (0, import_react58.createElement)("span", { className: "bt-project-meta" }, t("Follows {task}", { task: predecessor.title })) : null,
+      successors?.map((task) => (0, import_react58.createElement)("span", { key: task.taskId, className: "bt-project-meta" }, t("Follow-up: {task}", { task: task.title }))),
       branch || hasStart ? (0, import_react58.createElement)(
         "span",
         { className: "bt-project-meta" },
@@ -39973,49 +39970,6 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         ) : null
       ) : null
     )
-  );
-}
-function AcceptanceRequest({ roomId, card, actions, readOnly }) {
-  const [feedback, setFeedback] = (0, import_react58.useState)("");
-  const [busy, setBusy] = (0, import_react58.useState)(false);
-  const [error, setError] = (0, import_react58.useState)("");
-  const review = card.acceptanceRequest;
-  const decide = async (decision) => {
-    setBusy(true);
-    setError("");
-    try {
-      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === "return" ? feedback.trim() : void 0);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (0, import_react58.createElement)(
-    "div",
-    { className: "bt-task-acceptance" },
-    (0, import_react58.createElement)("p", null, t("Final delivery"), " · ", review.artifact),
-    !readOnly ? (0, import_react58.createElement)(
-      "div",
-      null,
-      (0, import_react58.createElement)("textarea", {
-        className: "bt-input",
-        rows: 2,
-        value: feedback,
-        maxLength: 2e3,
-        disabled: busy,
-        placeholder: t("Requested changes"),
-        "aria-label": t("Requested changes"),
-        onChange: (e) => setFeedback(e.target.value)
-      }),
-      (0, import_react58.createElement)(
-        "div",
-        { className: "bt-task-actions" },
-        (0, import_react58.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => decide("approve") }, t("Accept delivery")),
-        (0, import_react58.createElement)("button", { type: "button", className: "bt-mini", disabled: busy || !feedback.trim(), onClick: () => decide("return") }, t("Request changes"))
-      )
-    ) : null,
-    error ? (0, import_react58.createElement)("p", { className: "bt-task-error", role: "alert" }, error) : null
   );
 }
 function ProjectRetry({ card, roomId, actions }) {
@@ -40220,6 +40174,13 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     requestAnimationFrame(() => deleteButton.current?.focus());
   };
   const [collapsed, setCollapsed] = (0, import_react58.useState)(() => /* @__PURE__ */ new Set());
+  const byId = new Map((room2.projectCards ?? []).map((card) => [card.taskId, card]));
+  const successors = /* @__PURE__ */ new Map();
+  for (const card of byId.values()) {
+    if (!card.followsTaskId) continue;
+    if (!successors.has(card.followsTaskId)) successors.set(card.followsTaskId, []);
+    successors.get(card.followsTaskId).push(card);
+  }
   const visible = new Set(cards.map((card) => card.taskId));
   const roots = [], children = /* @__PURE__ */ new Map();
   for (const card of cards) {
@@ -40231,14 +40192,8 @@ function TaskBoard({ room: room2, roster, actions, onOpen, returnId, statuses = 
     children.get(card.parentTaskId).push(card);
   }
   function renderCard(card) {
-    const row2 = (0, import_react58.createElement)(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? void 0 : onOpen, restoreFocus: returnId === card.taskId });
+    const row2 = (0, import_react58.createElement)(ProjectCard, { key: card.taskId, card, predecessor: byId.get(card.followsTaskId), successors: successors.get(card.taskId), roster, now, onOpen: editing ? void 0 : onOpen, restoreFocus: returnId === card.taskId });
     if (editing) return pick2("project", card.taskId, card.title, row2);
-    if (card.status === "human_review" && card.acceptanceRequest) return (0, import_react58.createElement)(
-      "div",
-      { key: card.taskId },
-      row2,
-      (0, import_react58.createElement)(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room2.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room2) })
-    );
     if (!taskManagementEnabled(room2) || card.status !== "failed" || card.version || !card.ownerId || !actions.resume) return row2;
     return (0, import_react58.createElement)(
       "div",
@@ -44042,7 +43997,49 @@ function ValidationProgress({ detail }) {
     );
   });
 }
-function ProjectTaskDetail({ room: room2, card, readOnly, openReference, move, hasStrip, onBack, close }) {
+function AcceptanceRequest({ roomId, card, actions, readOnly }) {
+  const [feedback, setFeedback] = (0, import_react76.useState)("");
+  const [busy, setBusy] = (0, import_react76.useState)(false);
+  const [error, setError] = (0, import_react76.useState)("");
+  const review = card.acceptanceRequest;
+  const decide = async (decision) => {
+    setBusy(true);
+    setError("");
+    try {
+      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === "return" ? feedback.trim() : void 0);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (0, import_react76.createElement)(
+    "div",
+    { className: "bt-task-acceptance" },
+    !readOnly ? (0, import_react76.createElement)(
+      "div",
+      null,
+      (0, import_react76.createElement)("textarea", {
+        className: "bt-input",
+        rows: 2,
+        value: feedback,
+        maxLength: 2e3,
+        disabled: busy,
+        placeholder: t("Requested changes"),
+        "aria-label": t("Requested changes"),
+        onChange: (e) => setFeedback(e.target.value)
+      }),
+      (0, import_react76.createElement)(
+        "div",
+        { className: "bt-task-actions" },
+        (0, import_react76.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => decide("approve") }, t("Accept delivery")),
+        (0, import_react76.createElement)("button", { type: "button", className: "bt-mini", disabled: busy || !feedback.trim(), onClick: () => decide("return") }, t("Request changes"))
+      )
+    ) : null,
+    error ? (0, import_react76.createElement)("p", { className: "bt-task-error", role: "alert" }, error) : null
+  );
+}
+function ProjectTaskDetail({ room: room2, card, actions, readOnly, openReference, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = (0, import_react76.useState)();
   const [error, setError] = (0, import_react76.useState)("");
   const [attempt, retry] = (0, import_react76.useState)(0);
@@ -44115,6 +44112,7 @@ function ProjectTaskDetail({ room: room2, card, readOnly, openReference, move, h
             onSave: (...args) => save("acceptance", ...args)
           }),
           (0, import_react76.createElement)(TaskResults, { key: room2.id + taskId, roomId: room2.id, taskId, detail }),
+          detail.acceptanceRequest ? (0, import_react76.createElement)(AcceptanceRequest, { key: detail.acceptanceRequest.id, roomId: room2.id, card: detail, actions, readOnly }) : null,
           (0, import_react76.createElement)(ValidationProgress, { detail }),
           (0, import_react76.createElement)(TaskWorkspace, { room: room2, card, readOnly })
         ) : !error ? (0, import_react76.createElement)("p", { role: "status" }, t("Loading…")) : null
@@ -44645,7 +44643,7 @@ function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, 
   }
   if (room2 && view?.taskId) {
     const card = room2.projectCards?.find((item) => item.taskId === view.taskId);
-    return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, openReference: (path2) => actions.openTaskReference(room2.sessionId ?? room2.id, path2), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
+    return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, actions, openReference: (path2) => actions.openTaskReference(room2.sessionId ?? room2.id, path2), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
   }
   if ((bot || room2) && view === "settings") {
     return [

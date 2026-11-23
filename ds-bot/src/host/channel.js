@@ -7,7 +7,8 @@ import { memberSettings } from './team-storage/member-settings.js'
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
 import { isIntakeReceipt, taskCaption, taskMessage } from '../shared/task-message.js'
 import { branchReport, selectTaskWorkspace, taskWorkspaceChoices, setProjectWorkspacePolicy, workspaceDecisions, workspaceSummary } from './project-branches.js'
-import { decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText } from './project-tasks.js'
+import { finishSubmittedPlan, completeRelatedCards } from './project-plan.js'
+import { setPredecessor, decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText } from './project-tasks.js'
 import { readTaskReference } from './task-reference.js'
 import { deleteBoardTasks } from './tasks.js'
 import { fileDownload } from './file-download.js'
@@ -481,6 +482,20 @@ export function install(rt) {
             'The user selected this test-and-merge node as final. Preserve history; archive separately and skip extra architecture review. If an older submitted round lacks the separate merge receipt, revise the plan now: reuse prior accepted evidence and dispatch the independent tester on the existing candidate for the final receipt and targeted verification; preserve the old result without repeating the Git merge. Otherwise recover the tester if blocked, using the immutable dev snapshot and existing valid evidence. Have the tester immediately call record_merge (commit=candidate, mergeCommit=actual dev merge), then submit targeted validation with testedCommit. Approve and report completion. No user continuation is needed.')
           return ok(card.finishAfterIntegration)
         }
+        case 'set-task-predecessor': {
+          await rt.load()
+          await rt.save({ required: true, mutate() {
+            const room = rt.roomOf(body.roomId)
+            if (!room || !taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+            const card = rt.own(room.projectCards, body.taskId)
+            if (!card) throw new Error('No such task')
+            const updated = { ...card }
+            setPredecessor(room, updated, body.followsTaskId)
+            room.projectCards[card.id] = updated
+            return () => { room.projectCards[card.id] = card }
+          } })
+          return ok(body.followsTaskId)
+        }
         case 'set-task-human-acceptance': {
           await rt.load()
           const required = body.required
@@ -491,6 +506,17 @@ export function install(rt) {
             if (!taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
             const card = rt.own(room.projectCards, body.taskId)
             if (!card) throw Object.assign(new Error('No such task'), { code: 'bot/not-found' })
+            if (!required && card.humanReview?.status === 'pending') {
+              const previous = room.projectCards
+              const updated = structuredClone(card)
+              ;(updated.previousReviews ??= []).push({ ...updated.humanReview, status: 'withdrawn' })
+              delete updated.humanReview
+              updated.humanAcceptanceRequired = false
+              finishSubmittedPlan(updated)
+              room.projectCards = { ...previous, [card.id]: updated }
+              completeRelatedCards(room.projectCards)
+              return () => { room.projectCards = previous }
+            }
             if (!card.plans || card.humanReview || projectCardSummary(card).status === 'done') throw new Error('This task cannot change its acceptance setting.')
             const previous = card.humanAcceptanceRequired
             card.humanAcceptanceRequired = required

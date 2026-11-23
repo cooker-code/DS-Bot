@@ -103,7 +103,7 @@ function projectStartLabel(time) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
+function ProjectCard({ card, predecessor, successors, roster, now, onOpen, restoreFocus }) {
   const owners = card.owners ?? (card.ownerId ? [card.ownerId] : [])
   const start = card.startedAt
   const end = card.submittedAt ?? card.stoppedAt ?? (card.status === 'active' ? now : undefined)
@@ -124,43 +124,13 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         h('span', { className: 'bt-project-statuses' },
           h('span', { className: 'bt-task-status' }, t(card.validatingMerge ? 'Merged into dev, validating' : TASK_STATUS[card.status] ?? card.status))),
         onOpen ? h('span', { className: 'bt-project-arrow' }, h(ChevronRightIcon)) : null),
-      (card.validationProgress ?? []).map(progress => h('span', { key: progress.round, className: 'bt-project-meta' },
-        progress.checking ? h('span', null, t('Testing: {check}', { check: progress.checking })) : null,
-        progress.lastPassed ? h('span', null, t('Passed: {check}', { check: progress.lastPassed })) : null,
-        progress.submitted ? h('span', null, t('Test receipt submitted')) : progress.cleaned ? h('span', null, t('Cleanup verified'))
-          : progress.checksComplete && card.status === 'active' ? h('span', null, t('Checks passed · awaiting cleanup')) : null)),
+      predecessor ? h('span', { className: 'bt-project-meta' }, t('Follows {task}', { task: predecessor.title })) : null,
+      successors?.map(task => h('span', { key: task.taskId, className: 'bt-project-meta' }, t('Follow-up: {task}', { task: task.title }))),
       branch || hasStart ? h('span', { className: 'bt-project-meta' },
         branch ? h('span', { className: 'bt-project-branch', title: branch }, branch) : null,
         hasStart ? h('span', { className: 'bt-project-times' },
           h('span', null, t('Started {time}', { time: projectStartLabel(start) })),
           h('span', null, t('Elapsed {time}', { time: projectElapsed(start, end) }))) : null) : null))
-}
-
-function AcceptanceRequest({ roomId, card, actions, readOnly }) {
-  const [feedback, setFeedback] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const review = card.acceptanceRequest
-  const decide = async decision => {
-    setBusy(true)
-    setError('')
-    try {
-      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === 'return' ? feedback.trim() : undefined)
-    } catch (failure) {
-      setError(failure.message)
-    } finally {
-      setBusy(false)
-    }
-  }
-  return h('div', { className: 'bt-task-acceptance' },
-    h('p', null, t('Final delivery'), ' · ', review.artifact),
-    !readOnly ? h('div', null,
-      h('textarea', { className: 'bt-input', rows: 2, value: feedback, maxLength: 2000, disabled: busy,
-        placeholder: t('Requested changes'), 'aria-label': t('Requested changes'), onChange: e => setFeedback(e.target.value) }),
-      h('div', { className: 'bt-task-actions' },
-        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => decide('approve') }, t('Accept delivery')),
-        h('button', { type: 'button', className: 'bt-mini', disabled: busy || !feedback.trim(), onClick: () => decide('return') }, t('Request changes')))) : null,
-    error ? h('p', { className: 'bt-task-error', role: 'alert' }, error) : null)
 }
 
 function ProjectRetry({ card, roomId, actions }) {
@@ -318,6 +288,13 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     requestAnimationFrame(() => deleteButton.current?.focus())
   }
   const [collapsed, setCollapsed] = useState(() => new Set())
+  const byId = new Map((room.projectCards ?? []).map(card => [card.taskId, card]))
+  const successors = new Map()
+  for (const card of byId.values()) {
+    if (!card.followsTaskId) continue
+    if (!successors.has(card.followsTaskId)) successors.set(card.followsTaskId, [])
+    successors.get(card.followsTaskId).push(card)
+  }
   const visible = new Set(cards.map(card => card.taskId))
   const roots = [], children = new Map()
   for (const card of cards) {
@@ -326,10 +303,8 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     children.get(card.parentTaskId).push(card)
   }
   function renderCard(card) {
-    const row = h(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? undefined : onOpen, restoreFocus: returnId === card.taskId })
+    const row = h(ProjectCard, { key: card.taskId, card, predecessor: byId.get(card.followsTaskId), successors: successors.get(card.taskId), roster, now, onOpen: editing ? undefined : onOpen, restoreFocus: returnId === card.taskId })
     if (editing) return pick('project', card.taskId, card.title, row)
-    if (card.status === 'human_review' && card.acceptanceRequest) return h('div', { key: card.taskId }, row,
-      h(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room) }))
     if (!taskManagementEnabled(room) || card.status !== 'failed' || card.version || !card.ownerId || !actions.resume) return row
     return h('div', { key: card.taskId }, row,
       h(ProjectRetry, { key: card.round + '-' + card.updatedAt, card, roomId: room.id, actions }))
