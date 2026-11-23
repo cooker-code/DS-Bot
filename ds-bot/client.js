@@ -40443,7 +40443,6 @@ var TASK_CSS = `
 .bt-requirement-attachments h4{font-size:14px;color:var(--bt-ink-2);margin:0}
 .bt-requirement-attachments button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}
 .bt-requirement-attachments .bt-reference-file{color:var(--bt-accent)}
-.bt-project-detail .bt-result-empty{margin:12px 0;text-align:center;font-size:13px;color:color-mix(in srgb,var(--bt-ink-2) 80%,var(--bt-main))}
 .bt-project-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-project-field-head>.bt-section-title{margin:0}
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}
@@ -43719,7 +43718,7 @@ function TaskResults({ roomId, taskId, detail }) {
   const files = groups.flatMap((group) => group.files);
   return (0, import_react74.createElement)(
     MarkdownField,
-    { title: t("Acceptance results"), placeholder: items.length || files.length ? null : (0, import_react74.createElement)("p", { className: "bt-result-empty" }, t("No results submitted yet")) },
+    { title: t("Acceptance results"), placeholder: items.length || files.length ? null : (0, import_react74.createElement)("div", { className: "bt-empty" }, t("No results submitted yet")) },
     items.length ? (0, import_react74.createElement)("ol", { className: "bt-result-items" }, items.map((item) => (0, import_react74.createElement)("li", { key: item }, item))) : null,
     files.filter((file) => file.kind === "markdown").map((file) => (0, import_react74.createElement)(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file })),
     (0, import_react74.createElement)("div", { className: "bt-result-gallery" }, files.filter((file) => file.kind === "image").map((file) => (0, import_react74.createElement)(TaskImage, {

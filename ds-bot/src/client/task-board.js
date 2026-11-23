@@ -457,7 +457,6 @@ export const TASK_CSS = `
 .bt-requirement-attachments h4{font-size:14px;color:var(--bt-ink-2);margin:0}
 .bt-requirement-attachments button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}
 .bt-requirement-attachments .bt-reference-file{color:var(--bt-accent)}
-.bt-project-detail .bt-result-empty{margin:12px 0;text-align:center;font-size:13px;color:color-mix(in srgb,var(--bt-ink-2) 80%,var(--bt-main))}
 .bt-project-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-project-field-head>.bt-section-title{margin:0}
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}

@@ -252,7 +252,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   const fields = body.children[0].children[1].children
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
-  assert.equal(results().props.placeholder.props.className, 'bt-result-empty')
+  assert.equal(results().props.placeholder.props.className, 'bt-empty')
   assert.equal(results().props.placeholder.children[0], 'No results submitted yet')
   detail.results = [{ items: ['Time is correct', 'Narrow layout fits'], files: [
     { kind: 'image', name: 'screen.png', receiptFile: '5-image' },
