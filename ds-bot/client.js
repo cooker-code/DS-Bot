@@ -16236,11 +16236,11 @@ var reducedMotion = () => effectsTier() === "off" || typeof window !== "undefine
 var reducedEffects = () => effectsTier() !== "full" || typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 var noHover = () => window.matchMedia?.("(hover: none)").matches === true;
 var viewBottom = () => window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
-function useViewport() {
+function useViewport(enabled = true) {
   const [tick, setTick] = (0, import_react.useState)(0);
   (0, import_react.useEffect)(() => {
     const viewport = window.visualViewport;
-    if (!viewport) return void 0;
+    if (!enabled || !viewport) return void 0;
     const bump = () => setTick((value) => value + 1);
     viewport.addEventListener("resize", bump);
     viewport.addEventListener("scroll", bump);
@@ -16248,7 +16248,7 @@ function useViewport() {
       viewport.removeEventListener("resize", bump);
       viewport.removeEventListener("scroll", bump);
     };
-  }, []);
+  }, [enabled]);
   return tick;
 }
 function springEasing(stiffness, damping) {
@@ -23833,7 +23833,6 @@ function EffortBar({ reasoning, current, onPick }) {
           type: "button",
           className: "bt-effort-reset",
           "aria-label": t("Default"),
-          title: t("Default"),
           disabled: picked === void 0,
           onClick: () => commit(void 0)
         }, (0, import_react20.createElement)(ResetIcon)) : null
@@ -23868,7 +23867,6 @@ function EffortBar({ reasoning, current, onPick }) {
           className: "bt-effort-dot",
           "data-filled": dotRatio <= ratio + 1e-3 || void 0,
           style: { "--bt-dot-p": dotRatio },
-          title: stop.label,
           "aria-hidden": true
         });
       }),
@@ -23916,7 +23914,7 @@ function ModelGroupList({ groups, current, currentId, defaultModel, onPick, manu
           type: "button",
           role: "menuitemradio",
           "aria-checked": model.ref === current,
-          title: model.ref,
+          "aria-description": model.ref,
           onClick: () => onPick(model.ref)
         },
         (0, import_react20.createElement)("span", { className: "bt-menu-label" }, nameOf(model)),
@@ -24128,12 +24126,10 @@ var modelTrigger = (picker, { wide, button, isOpen, onClick }) => {
   );
 };
 var modelSearch = ({ models, query, setQuery }, menu) => {
-  const field = (0, import_react20.useRef)(null);
   return models.length > 0 ? (0, import_react20.createElement)(
     "div",
     { className: "bt-model-search", role: "presentation" },
     (0, import_react20.createElement)("input", {
-      ref: field,
       type: "search",
       className: "bt-input bt-model-search-input",
       placeholder: t("Search models…"),
@@ -24144,7 +24140,7 @@ var modelSearch = ({ models, query, setQuery }, menu) => {
       spellCheck: false,
       onChange: (event) => setQuery(event.target.value),
       onKeyDown: (event) => {
-        if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) stepMenuFocus(menu.current, event, field.current);
+        if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) stepMenuFocus(menu.current, event, event.currentTarget);
       }
     })
   ) : null;
@@ -29312,7 +29308,7 @@ function MessageTools({ text, quoteText = text, name, sessionId, react, actions,
   const [copied, setCopied] = (0, import_react36.useState)(false);
   const tools = (0, import_react36.useRef)(null);
   const pop = (0, import_react36.useRef)(null);
-  const tick = useViewport();
+  const tick = useViewport(panel !== null);
   const close = () => setPanel(null);
   useDismiss(panel !== null, close, [tools, pop]);
   const open = (kind, event) => {
