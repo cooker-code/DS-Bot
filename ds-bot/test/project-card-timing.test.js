@@ -262,7 +262,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => runtime })
   const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
-  const fields = body.children[0].children[1].children
+  const fields = body.children[0].children[1].children.filter(Boolean)
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
   assert.equal(results().props.placeholder.props.className, 'bt-empty')
