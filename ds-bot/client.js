@@ -14267,6 +14267,8 @@ var ZH = {
   "Requirement": "需求",
   "This field has changed. Reopen it to edit the latest text.": "此项内容已更新，请重新打开后再编辑。",
   "Acceptance results": "验收结果",
+  "File preview unavailable": "文件预览不可用",
+  "Attachments": "附件",
   "No results submitted yet": "暂无已提交的验收结果",
   "Returned for changes": "已退回修改",
   "Acceptance criteria": "验收标准",
@@ -40436,6 +40438,12 @@ var TASK_CSS = `
 @container (max-width:420px){.bt-project-row .bt-task-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}}
 .bt-drawer-body.bt-project-detail{display:block;overflow-wrap:anywhere}
 .bt-project-detail>section+section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bt-line)}
+.bt-project-detail .bt-section-title{color:var(--bt-ink);font-size:17px;font-weight:600;line-height:1.35}
+.bt-requirement-attachments{display:grid;justify-items:start;grid-template-columns:minmax(0,1fr);gap:6px;margin-top:12px}
+.bt-requirement-attachments h4{font-size:14px;color:var(--bt-ink-2);margin:0}
+.bt-requirement-attachments button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}
+.bt-requirement-attachments .bt-reference-file{color:var(--bt-accent)}
+.bt-project-detail .bt-result-empty{margin:12px 0;text-align:center;font-size:13px;color:color-mix(in srgb,var(--bt-ink-2) 80%,var(--bt-main))}
 .bt-project-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-project-field-head>.bt-section-title{margin:0}
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}
@@ -43711,7 +43719,7 @@ function TaskResults({ roomId, taskId, detail }) {
   const files = groups.flatMap((group) => group.files);
   return (0, import_react74.createElement)(
     MarkdownField,
-    { title: t("Acceptance results"), placeholder: groups.length ? null : t("No results submitted yet") },
+    { title: t("Acceptance results"), placeholder: items.length || files.length ? null : (0, import_react74.createElement)("p", { className: "bt-result-empty" }, t("No results submitted yet")) },
     items.length ? (0, import_react74.createElement)("ol", { className: "bt-result-items" }, items.map((item) => (0, import_react74.createElement)("li", { key: item }, item))) : null,
     files.filter((file) => file.kind === "markdown").map((file) => (0, import_react74.createElement)(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file })),
     (0, import_react74.createElement)("div", { className: "bt-result-gallery" }, files.filter((file) => file.kind === "image").map((file) => (0, import_react74.createElement)(TaskImage, {
@@ -43861,13 +43869,30 @@ function taskList(text) {
   if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\|| {0,3}(?:[-*+]|\d+[.)])\s)/m.test(text)) return text;
   return text.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line, index) => index + 1 + ". " + line).join("\n");
 }
-function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+function requirementDocuments(sources) {
+  const documents = /* @__PURE__ */ new Map();
+  for (const line of sources) {
+    for (const file of line.files ?? []) {
+      const id = file.attachmentId ?? file.id;
+      if (id) documents.set(id + "/" + file.name, { id, name: file.name });
+    }
+    for (const match of (line.text ?? "").matchAll(/(?:^|\s)@(?:"([^"\n]+)"|([^\s"]+))/gu)) {
+      const path2 = match[1] ?? match[2].replace(/[.,;:!?，。；：！？]+$/u, "");
+      const name = path2.split(/[\\/]/u).at(-1);
+      if (!name || !/\.[\p{L}\p{N}]+$/u.test(name) || path2.startsWith("[")) continue;
+      documents.set("path:" + path2, { path: path2, name });
+    }
+  }
+  return [...documents.values()];
+}
+function TaskField({ roomId, taskId, label, value, versions, sources, openReference, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
   const [version, setVersion] = (0, import_react76.useState)(null);
   const snapshot = version === null ? void 0 : versions?.[version];
   const currentVersion = versions?.length ?? 0;
   if (snapshot) {
     value = snapshot.text;
     sourceImages = snapshot.images;
+    sources = sources?.filter((line) => snapshot.documentSources?.includes(line.seq));
     images = [];
     readOnly = true;
   }
@@ -43922,6 +43947,20 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       onRemove: () => setDraft({ ...draft, files: draft.files.filter((other) => other !== file) })
     }))
   ];
+  const documents = requirementDocuments(sources ?? []);
+  const attachments = sources && (documents.length || gallery.length) ? (0, import_react76.createElement)(
+    "div",
+    { className: "bt-requirement-attachments" },
+    (0, import_react76.createElement)("h4", null, t("Attachments")),
+    documents.map((file) => file.path ? (0, import_react76.createElement)("button", {
+      key: file.path,
+      type: "button",
+      className: "bt-mini bt-reference-file",
+      title: file.path,
+      onClick: () => setError(openReference(file.path) ? "" : t("File preview unavailable"))
+    }, file.name) : (0, import_react76.createElement)(SaveFileAction, { key: file.id + "/" + file.name, attachmentTarget: { sessionId: roomId, attachmentId: file.id }, label: file.name })),
+    gallery
+  ) : gallery;
   const changed = draft && (draft.text !== draft.initialText || draft.files.length || draft.removed.length);
   return (0, import_react76.createElement)(MarkdownField, {
     title: label,
@@ -43941,7 +43980,7 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       { key: index, value: index },
       "v" + (index + 1) + " · " + t(index === currentVersion ? "Current" : "Historical version")
     ))),
-    placeholder: visible.length ? null : "—",
+    placeholder: visible.length || documents.length ? null : "—",
     maxLength,
     draft: draft?.text,
     busy,
@@ -43962,7 +44001,7 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       }
     },
     tools: (0, import_react76.createElement)("button", { type: "button", className: "bt-mini", disabled: busy || readOnly, onClick: () => picker.current?.click() }, t("Add image"))
-  }, gallery, draft ? (0, import_react76.createElement)("input", { type: "file", multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: (event) => {
+  }, attachments, draft ? (0, import_react76.createElement)("input", { type: "file", multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: (event) => {
     addFiles(Array.from(event.target.files));
     event.target.value = "";
   } }) : null);
@@ -44002,7 +44041,7 @@ function ValidationProgress({ detail }) {
     );
   });
 }
-function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack, close }) {
+function ProjectTaskDetail({ room: room2, card, readOnly, openReference, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = (0, import_react76.useState)();
   const [error, setError] = (0, import_react76.useState)("");
   const [attempt, retry] = (0, import_react76.useState)(0);
@@ -44057,6 +44096,8 @@ function ProjectTaskDetail({ room: room2, card, readOnly, move, hasStrip, onBack
             readOnly,
             value: detail.requirement,
             versions: detail.requirementHistory,
+            sources: detail.requirements ?? [],
+            openReference,
             sourceImages: detail.sourceImages,
             images: detail.fieldImages?.requirement,
             onSave: (...args) => save("requirement", ...args)
@@ -44603,7 +44644,7 @@ function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, 
   }
   if (room2 && view?.taskId) {
     const card = room2.projectCards?.find((item) => item.taskId === view.taskId);
-    return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, roster, readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
+    return (0, import_react77.createElement)(ProjectTaskDetail, { key: room2.id + "/" + view.taskId, room: room2, card, openReference: (path2) => actions.openTaskReference(room2.sessionId ?? room2.id, path2), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView("overview"), close });
   }
   if ((bot || room2) && view === "settings") {
     return [
@@ -48561,6 +48602,10 @@ function apply(ctx) {
   actions.canOpenTerminal = () => canOpenSidebarTab("terminal");
   actions.newTerminal = () => openSidebarTab("terminal");
   actions.canOpenFiles = () => canOpenSidebarTab("files");
+  actions.openTaskReference = (sessionId, path2) => {
+    const scope = ctx.sessions.scope(sessionId);
+    return scope && ctx.get("inputTriggers")?.sessionOf(scope).openReference("reference", { ref: '@"' + path2 + '"', appearance: "file" });
+  };
   actions.openFiles = () => openSidebarTab("files");
   const sidebarGuide = createSource([]);
   actions.isArchivedSession = (id) => ctx.get("workspaces")?.list.getSnapshot().archivedSessionIds.includes(id) === true;

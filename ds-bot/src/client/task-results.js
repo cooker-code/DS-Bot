@@ -30,7 +30,7 @@ export function TaskResults({ roomId, taskId, detail }) {
   const groups = detail.results ?? []
   const items = [...new Set(groups.flatMap(group => group.items))]
   const files = groups.flatMap(group => group.files)
-  return h(MarkdownField, { title: t('Acceptance results'), placeholder: groups.length ? null : t('No results submitted yet') },
+  return h(MarkdownField, { title: t('Acceptance results'), placeholder: items.length || files.length ? null : h('p', { className: 'bt-result-empty' }, t('No results submitted yet')) },
     items.length ? h('ol', { className: 'bt-result-items' }, items.map(item => h('li', { key: item }, item))) : null,
     files.filter(file => file.kind === 'markdown').map(file => h(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file })),
     h('div', { className: 'bt-result-gallery' }, files.filter(file => file.kind === 'image').map(file =>

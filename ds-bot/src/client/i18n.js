@@ -1389,6 +1389,8 @@ const ZH = {
   'Requirement': '需求',
   'This field has changed. Reopen it to edit the latest text.': '此项内容已更新，请重新打开后再编辑。',
   'Acceptance results': '验收结果',
+  'File preview unavailable': '文件预览不可用',
+  'Attachments': '附件',
   'No results submitted yet': '暂无已提交的验收结果',
   'Returned for changes': '已退回修改',
   'Acceptance criteria': '验收标准',

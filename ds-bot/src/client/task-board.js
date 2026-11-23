@@ -452,6 +452,12 @@ export const TASK_CSS = `
 @container (max-width:420px){.bt-project-row .bt-task-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}}
 .bt-drawer-body.bt-project-detail{display:block;overflow-wrap:anywhere}
 .bt-project-detail>section+section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bt-line)}
+.bt-project-detail .bt-section-title{color:var(--bt-ink);font-size:17px;font-weight:600;line-height:1.35}
+.bt-requirement-attachments{display:grid;justify-items:start;grid-template-columns:minmax(0,1fr);gap:6px;margin-top:12px}
+.bt-requirement-attachments h4{font-size:14px;color:var(--bt-ink-2);margin:0}
+.bt-requirement-attachments button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}
+.bt-requirement-attachments .bt-reference-file{color:var(--bt-accent)}
+.bt-project-detail .bt-result-empty{margin:12px 0;text-align:center;font-size:13px;color:color-mix(in srgb,var(--bt-ink-2) 80%,var(--bt-main))}
 .bt-project-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-project-field-head>.bt-section-title{margin:0}
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}

@@ -147,6 +147,11 @@ function uniqueImages(images) {
   return [...new Map(images.map(image => [image.attachmentId ?? image.id, image])).values()]
 }
 
+function documentSources(lines) {
+  const seqs = lines.filter(line => line.files?.length || line.text.includes('@')).map(line => line.seq)
+  return seqs.length ? { documentSources: seqs } : {}
+}
+
 function requirementHistory(room, card, sources) {
   if (card.requirementHistory) return card.requirementHistory
   // Older hosts recorded a user edit and its source messages but did not take snapshots.
@@ -154,7 +159,7 @@ function requirementHistory(room, card, sources) {
   const original = sources.find(line => line.intakeId === card.intakes?.[0] && card.requirementSources?.includes(line.seq))
   if (!original) return []
   const text = taskMessage(original.text, room).body
-  return text && text !== card.goal ? [{ text, images: original.images ?? [] }] : []
+  return text && text !== card.goal ? [{ text, images: original.images ?? [], ...documentSources([original]) }] : []
 }
 
 export function projectImages(card, sources) {
@@ -218,6 +223,7 @@ export async function updateProjectTaskText(rt, { roomId, taskId, field: key, pr
     if (!isDeepStrictEqual(images, beforeImages)) changes.fieldImages = { ...card.fieldImages, [key]: images }
     if (!Object.keys(changes).length) return
     if (key === 'requirement') changes.requirementHistory = [...requirementHistory(room, card, sources), {
+      ...documentSources(sources),
       text: current, images: uniqueImages([...sources.flatMap(line => line.images ?? []), ...beforeImages]),
     }]
     const updatedAt = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)

@@ -235,7 +235,9 @@ test('task detail shows results below the criteria and switches to a read-only r
     bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
   })
   const history = [{ text: 'Earlier request', images: [] }]
-  const detail = { requirement: 'First。Second。', acceptance: '1. Check output', requirementHistory: history }
+  const detail = { requirement: 'First。Second。', acceptance: '1. Check output', requirementHistory: history, requirements: [
+    { seq: 2, text: '@"plans/S8 Listen.md" @owner', files: [{ attachmentId: 'plan-id', name: 'uploaded.md' }] },
+  ], sourceImages: [{ attachmentId: 'image-id' }] }
   const state = [detail]
   let hook = 0
   const runtime = { ...react, useState(initial) {
@@ -250,7 +252,8 @@ test('task detail shows results below the criteria and switches to a read-only r
   const fields = body.children[0].children[1].children
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
-  assert.equal(results().props.placeholder, 'No results submitted yet')
+  assert.equal(results().props.placeholder.props.className, 'bt-result-empty')
+  assert.equal(results().props.placeholder.children[0], 'No results submitted yet')
   detail.results = [{ items: ['Time is correct', 'Narrow layout fits'], files: [
     { kind: 'image', name: 'screen.png', receiptFile: '5-image' },
     { kind: 'markdown', name: 'report.md', receiptFile: '5-report' },
@@ -269,6 +272,18 @@ test('task detail shows results below the criteria and switches to a read-only r
   for (const label of ['Testing: Narrow layout', 'Passed: Format', 'Passed in Web']) assert.ok(labels.includes(label))
   assert.ok(!labels.includes('Test receipt submitted'))
   const show = (field = fields[0]) => { hook = 3; return field.type(field.props).props }
+  const attachmentField = fields[0].type
+  const opened = []
+  const renderAttachments = () => {
+    hook = 3
+    return attachmentField({ ...fields[0].props, openReference: path => { opened.push(path); return true } })
+  }
+  const attachments = find(renderAttachments(), n => n.props?.className === 'bt-requirement-attachments')
+  assert.ok(find(attachments, n => n.type === 'h4' && n.children[0] === 'Attachments'))
+  assert.equal(find(attachments, n => n.props?.label === 'uploaded.md').props.attachmentTarget.attachmentId, 'plan-id')
+  assert.ok(find(attachments, n => n.props?.image?.attachmentId === 'image-id'))
+  find(attachments, n => n.children[0] === 'S8 Listen.md').props.onClick()
+  assert.deepEqual(opened, ['plans/S8 Listen.md'])
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')
   assert.deepEqual(Array.from(latest.headerControl.children[0], option => option.children[0]), ['v1 · Historical version', 'v2 · Current'])
@@ -276,6 +291,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   latest.headerControl.props.onChange({ target: { value: '0' } })
   assert.equal(show().value, '1. Earlier request')
   assert.equal(show().onEdit, undefined)
+  assert.equal(find(renderAttachments(), n => n.props?.className === 'bt-requirement-attachments'), undefined)
   show().headerControl.props.onChange({ target: { value: '1' } })
   assert.equal(typeof show().onEdit, 'function')
   for (const source of fields.slice(0, 2)) {

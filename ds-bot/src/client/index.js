@@ -944,6 +944,10 @@ export function apply(ctx) {
   actions.canOpenTerminal = () => canOpenSidebarTab('terminal')
   actions.newTerminal = () => openSidebarTab('terminal')
   actions.canOpenFiles = () => canOpenSidebarTab('files')
+  actions.openTaskReference = (sessionId, path) => {
+    const scope = ctx.sessions.scope(sessionId)
+    return scope && ctx.get('inputTriggers')?.sessionOf(scope).openReference('reference', { ref: '@"' + path + '"', appearance: 'file' })
+  }
   actions.openFiles = () => openSidebarTab('files')
   const sidebarGuide = createSource([])
   actions.isArchivedSession = id => ctx.get('workspaces')?.list.getSnapshot().archivedSessionIds.includes(id) === true

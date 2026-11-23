@@ -478,7 +478,8 @@ test('task fields show original annotation images and save separate pictures for
   await host.rt.load()
   const room = host.rt.roomOf('r1')
   const text = '【网页批注】1 处\n截图：1 张（编号对应）'
-  host.rt.logRoom(room, { who: 'User', intakeId: intake, text, images: [original], session: true })
+  const document = await attachments.saveFile({ name: 'requirement.md', data: Buffer.from('# Requirement') })
+  const source = host.rt.logRoom(room, { who: 'User', intakeId: intake, text, files: [document], images: [original], session: true })
   const target = { roomId: room.id, taskId: card.id }
   const read = async (extra = {}) => (await host.call('project-task-detail', { ...target, textOnly: true, ...extra })).value
   const edit = (field, previous, value, images) => host.call('update-project-task-text', { ...target, field, previous, value, ...images })
@@ -504,5 +505,7 @@ test('task fields show original annotation images and save separate pictures for
   const history = (await host.call('project-task-detail', target)).value.requirementHistory
   assert.deepEqual(history.map(entry => entry.text), [text, 'Revised', 'Revised'])
   assert.deepEqual(history.at(-1).images, [original, requirementImage])
+  assert.deepEqual(history.at(-1).documentSources, [source.seq])
+  assert.deepEqual((await read({ textOnly: false })).requirements.find(line => line.seq === source.seq).files, [document])
   assert.equal(await read({ imageId: requirementImage.attachmentId }), 'data:image/png;base64,Aw==')
 })
