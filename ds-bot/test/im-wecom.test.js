@@ -11,7 +11,7 @@ const execFileP = promisify(execFile)
 // pushed frames, aibot_send_msg answers through pending req_ids. Like the real
 // gateway it only takes the root path and matches Connection / Upgrade in their
 // exact case, so a lowercase handshake gets a 404.
-async function fakeWecom({ rejectStatus, subscribeReply } = {}) {
+async function fakeWecom({ rejectStatus, subscribeReply, onSend } = {}) {
   const packets = []
   const upgrades = []
   const wss = await fakeWsServer({
@@ -33,7 +33,10 @@ async function fakeWecom({ rejectStatus, subscribeReply } = {}) {
           ws.send(JSON.stringify({ headers: { req_id: packet.headers.req_id }, ...(subscribeReply ?? { errcode: 0, errmsg: 'ok' }) }))
         }
         if (packet.cmd === 'aibot_send_msg') {
-          ws.send(JSON.stringify({ headers: { req_id: packet.headers.req_id }, errcode: 0, errmsg: 'ok', body: { msgid: 'w1' } }))
+          const answer = reply => ws.send(JSON.stringify({ headers: packet.headers, ...reply }))
+          if (!packet.body.chatid || packet.body.userid !== undefined) answer({ errcode: 40058, errmsg: 'invalid chatid' })
+          else if (onSend) onSend(packet, answer)
+          else answer({ errcode: 0, body: { msgid: 'w1' } })
         }
       })
     },
@@ -140,20 +143,55 @@ test('a single chat is direct, a template-card event reports the action', async 
   assert.equal(actions[0].data, 'q:q1:0')
 })
 
-test('a send replies through the callback req_id, and after that window aibot_send_msg', async (t) => {
-  const fake = await fakeWecom()
+test('a delayed direct reply uses the original chat and waits for its own gateway receipt', async (t) => {
+  const receipts = []
+  const fake = await fakeWecom({ onSend: (packet, answer) => receipts.push({ packet, answer }) })
   const messages = []
-  const handle = wecom.connect(FIELDS, env(fake), { onMessage: async msg => { messages.push(msg) }, onAction: () => {}, onStatus: () => {} })
+  const handle = wecom.connect(FIELDS, env(fake), { onMessage: msg => messages.push(msg), onStatus() {} })
   t.after(() => { handle.stop(); fake.close() })
   const ws = await until(() => fake.sockets[0])
-  fake.push(ws, { cmd: 'aibot_msg_callback', headers: { req_id: 'req-9' }, body: { msgid: 'm1', msgtype: 'text', chattype: 'single', from: { userid: 'u1' }, text: { content: 'hi' } } })
-  await until(() => messages.length === 1)
-  await handle.send({ key: 'u1', kind: 'direct' }, { text: 'answer' })
-  await until(() => fake.packets.some(packet => packet.cmd === 'aibot_respond_msg'))
-  const respond = fake.packets.find(packet => packet.cmd === 'aibot_respond_msg')
-  assert.ok(respond, 'responded through the callback')
-  assert.equal(respond.headers.req_id, 'req-9')
-  assert.equal(respond.body.msgtype, 'markdown')
+  for (const id of ['first', 'second']) {
+    fake.push(ws, { cmd: 'aibot_msg_callback', headers: { req_id: id }, body: {
+      msgid: id, msgtype: 'text', chattype: 'single', from: { userid: 'u1' }, text: { content: id },
+    } })
+  }
+  assert.ok(await until(() => messages.length === 2))
+  let accepted = false
+  const sent = handle.send(messages[0].chat, { text: 'delayed room reply' }).then(result => { accepted = true; return result })
+  const first = await until(() => receipts[0])
+  assert.ok(first, 'expected an active send addressed by chatid')
+  assert.deepEqual(first.packet.body, { msgtype: 'markdown', markdown: { content: 'delayed room reply' }, chatid: 'u1' })
+  assert.ok(!['first', 'second'].includes(first.packet.headers.req_id))
+  fake.push(ws, { headers: { req_id: 'unrelated' }, errcode: 0 })
+  await new Promise(done => setTimeout(done, 20))
+  assert.equal(accepted, false)
+  first.answer({ errcode: 0, body: { msgid: 'accepted' } })
+  assert.deepEqual(await sent, { messageId: 'accepted' })
+
+  const refused = assert.rejects(handle.send(messages[1].chat, { text: 'next' }), /40058.*invalid recipient/)
+  const second = await until(() => receipts[1])
+  second.answer({ errcode: 40058, errmsg: 'invalid recipient' })
+  await refused
+
+  const interrupted = assert.rejects(handle.send(messages[0].chat, { text: 'no receipt' }), /closed before.*acknowledged/)
+  assert.ok(await until(() => receipts[2]))
+  ws.close()
+  await interrupted
+})
+
+test('group replies still use the originating group callback', async (t) => {
+  const fake = await fakeWecom()
+  const messages = []
+  const handle = wecom.connect(FIELDS, env(fake), { onMessage: msg => messages.push(msg), onStatus() {} })
+  t.after(() => { handle.stop(); fake.close() })
+  const ws = await until(() => fake.sockets[0])
+  fake.push(ws, { cmd: 'aibot_msg_callback', headers: { req_id: 'group-event' }, body: {
+    msgid: 'm1', msgtype: 'text', chattype: 'group', chatid: 'g1', from: { userid: 'u1' }, text: { content: 'hello' },
+  } })
+  assert.ok(await until(() => messages.length === 1))
+  await handle.send(messages[0].chat, { text: 'group reply' })
+  const reply = await until(() => fake.packets.find(packet => packet.cmd === 'aibot_respond_msg'))
+  assert.equal(reply.headers.req_id, 'group-event')
 })
 
 test('a dropped socket reconnects and subscribes again', async (t) => {
