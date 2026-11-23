@@ -3057,24 +3057,12 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   host.begin('gb')
   await project('gb', { action: 'start', taskId, round: 1 })
   const submit = { action: 'submit', taskId, round: 1, result: 'Empty label verified.' }
-  await project('gb', submit)
-  await project('gb', submit)
-  assert.equal(host.agentOf('gc').calls.length, 2)
-  const noticeOfSubmission = host.begin('gc')
-  assert.equal(noticeOfSubmission.source.taskId, taskId)
-  assert.ok(text(noticeOfSubmission).includes(JSON.stringify({ taskId, version: 1, node: 1, round: 1 })))
-  for (const action of ['approve', 'request_acceptance']) {
-    await assert.rejects(project('gc', { action, ...key, artifact: 'Verified display' }), /round.*project_task read/)
-  }
-  assert.equal((await project('gc', { action: 'read', taskId })).status, 'review')
   room.projectCards[cardB] = { id: cardB, parentTaskId: taskId, plans: [], rounds: [], intakes: [] }
-  const approval = { action: 'approve', ...key, round: 1, artifact: 'Verified display' }
-  const result = await project('gc', approval)
-  assert.equal(result.status, 'done')
+  assert.equal((await project('gb', submit)).status, 'done')
+  assert.equal((await project('gb', submit)).status, 'done')
   assert.equal((await project('gc', { action: 'read', taskId: cardB })).status, 'done')
-  await project('gc', approval)
   assert.equal(host.agentOf('ga').calls.length, 2)
-  assert.match(text(host.begin('ga')), /last node is approved/)
+  assert.match(text(host.begin('ga')), /Final delivery completed/)
   const feedback = { action: 'report', message: 'The empty label now displays a dash.' }
   await project('ga', feedback)
   await project('ga', feedback)
@@ -3867,11 +3855,11 @@ test('interrupted picture task hands its checkpoint to one successor; a delayed 
   assert.equal(stored().rounds[0].planNode.lateResult,'Old delayed report')
   assert.equal(stored().rounds[1].result,undefined)
   await project({...key,action:'submit',round:2,result:'Existing source passed'},'gc')
-  await project({...key,action:'approve',round:2,artifact:'checked-report'})
+  assert.equal((await project({action:'read',taskId})).status,'done')
   const card=stored()
   assert.deepEqual(card.rounds[0].planNode.block.decisions.map(d=>d.action),['wait','takeover'])
   assert.equal(card.rounds[1].planNode.previousRound,1)
-  assert.equal(card.rounds[1].planNode.artifact,'checked-report')
+  assert.equal(card.rounds[1].planNode.artifact,'Existing source passed')
 })
 
 test('same-owner recovery keeps its checkpoint through another interruption and enforces the designated tester', async t => {
@@ -3941,13 +3929,13 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
   const edition = host.round('edition', host.say('First edition', taskId))
   await until(() => edition() !== undefined)
   assert.equal((await detail()).status, 'active')
-  assert.equal((await project({ action: 'submit', taskId, round: 1, result: 'First edition verified' }, 'gb')).status, 'review')
+  assert.equal((await project({ action: 'submit', taskId, round: 1, result: 'First edition verified' }, 'gb')).status, 'human_review')
   assert.equal((await project({ action: 'clarify', taskId, reason: 'Which final environment?' })).status, 'clarify')
   const response = host.round('clarification', host.say('Staging', taskId))
   await until(() => response() !== undefined)
-  assert.equal((await detail()).status, 'review')
+  assert.equal((await detail()).status, 'human_review')
   room().projectCards[cardB] = { id: cardB, parentTaskId: taskId, plans: [], rounds: [], intakes: [] }
-  const approval = { taskId, version: 1, node: 1, round: 1, artifact: 'checked-v1' }
+  const approval = { taskId, version: 1, node: 1, round: 1, artifact: 'First edition verified' }
   assert.equal((await project({ ...approval, action: 'request_acceptance' })).status, 'human_review')
   await assert.rejects(project({ ...approval, action: 'approve' }), /human decision/)
   assert.equal((await host.call('project-task-detail', { roomId: 'r1', taskId: cardB })).value.status, 'planning')
@@ -3965,6 +3953,20 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
     const intake = db.prepare('SELECT received_at, planning_at FROM project_inbox').get()
     assert.equal(intake.planning_at, room().projectInbox[0].planningAt)
   } finally { db.close() }
+})
+
+test('loading a submitted plan finishes ordinary work and opens one decision for explicit sign-off', async t => {
+  const nodes = [{ no: 1, ownerId: 'b', title: 'Plan', instructions: 'Prepare', acceptance: 'Checked', deliverable: 'Plan', dependsOn: [] }]
+  const card = { id: cardA, title: 'Plan', intakes: [], humanAcceptanceRequired: true, plans: [{ version: 1, by: 'a', at: 1, nodes }],
+    rounds: [{ ownerId: 'b', startedAt: 1, submittedAt: 2, result: 'Planning document', planNode: { version: 1, node: 1, inputs: [] } }] }
+  const host = await start(t, { ...taskNotice, projectCards: { [cardA]: card, [cardB]: { ...structuredClone(card), id: cardB, humanAcceptanceRequired: false } } })
+  const read = async taskId => (await host.call('project-task-detail', { roomId: 'r1', taskId })).value
+  const planning = await read(cardA)
+  assert.equal(planning.status, 'human_review')
+  assert.equal(planning.acceptanceRequest.artifact, 'Planning document')
+  assert.equal((await read(cardB)).status, 'done')
+  assert.equal((await host.call('project-acceptance', { roomId: 'r1', taskId: cardA, reviewId: planning.acceptanceRequest.id, decision: 'approve' })).ok, true)
+  assert.equal((await read(cardA)).status, 'done')
 })
 
 test('loading a completed primary task closes existing descendants and preserves completion after deleting it', async t => {
@@ -4014,8 +4016,8 @@ test('returned acceptance goes to the manager and an old request cannot approve 
   await host.tool('project_task', { action: 'start', taskId: cardA, round: 2 }, 'gb')
   await host.tool('project_task', { action: 'submit', taskId: cardA, round: 2, result: 'Empty case passes' }, 'gb')
   const revised = { version: 2, node: 1, round: 2, artifact: 'fixed candidate' }
-  assert.equal((await project({ action: 'approve', ...revised })).status, 'human_review')
-  const request = await project({ action: 'request_acceptance', ...revised })
+  await assert.rejects(project({ action: 'approve', ...revised }), /human decision/)
+  const request = await read()
   assert.notEqual(request.acceptanceRequest.id, reviewId)
   assert.equal((await host.call('project-acceptance', { ...decision, decision: 'approve', reviewId: request.acceptanceRequest.id })).ok, true)
   assert.equal((await read()).status, 'done')
@@ -4283,7 +4285,7 @@ test('a delegated feature candidate returns with feedback then integrates the re
       git(repo, 'commit', '--allow-empty', '-m', 'Unrelated follow-up on dev')
       await act('gc', { ...submit, testedCommit: commit })
       host.begin('gd')
-      assert.equal((await approve(version, 2, testRound, commit)).status, 'done')
+      assert.equal((await manager({ action: 'read', taskId })).status, 'done')
       const integrated = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].integration
       assert.equal(integrated.testedCommit, commit)
       assert.equal(integrated.tip, git(repo, 'rev-parse', 'dev'))
@@ -4417,6 +4419,6 @@ test('editing an active project card wakes its coordinator and reclaims the stop
   assert.equal(receipt.mergeReceipt, undefined)
   host.finish('gc', 'Verified candidate')
   host.begin('gd')
-  assert.equal((await manager({ action: 'approve', taskId, version: 3, node: 2, round: validation, artifact: 'Verified ' + commit })).status, 'done')
+  assert.equal((await manager({ action: 'read', taskId })).status, 'done')
   assert.equal(git(repo, 'rev-parse', 'dev'), base)
 })

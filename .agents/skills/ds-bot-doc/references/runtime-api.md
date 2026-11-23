@@ -66,5 +66,7 @@
 独立只读功能测试开工时，宿主把已认可输入中的候选提交固定到 `rounds[].validation.candidates`。原执行者在该派工会话用 `project_task` 更新当前轮次，沿用卡号及轮号：
 
 - 开始某项验收，调用 `checkpoint` 并传 `checking`。通过时传 `passedCheck`（相同项名）及 `evidence`（实际观察、已存在的测试结果或证据路径）；可以在同次调用填入下一项 `checking`。最后一项通过时传 `checksComplete: true`，卡片显示验收已通过、待清理。失败使用原有返工或环境阻塞动作。
-- 全部验收通过后，调用 `submit` 并传 `cleanupEvidence`，说明已核实的清理结果。未创建资源时据实说明。若已在 checkpoint 登记清理证据，submit 只需卡号和轮号。宿主以原候选、各项已存结果和清理证据生成 `rounds[].result`，交管理者认可；无需另建报告文件或填写代码提交字段。
+- 全部验收通过后，调用 `submit` 并传 `cleanupEvidence`，说明已核实的清理结果。未创建资源时据实说明。若已在 checkpoint 登记清理证据，submit 只需卡号和轮号。宿主以原候选、各项已存结果和清理证据生成 `rounds[].result`；最后一项交付触发结单或人工终验；无需另建报告文件或填写代码提交字段。
 - `project-task-list` 的 `validationProgress` 给出当前轮次的进行项、最近通过项和回执状态；`project-task-detail` 的 `rounds[].validation` 含逐项证据。旧轮继续按已有 completed、remaining 和 result 回读。结果随原轮保存在群库。验证方法、环境和样本数量按本卡需要选取。
+
+当前计划的所有有效节点交付后，普通任务自动完成。要求人工终验的卡自动生成绑定最终轮次的验收请求；用户通过后完成。中间节点按依赖复核。
