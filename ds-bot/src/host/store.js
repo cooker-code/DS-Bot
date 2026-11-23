@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LEGACY_THEMES, MAX_EXCHANGES, ROOM_MODES, SECTION_COLORS, SECTION_NAME_MAX, TEXT_KEPT } from './constants.js'
 import { splitTeamStorage } from './team-storage/split.js'
-import { completeRelatedCards } from './project-plan.js'
+import { completeRelatedCards, finishSubmittedPlan } from './project-plan.js'
 import { teamSnapshot } from './team-storage/member-settings.js'
 import { homeLock } from './home-lock.js'
 import { currentColor, headOf, normalize, unquote } from './text.js'
@@ -181,6 +181,9 @@ export function install(rt) {
           else if (name) room.unresolvedTaskAssistant = name
         }
         migrated = true
+      }
+      for (const card of Object.values(room.projectCards ?? {})) {
+        if (typeof card.humanAcceptanceRequired === 'boolean' && finishSubmittedPlan(card)) migrated = true
       }
       if (completeRelatedCards(room.projectCards)) migrated = true
       for (const task of Object.values(room.tasks ?? {})) {

@@ -9,7 +9,7 @@ import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { approveRound, completeRelatedCards, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
+import { approveRound, completeRelatedCards, finishSubmittedPlan, requestAcceptance, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
 import { blockRound, checkProjectStart, currentBinding, inspectReplannedWriter, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
 import { codeDelivery, projectStatus, taskPhase } from './project-status.js'
 import { scopeFields, scopeOf, taskRoom } from './task-routing.js'
@@ -271,7 +271,7 @@ export function developmentHandoff(rt, session, room, card, owner, number) {
 export function install(rt) {
   rt.teamTools.push(defineTool({
     name: 'project_task',
-    description: 'Manage DS Bot project cards. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. After revising requirements or acceptance, dispatch ready nodes in the current plan. Dispatch checks whether the same developer can reclaim a stopped historical writer’s clean checkout at its original start commit. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Normally approve the last artifact to finish automatically. Only if the user explicitly requested human sign-off, request_acceptance for the final submitted artifact instead. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
+    description: 'Manage DS Bot project cards. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. After revising requirements or acceptance, dispatch ready nodes in the current plan. Dispatch checks whether the same developer can reclaim a stopped historical writer’s clean checkout at its original start commit. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Submitting the final outstanding delivery finishes the task automatically or opens human acceptance if required. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
     parameters: {
       acceptWork: { type: 'boolean', description: 'With reply, create the formal task card before announcing acceptance of actual work, including read-only investigation.' },
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
@@ -361,12 +361,12 @@ export function install(rt) {
         const text = [
           'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
           relatedTaskGuidance,
-          'For every feature task, the developer commits on the feature branch. Dispatch a final independent read-only test node with independentReview=true, writePaths=[] and a dependency on the approved developer candidate. Keep the user’s acceptance criteria separate from the tester’s choice of checks. Reuse existing results, record each check on the card, and submit the read-only receipt with cleanupEvidence. No separate report file is needed. Approve the receipt to finish; keep the candidate on the feature branch. Integration, installation and release require separate work. On test failure return the feedback to the developer and retest the revised candidate.',
+          'For every feature task, the developer commits on the feature branch. Dispatch a final independent read-only test node with independentReview=true, writePaths=[] and a dependency on the approved developer candidate. Keep the user’s acceptance criteria separate from the tester’s choice of checks. Reuse existing results, record each check on the card, and submit the read-only receipt with cleanupEvidence. No separate report file is needed. The final receipt completes ordinary tasks automatically; keep the candidate on the feature branch. Integration, installation and release require separate work. On test failure return the feedback to the developer and retest the revised candidate.',
           'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
           linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
           'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
           'When revising the test plan, reuse the accepted developer round and preserve its branch and candidate. Trellis records requirements and evidence; an authorized feature commit needs no separate grouping approval.',
-          'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Normally approve the final node; request_acceptance only for explicit human sign-off.',
+          'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Final submission completes ordinary tasks automatically and opens human acceptance when required.',
           ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
         ].join('\n\n')
         await projectNotice(rt, room, assistant, scope, 'delegate-' + original.seq, text, { images: projectImages(linked, lines), files: lines.flatMap(line => line.files ?? []) }, { goal, acceptance })
@@ -587,7 +587,7 @@ export function install(rt) {
             throw new Error('The result files or assignment changed. Read the current round.')
           target.resultFiles = resultFiles
         }
-        if (args.action === 'approve' || args.action === 'plan') completeRelatedCards(draft.projectCards)
+        if (args.action === 'approve' || args.action === 'plan' || (args.action === 'submit' && JSON.parse(result).status === 'done')) completeRelatedCards(draft.projectCards)
         if (Object.keys(draft.projectCards).length) room.projectCards = draft.projectCards
         if (previousInbox) room.projectInbox = draft.projectInbox
         return () => {
@@ -622,6 +622,10 @@ async function notifyProjectChange(rt, room, args, actor, source, result) {
     if (toId && toId !== actor) await projectNotice(rt, room, toId, scope,
       'technical-block:' + card.id + ':' + actor + ':' + (source?.exchangeId ?? '') + ':' + createHash('sha256').update(args.reason).digest('hex'),
       instruction + '\nIssue or decision: ' + args.reason, {}, args.reason)
+  } else if (args.action === 'submit' && ['done', 'human_review'].includes(result.status) && !result.lateReceiptRound) {
+    await projectNotice(rt, room, room.admin, scope, card.id + ':delivery:' + round.planNode.version,
+      result.status === 'done' ? 'Final delivery completed the task. Report the saved result to the group.' :
+        'Final delivery is ready for human acceptance. Report the pending decision to the group.')
   } else if ((args.action === 'submit' || args.action === 'block') && round && !result.lateReceiptRound && (round.planNode ? currentBinding(card, round) : round === card.rounds.at(-1))) {
     const status = args.action === 'submit' ? 'submitted evidence for review' : 'reported a blocker'
     const next = args.action === 'submit' && round.planNode
@@ -837,6 +841,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         if (round.result && result !== round.result) throw new Error('This round already has a different result.')
         round.result = result
         round.submittedAt ??= Date.now()
+        if (binding && currentBinding(card, round)) finishSubmittedPlan(card)
       } else throw new Error('Confirm the start before submitting the result.')
     }
   }
@@ -851,23 +856,6 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
 
 function assignment(ownerId, plan) {
   return { ownerId, plan, assignedAt: Date.now(), dispatchId: randomUUID() }
-}
-
-function requestAcceptance(card, args) {
-  const plan = card.plans.at(-1)
-  const nodes = nodeViews(card, plan)
-  const node = nodes.find(n => n.no === args.node)
-  if (plan.version !== args.version || !node || node.round !== args.round || node.status !== 'review' ||
-      nodes.some(n => n !== node && !['verified', 'omitted'].includes(n.status))) throw new Error('Request human acceptance for the final submitted node.')
-  const artifact = field(args.artifact, 'the artifact to review', 2000)
-  const current = card.humanReview
-  if (current?.version === args.version && current.round === args.round) {
-    if (current.artifact === artifact && current.status === 'pending') return
-    throw new Error('Revise the plan before requesting acceptance of a different delivery.')
-  }
-  if (current) (card.previousReviews ??= []).push(current)
-  card.humanReview = { id: randomUUID(), version: args.version, node: args.node, round: args.round,
-    artifact, requestedAt: Date.now(), status: 'pending' }
 }
 
 export async function decideAcceptance(rt, room, args) {

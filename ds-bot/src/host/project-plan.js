@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { assistantId } from './project-assistant.js'
 import { workspacePolicyOf, usesGitWorkspace } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
@@ -323,4 +324,41 @@ export function nodeHandoff(card, round) {
       return 'Approved input from node ' + input.node + ', round ' + input.round + ': ' + prev.planNode.artifact + '\n' + prev.result
     }),
   ].join('\n')
+}
+
+export function finishSubmittedPlan(card) {
+  const plan = card.plans?.at(-1)
+  if (!plan || card.completedWithTaskId || card.clarification || card.humanReview?.version === plan.version) return false
+  const views = nodeViews(card, plan)
+  if (views.some(n => !['verified', 'review', 'omitted'].includes(n.status))) return
+  const pending = views.filter(n => n.status === 'review')
+  if (pending.some(node => {
+    const round = card.rounds[node.round - 1]
+    return !round?.result || (codeDelivery(card, round, node) && !round.mainReview) || (node.mergeToDev && !round.integration)
+  })) return false
+  for (const node of pending) {
+    const round = card.rounds[node.round - 1]
+    const delivery = { version: plan.version, node: node.no, round: node.round,
+      artifact: round.mainReview?.commit ?? (round.result.length <= 2000 ? round.result : 'Task ' + card.id + ', plan v' + plan.version + ', round ' + node.round) }
+    if (node === pending.at(-1) && card.humanAcceptanceRequired) requestAcceptance(card, delivery)
+    else approveRound(card, delivery, 'system')
+  }
+  return pending.length > 0
+}
+
+export function requestAcceptance(card, args) {
+  const plan = card.plans.at(-1)
+  const nodes = nodeViews(card, plan)
+  const node = nodes.find(n => n.no === args.node)
+  if (plan.version !== args.version || !node || node.round !== args.round || node.status !== 'review' ||
+      nodes.some(n => n !== node && !['verified', 'omitted'].includes(n.status))) throw new Error('Request human acceptance for the final submitted node.')
+  const artifact = field(args.artifact, 'the artifact to review', 2000)
+  const current = card.humanReview
+  if (current?.version === args.version && current.round === args.round) {
+    if (current.artifact === artifact && current.status === 'pending') return
+    throw new Error('Revise the plan before requesting acceptance of a different delivery.')
+  }
+  if (current) (card.previousReviews ??= []).push(current)
+  card.humanReview = { id: randomUUID(), version: args.version, node: args.node, round: args.round,
+    artifact, requestedAt: Date.now(), status: 'pending' }
 }
