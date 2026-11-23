@@ -3956,8 +3956,8 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
 })
 
 test('loading a submitted plan finishes ordinary work and opens one decision for explicit sign-off', async t => {
-  const nodes = [{ no: 1, ownerId: 'b', title: 'Plan', dependsOn: [] }]
-  const card = { id: cardA, title: 'Plan', intakes: [], humanAcceptanceRequired: true, plans: [{ version: 1, nodes }],
+  const nodes = [{ no: 1, ownerId: 'b', title: 'Plan', instructions: 'Prepare', acceptance: 'Checked', deliverable: 'Plan', dependsOn: [] }]
+  const card = { id: cardA, title: 'Plan', intakes: [], humanAcceptanceRequired: true, plans: [{ version: 1, by: 'a', at: 1, nodes }],
     rounds: [{ ownerId: 'b', startedAt: 1, submittedAt: 2, result: 'Planning document', planNode: { version: 1, node: 1, inputs: [] } }] }
   const host = await start(t, { ...taskNotice, projectCards: { [cardA]: card, [cardB]: { ...structuredClone(card), id: cardB, humanAcceptanceRequired: false } } })
   const read = async taskId => (await host.call('project-task-detail', { roomId: 'r1', taskId })).value
