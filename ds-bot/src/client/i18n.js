@@ -217,6 +217,7 @@ const ZH = {
   'Add the scopes app_mentions:read, chat:write, im:history and files:read, and subscribe to app_mention and message.im.': '添加 app_mentions:read、chat:write、im:history、files:read 权限，订阅 app_mention 和 message.im 事件。',
   'Install the app to the workspace and paste both tokens.': '把应用安装到工作区，粘贴两个 token。',
   'Talks to': '对话对象',
+  'Use connection Bot': '使用连接的 Bot',
   'Bound to': '绑定到',
   'Not bound': '未绑定',
   Direct: '私聊',
