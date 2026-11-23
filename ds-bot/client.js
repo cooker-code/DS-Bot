@@ -13086,6 +13086,7 @@ var ZH = {
   "Add the scopes app_mentions:read, chat:write, im:history and files:read, and subscribe to app_mention and message.im.": "添加 app_mentions:read、chat:write、im:history、files:read 权限，订阅 app_mention 和 message.im 事件。",
   "Install the app to the workspace and paste both tokens.": "把应用安装到工作区，粘贴两个 token。",
   "Talks to": "对话对象",
+  "Use connection Bot": "使用连接的 Bot",
   "Bound to": "绑定到",
   "Not bound": "未绑定",
   Direct: "私聊",
@@ -36056,10 +36057,11 @@ function stateText(conn, status) {
 }
 var Dot = ({ state }) => (0, import_react46.createElement)("span", { className: "bt-im-dot", "data-state": state, "aria-hidden": true });
 var Tick2 = ({ on }) => (0, import_react46.createElement)("span", { className: "bt-model-tick", "aria-hidden": true }, on ? (0, import_react46.createElement)(CheckIcon) : null);
-function TargetMenu({ value, roster, rooms = false, label, onPick, disabled = false }) {
+function TargetMenu({ value, roster, rooms = false, direct = false, label, onPick, disabled = false }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu();
   const bot = value?.botId !== void 0 ? roster.bots.find((entry) => entry.id === value.botId) : void 0;
   const room2 = value?.roomId !== void 0 ? roster.rooms.find((entry) => entry.id === value.roomId) : void 0;
+  const emptyLabel = direct ? t("Use connection Bot") : t("Not bound");
   const pick2 = (next) => {
     close();
     onPick(next);
@@ -36072,15 +36074,15 @@ function TargetMenu({ value, roster, rooms = false, label, onPick, disabled = fa
       "button",
       { ref: button, type: "button", className: "bt-model-trigger bt-im-target", "aria-haspopup": "menu", "aria-expanded": isOpen, "aria-label": label, disabled, onClick: () => isOpen ? close() : open() },
       shown,
-      (0, import_react46.createElement)("span", { className: "bt-model-name" }, bot?.name ?? room2?.name ?? t("Not bound")),
+      (0, import_react46.createElement)("span", { className: "bt-model-name" }, bot?.name ?? room2?.name ?? (value ? t("Not bound") : emptyLabel)),
       (0, import_react46.createElement)(Caret)
     ),
     shownPlace ? (0, import_react_dom7.createPortal)((0, import_react46.createElement)(
       "div",
       { ref: menu, className: `bt-menu bt-model-menu bt-im-menu${shownPlace.bottom !== void 0 ? " bt-menu-up" : ""}`, role: "menu", "aria-label": label, style: shownPlace, "data-leaving": leaving || void 0 },
-      rooms ? (0, import_react46.createElement)("button", { type: "button", role: "menuitemradio", "aria-checked": !bot && !room2, onClick: () => pick2(null) }, (0, import_react46.createElement)("span", { className: "bt-menu-label" }, t("Not bound")), (0, import_react46.createElement)(Tick2, { on: !bot && !room2 })) : null,
-      rooms ? (0, import_react46.createElement)("div", { className: "bt-model-group", role: "presentation" }, t("Bots")) : null,
-      roster.bots.map((entry) => (0, import_react46.createElement)(
+      rooms ? (0, import_react46.createElement)("button", { type: "button", role: "menuitemradio", "aria-checked": !value, onClick: () => pick2(null) }, (0, import_react46.createElement)("span", { className: "bt-menu-label" }, emptyLabel), (0, import_react46.createElement)(Tick2, { on: !value })) : null,
+      rooms && !direct ? (0, import_react46.createElement)("div", { className: "bt-model-group", role: "presentation" }, t("Bots")) : null,
+      !direct && roster.bots.map((entry) => (0, import_react46.createElement)(
         "button",
         { key: entry.id, type: "button", role: "menuitemradio", "aria-checked": entry.id === bot?.id, onClick: () => pick2({ botId: entry.id }) },
         (0, import_react46.createElement)(BotAvatar, { bot: entry, size: 20, badge: false, live: false }),
@@ -36368,7 +36370,7 @@ function DetailView({ conn, status, roster, actions, onBack }) {
           (0, import_react46.createElement)(
             "span",
             { className: "bt-set-control" },
-            chat.kind === "group" ? (0, import_react46.createElement)(TargetMenu, { value: chat.target ?? null, roster, rooms: true, label: t("Bound to"), disabled: busy, onPick: (target) => run2(actions.imChat(conn.id, { chatKey: key, target })) }) : null,
+            chat.kind === "group" || conn.platform === "wecom" && chat.kind === "direct" ? (0, import_react46.createElement)(TargetMenu, { value: chat.target ?? null, roster, rooms: true, direct: chat.kind === "direct", label: t("Bound to"), disabled: busy, onPick: (target) => run2(actions.imChat(conn.id, { chatKey: key, target })) }) : null,
             (0, import_react46.createElement)("button", { type: "button", className: "bt-mini bt-im-danger", "data-confirm": confirm === `c:${key}` || void 0, disabled: busy, onClick: () => ask(`c:${key}`, () => actions.imChat(conn.id, { chatKey: key, remove: true })) }, confirm === `c:${key}` ? t("Remove?") : t("Remove"))
           )
         ))

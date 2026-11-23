@@ -209,6 +209,36 @@ test('unpaired DM asks once, allow pairs it, next message prompts the Bot', asyn
   assert.deepEqual(s.prompts[0].content, [{ type: 'text', text: 'do a thing' }])
 })
 
+test('a WeCom direct chat can route to a room and return to the connection Bot', async (t) => {
+  const s = await start({ platform: 'wecom' })
+  t.after(s.stop)
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  const send = (id, text) => dm(s, id, text, { chat: { key: id, kind: 'direct', title: id } })
+  for (const id of ['u1', 'u2']) {
+    await send(id, 'connect')
+    await s.rt.imEndpoint('im-pair', { id: conn.id, senderId: id, allow: true })
+    await send(id, 'before binding')
+    assert.equal(s.prompts.at(-1).sessionId, 'a')
+  }
+  const bind = target => s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'u1', target })
+  await bind({ roomId: 'r1' })
+  await send('u2', 'still private')
+  assert.equal(s.prompts.at(-1).sessionId, 'a')
+  await send('u1', 'hello room')
+  assert.equal(s.prompts.at(-1).sessionId, 'r1')
+  assert.deepEqual(s.prompts.at(-1).content, [{ type: 'text', text: 'hello room' }])
+  s.imTurn('r1')
+  s.fake.sent.length = 0
+  s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'reply from room' })
+  await s.flush()
+  assert.deepEqual(s.fake.sent.map(msg => [msg.chat.key, msg.chat.kind, msg.text]), [
+    ['u1', 'direct', '**Writer**: reply from room'],
+  ])
+  await bind(null)
+  await send('u1', 'back to private')
+  assert.equal(s.prompts.at(-1).sessionId, 'a')
+})
+
 test('unbound group mention replies unbound and records the chat; binding routes mentions', async (t) => {
   const s = await start()
   t.after(s.stop)

@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | `im-add` / `im-update` / `im-remove` | 创建传 `platform,botId,fields`。更新用 `id` 加 `botId?,enabled?,fields?`。删除用连接 `id`。 | 增改返回单条连接视图，删除返回 true。`state.im` 核对绑定，`imStatus` 核对运行连接。 |
 | `im-pair` / `im-unpair` | `id,senderId` 标识连接及发件人，配对申请用 `allow` 给出决定。 | true。用连接的已配对和待处理列表核实。 |
-| `im-chat` / `im-retry` | 聊天映射用 `id,chatKey,target`，null 清除目标，`remove:true` 删映射。重连用 `id`。 | true，路由及实际连接状态分别查看。 |
+| `im-chat` / `im-retry` | 聊天映射用 `id,chatKey,target`，企微私聊绑定群用已有私聊的 `chatKey` 和 `target:{roomId}`，在 `state.im.connections` 对应连接的 `chats[chatKey].target` 回读。`target:null` 清除目标（私聊恢复跟随连接 Bot），`remove:true` 删映射。重连用 `id`。 | true，路由及实际连接状态分别查看。 |
 | `im-login-start` / `im-login-wait` | 对支持扫码的平台传 `platform,botId` 开始，轮询同一 `loginId,botId,platform`。 | 开始返回 `loginId,qr,expiresAt,botId`，等待返回 `status`，成功另有连接 `id`。 |
 | `secret-store` / `secret-unlock` / `secret-encrypt` / `secret-decrypt` | 查存储状态用 `{}`。解锁、启用加密或解除加密按服务要求传 `passphrase`。 | 返回存储状态，可检查模式和锁定情况。原始密钥值不在此响应中。 |
 | `secret-set` / `secret-update` | 设置值用 `name,value,purpose?,scope?`，回应申请时用 `requestId,value,scope?`。更新用途或授权范围用 `name,purpose?,scope?`。 | 返回该项可展示的元数据。团队申请和密钥库分别保存。 |
