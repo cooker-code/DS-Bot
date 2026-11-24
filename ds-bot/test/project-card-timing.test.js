@@ -295,6 +295,15 @@ test('task detail shows results below the criteria and switches to a read-only r
   assert.deepEqual(Array.from(flows.children.at(-1), row => row.props.entry.label),
     ['1. User → manager', '2. manager → a', '3. manager → a · Retry', '4. a → b'])
   assert.deepEqual(Array.from(flows.children.find(child => child?.props?.className === 'bt-handoff-bar').children[0], segment => segment.props['data-retry']), [false, false, true, false])
+  const bar = flows.children.find(child => child?.props?.className === 'bt-handoff-bar')
+  assert.equal(bar.props['aria-hidden'], undefined)
+  for (const [i, segment] of bar.children[0].entries()) {
+    assert.equal(segment.type, 'button')
+    assert.equal(segment.props['aria-controls'], rows[i].id)
+    assert.equal(segment.props['aria-label'], rows[i].label)
+    assert.equal(typeof segment.props.onClick, 'function')
+  }
+  assert.equal(new Set(rows.map(row => row.id)).size, rows.length)
   assert.equal(flows.children[0].children[1].props.text, 'Example task')
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)

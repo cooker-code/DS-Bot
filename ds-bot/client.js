@@ -40471,7 +40471,7 @@ var TASK_CSS = `
 .bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}
 .bt-task-find input{min-width:4em;flex:1}
 .bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
-.bt-handoff-bar>span{flex:1;min-width:0;position:relative}
+.bt-handoff-bar>button{flex:1;min-width:0;position:relative;border:0;padding:0;cursor:pointer}.bt-handoff-bar>button:hover{filter:brightness(1.12)}.bt-handoff-bar>button:focus-visible{outline:2px solid var(--bt-ink);outline-offset:-2px}
 .bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.65) 4px 6px)}
 .bt-handoff-row{padding:5px 0;overflow-wrap:anywhere}
 .bt-handoff-row summary{cursor:pointer}
@@ -44052,10 +44052,21 @@ function HandoffContext({ edge, onPlan }) {
     }, description), document.body)
   );
 }
-function HandoffRow({ entry, children, onPlan }) {
+function HandoffRow({ entry, children, onPlan, reveal }) {
+  const row = (0, import_react75.useRef)(null);
   const [open, setOpen] = (0, import_react75.useState)(false);
   const [tab, select] = (0, import_react75.useState)(0);
   const id = (0, import_react75.useId)();
+  (0, import_react75.useEffect)(() => {
+    if (!reveal) return;
+    row.current.open = true;
+    setOpen(true);
+    const frame2 = requestAnimationFrame(() => {
+      row.current?.querySelector("summary")?.focus({ preventScroll: true });
+      row.current?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame2);
+  }, [reveal]);
   const tabs = entry.reason ? ["Input", "Output", "Retry reason"] : ["Input", "Output"];
   const output = entry.outputs[0];
   const edge = tab === 0 ? entry.incoming : tab === 1 && entry.outputs.length === 1 ? output : void 0;
@@ -44093,7 +44104,7 @@ function HandoffRow({ entry, children, onPlan }) {
   })) : void 0;
   return (0, import_react75.createElement)(
     "details",
-    { className: "bt-handoff-row", onToggle: (e) => setOpen(e.currentTarget.open) },
+    { ref: row, id: entry.id, className: "bt-handoff-row", onToggle: (e) => setOpen(e.currentTarget.open) },
     children,
     open && (0, import_react75.createElement)(TaskContent, { key: tab, header: (0, import_react75.createElement)(
       "div",
@@ -44106,7 +44117,9 @@ function HandoffRow({ entry, children, onPlan }) {
 }
 function TaskHandoffs({ detail, roster, history }) {
   const [planVersion, selectPlan] = (0, import_react75.useState)(null);
-  const name = (id) => roster?.byId?.[id]?.name ?? id;
+  const [reveal, setReveal] = (0, import_react75.useState)(null);
+  const id = (0, import_react75.useId)();
+  const name = (id2) => roster?.byId?.[id2]?.name ?? id2;
   const messages = history?.messages.map((edge) => ({
     ...edge,
     nodeTitle: detail.plans?.find((plan) => plan.version === edge.planVersion)?.nodes?.find((node) => node.no === edge.node)?.title,
@@ -44119,7 +44132,7 @@ function TaskHandoffs({ detail, roster, history }) {
       ["User request", "Result return", "Dispatch"].includes(entry.incoming.kind) && t(entry.incoming.kind),
       entry.reason && t("Retry")
     ].filter(Boolean).join(" · ");
-    return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) };
+    return { ...entry, id: id + "-" + index, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) };
   });
   return (0, import_react75.createElement)(
     "section",
@@ -44136,12 +44149,21 @@ function TaskHandoffs({ detail, roster, history }) {
     history?.incomplete && (0, import_react75.createElement)("small", { role: "status" }, t("Some session history is unavailable.")),
     entries2.length ? (0, import_react75.createElement)(
       "div",
-      { className: "bt-handoff-bar", "aria-hidden": true },
-      entries2.map((entry) => (0, import_react75.createElement)("span", { key: entry.key, style: { background: entry.background }, title: entry.label, "data-retry": Boolean(entry.reason) }))
+      { className: "bt-handoff-bar" },
+      entries2.map((entry) => (0, import_react75.createElement)("button", {
+        key: entry.key,
+        type: "button",
+        style: { background: entry.background },
+        title: entry.label,
+        "aria-label": entry.label,
+        "aria-controls": entry.id,
+        "data-retry": Boolean(entry.reason),
+        onClick: () => setReveal({ key: entry.key })
+      }))
     ) : history && (0, import_react75.createElement)("p", { className: "bt-empty" }, t("No Bot handoffs recorded.")),
     entries2.map((entry) => (0, import_react75.createElement)(
       HandoffRow,
-      { key: entry.key, entry, onPlan: selectPlan },
+      { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null },
       (0, import_react75.createElement)(
         "summary",
         null,

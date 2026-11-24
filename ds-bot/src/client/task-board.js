@@ -430,7 +430,7 @@ export const TASK_CSS = `
 .bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}
 .bt-task-find input{min-width:4em;flex:1}
 .bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
-.bt-handoff-bar>span{flex:1;min-width:0;position:relative}
+.bt-handoff-bar>button{flex:1;min-width:0;position:relative;border:0;padding:0;cursor:pointer}.bt-handoff-bar>button:hover{filter:brightness(1.12)}.bt-handoff-bar>button:focus-visible{outline:2px solid var(--bt-ink);outline-offset:-2px}
 .bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.65) 4px 6px)}
 .bt-handoff-row{padding:5px 0;overflow-wrap:anywhere}
 .bt-handoff-row summary{cursor:pointer}

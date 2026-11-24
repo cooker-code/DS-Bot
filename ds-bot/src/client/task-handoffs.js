@@ -105,10 +105,21 @@ function HandoffContext({ edge, onPlan }) {
       onMouseEnter: cancelClose, onMouseLeave: leave }, description), document.body))
 }
 
-function HandoffRow({ entry, children, onPlan }) {
+function HandoffRow({ entry, children, onPlan, reveal }) {
+  const row = useRef(null)
   const [open, setOpen] = useState(false)
   const [tab, select] = useState(0)
   const id = useId()
+  useEffect(() => {
+    if (!reveal) return
+    row.current.open = true
+    setOpen(true)
+    const frame = requestAnimationFrame(() => {
+      row.current?.querySelector('summary')?.focus({ preventScroll: true })
+      row.current?.scrollIntoView({ block: 'start' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [reveal])
   const tabs = entry.reason ? ['Input', 'Output', 'Retry reason'] : ['Input', 'Output']
   const output = entry.outputs[0]
   const edge = tab === 0 ? entry.incoming : tab === 1 && entry.outputs.length === 1 ? output : undefined
@@ -127,7 +138,7 @@ function HandoffRow({ entry, children, onPlan }) {
     key: item.key, label: item.route + (Number.isFinite(item.at) ? ' · ' + new Date(item.at).toLocaleString() : ''),
     text: item.text, control: h(HandoffContext, { edge: item, onPlan }),
   })) : undefined
-  return h('details', { className: 'bt-handoff-row', onToggle: e => setOpen(e.currentTarget.open) },
+  return h('details', { ref: row, id: entry.id, className: 'bt-handoff-row', onToggle: e => setOpen(e.currentTarget.open) },
     children, open && h(TaskContent, { key: tab, header: h('div', { className: 'bt-handoff-content-tabs' },
       tabBar, h(HandoffContext, { edge, onPlan })), panelId: id, selectedId: id + tab, text, sections }),
     open && [edge, ...(tab === 1 ? entry.outputs : [])].some(item => item?.partial) &&
@@ -136,6 +147,8 @@ function HandoffRow({ entry, children, onPlan }) {
 
 export function TaskHandoffs({ detail, roster, history }) {
   const [planVersion, selectPlan] = useState(null)
+  const [reveal, setReveal] = useState(null)
+  const id = useId()
   const name = id => roster?.byId?.[id]?.name ?? id
   const messages = history?.messages.map(edge => ({ ...edge,
     nodeTitle: detail.plans?.find(plan => plan.version === edge.planVersion)?.nodes?.find(node => node.no === edge.node)?.title, route: (edge.sender === 'user' ? t('User') : name(edge.from)) + ' → ' + name(edge.to) }))
@@ -143,7 +156,7 @@ export function TaskHandoffs({ detail, roster, history }) {
     const bot = roster?.byId?.[entry.owner]
     const label = [String(index + 1) + '. ' + (entry.incoming.sender === 'user' ? t('User') : name(entry.incoming.from)) + ' → ' + name(entry.incoming.to),
       ['User request', 'Result return', 'Dispatch'].includes(entry.incoming.kind) && t(entry.incoming.kind), entry.reason && t('Retry')].filter(Boolean).join(' · ')
-    return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) }
+    return { ...entry, id: id + '-' + index, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) }
   })
   return h('section', { 'aria-label': t('Task handoffs') },
     detail.title && h('div', { className: 'bt-task-detail-name' }, h('h2', null, detail.title),
@@ -152,10 +165,12 @@ export function TaskHandoffs({ detail, roster, history }) {
     h(TaskPlans, { plans: detail.plans, roster, version: planVersion, onSelect: selectPlan }),
     !history && h('small', { role: 'status' }, t('Loading message history…')),
     history?.incomplete && h('small', { role: 'status' }, t('Some session history is unavailable.')),
-    entries.length ? h('div', { className: 'bt-handoff-bar', 'aria-hidden': true },
-      entries.map(entry => h('span', { key: entry.key, style: { background: entry.background }, title: entry.label, 'data-retry': Boolean(entry.reason) })))
+    entries.length ? h('div', { className: 'bt-handoff-bar' },
+      entries.map(entry => h('button', { key: entry.key, type: 'button', style: { background: entry.background },
+        title: entry.label, 'aria-label': entry.label, 'aria-controls': entry.id, 'data-retry': Boolean(entry.reason),
+        onClick: () => setReveal({ key: entry.key }) })))
       : history && h('p', { className: 'bt-empty' }, t('No Bot handoffs recorded.')),
-    entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan },
+    entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null },
       h('summary', null, h('span', { className: 'bt-handoff-dot', style: { background: entry.background } }), entry.label, h(HandoffContext, { edge: entry.incoming, onPlan: selectPlan }),
         Number.isFinite(entry.at) && h('time', null, new Date(entry.at).toLocaleString())))))
 }
