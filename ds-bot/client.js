@@ -555,6 +555,9 @@ var JA = {
   "The model service blocked the content": "モデルサービスのコンテンツフィルターが内容をブロックしました",
   "{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.": "{provider} のコンテンツフィルターがこのリクエストをブロックしました。API キーの問題ではありません。入力を変更するか、新しいチャットを始めてください。",
   "{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.": "{provider} のコンテンツフィルターがこのリクエストをブロックしました（{status}）。API キーの問題ではありません。入力を変更するか、新しいチャットを始めてください。",
+  "The model service refused the content": "モデルサービスがコンテンツ安全ポリシーにより内容を拒否しました",
+  "{provider} refused this request under its content safety policy. Edit the input or start a new chat.": "{provider} はコンテンツ安全ポリシーによりこのリクエストを拒否しました。入力を変更するか、新しいチャットを始めてください。",
+  "{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.": "{provider} はコンテンツ安全ポリシーによりこのリクエストを拒否しました（{status}）。入力を変更するか、新しいチャットを始めてください。",
   "{provider} is out of balance or quota.": "{provider} の残高または利用枠が不足しています。",
   "{provider} is out of balance or quota ({status}).": "{provider} の残高または利用枠が不足しています（{status}）。",
   "The DeepSeek account balance is too low.": "DeepSeek アカウントの残高が不足しています。",
@@ -822,6 +825,14 @@ var JA = {
   "Cushion": "クッション",
   "Ring": "リング",
   "Gem": "宝石",
+  "Dolphin": "イルカ",
+  "Octopus": "タコ",
+  "Turtle": "カメ",
+  "Crab": "カニ",
+  "Pufferfish": "フグ",
+  "Jellyfish": "クラゲ",
+  "Starfish": "ヒトデ",
+  "Seahorse": "タツノオトシゴ",
   "Black": "ブラック",
   "Brown": "ブラウン",
   "Red": "レッド",
@@ -1864,6 +1875,7 @@ var JA = {
   "Unknown theme": "不明なテーマです",
   "Accent must be a #rrggbb color": "アクセントカラーは #rrggbb 形式で指定してください",
   "Type the key first": "先にシークレットを入力してください",
+  "A key cannot contain null bytes": "シークレットに NULL バイトを含めることはできません",
   "Choose every Bot or a list of Bots": "すべての Bot または特定の Bot を選択してください",
   "This request is gone": "このリクエストはすでに存在しません",
   "This request was already answered": "このリクエストはすでに対応済みです",
@@ -3083,6 +3095,9 @@ var KO = {
   "The model service blocked the content": "모델 서비스의 콘텐츠 필터가 내용을 차단했습니다",
   "{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.": "{provider}의 콘텐츠 필터가 이 요청을 차단했습니다. API 키 문제가 아닙니다. 입력을 수정하거나 새 대화를 시작하세요.",
   "{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.": "{provider}의 콘텐츠 필터가 이 요청을 차단했습니다 ({status}). API 키 문제가 아닙니다. 입력을 수정하거나 새 대화를 시작하세요.",
+  "The model service refused the content": "모델 서비스가 콘텐츠 안전 정책에 따라 요청을 거부했습니다",
+  "{provider} refused this request under its content safety policy. Edit the input or start a new chat.": "{provider}가 콘텐츠 안전 정책에 따라 이 요청을 거부했습니다. 입력을 수정하거나 새 대화를 시작하세요.",
+  "{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.": "{provider}가 콘텐츠 안전 정책에 따라 이 요청을 거부했습니다 ({status}). 입력을 수정하거나 새 대화를 시작하세요.",
   "{provider} is out of balance or quota.": "{provider}의 잔액 또는 할당량이 부족합니다.",
   "{provider} is out of balance or quota ({status}).": "{provider}의 잔액 또는 할당량이 부족합니다 ({status}).",
   "The DeepSeek account balance is too low.": "DeepSeek 계정 잔액이 부족합니다.",
@@ -3345,6 +3360,14 @@ var KO = {
   Squircle: "둥근 사각형",
   Bull: "뿔",
   Blossom: "꽃",
+  Dolphin: "돌고래",
+  Octopus: "문어",
+  Turtle: "거북이",
+  Crab: "게",
+  Pufferfish: "복어",
+  Jellyfish: "해파리",
+  Starfish: "불가사리",
+  Seahorse: "해마",
   Gumdrop: "젤리",
   Peanut: "땅콩",
   Bubbles: "거품",
@@ -4429,6 +4452,7 @@ var KO = {
   "Unknown theme": "알 수 없는 테마",
   "Accent must be a #rrggbb color": "강조 색상은 #rrggbb 형식이어야 합니다",
   "Type the key first": "먼저 시크릿을 입력하세요",
+  "A key cannot contain null bytes": "시크릿에는 널 바이트를 포함할 수 없습니다",
   "Choose every Bot or a list of Bots": "모든 Bot 또는 지정된 Bot 목록을 선택하세요",
   "This request is gone": "이 요청은 더 이상 존재하지 않습니다",
   "This request was already answered": "이미 처리된 요청입니다",
@@ -5650,6 +5674,9 @@ var ES = {
   "The model service blocked the content": "El filtro de contenido del servicio de modelos bloqueó el contenido",
   "{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.": "El filtro de contenido de {provider} bloqueó esta solicitud. La clave API no es el problema; edita la entrada o inicia un chat nuevo.",
   "{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.": "El filtro de contenido de {provider} bloqueó esta solicitud ({status}). La clave API no es el problema; edita la entrada o inicia un chat nuevo.",
+  "The model service refused the content": "El servicio de modelos rechazó el contenido por seguridad",
+  "{provider} refused this request under its content safety policy. Edit the input or start a new chat.": "{provider} rechazó esta solicitud según su política de seguridad de contenido. Edita la entrada o inicia un chat nuevo.",
+  "{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.": "{provider} rechazó esta solicitud según su política de seguridad de contenido ({status}). Edita la entrada o inicia un chat nuevo.",
   "{provider} is out of balance or quota.": "{provider} se quedó sin saldo o cuota.",
   "{provider} is out of balance or quota ({status}).": "{provider} se quedó sin saldo o cuota ({status}).",
   "The DeepSeek account balance is too low.": "El saldo de la cuenta de DeepSeek es insuficiente.",
@@ -5912,6 +5939,14 @@ var ES = {
   Squircle: "Cuadrículo",
   Bull: "Toro",
   Blossom: "Flor",
+  Dolphin: "Delfín",
+  Octopus: "Pulpo",
+  Turtle: "Tortuga",
+  Crab: "Cangrejo",
+  Pufferfish: "Pez globo",
+  Jellyfish: "Medusa",
+  Starfish: "Estrella de mar",
+  Seahorse: "Caballito de mar",
   Gumdrop: "Gominola",
   Peanut: "Cacahuete",
   Bubbles: "Burbujas",
@@ -6996,6 +7031,7 @@ var ES = {
   "Unknown theme": "Tema desconocido",
   "Accent must be a #rrggbb color": "El color de acento debe tener formato #rrggbb",
   "Type the key first": "Escribe primero la clave",
+  "A key cannot contain null bytes": "Una clave no puede contener bytes nulos",
   "Choose every Bot or a list of Bots": "Elige todos los Bots o una lista de Bots",
   "This request is gone": "Esta solicitud ya no existe",
   "This request was already answered": "Esta solicitud ya fue respondida",
@@ -8211,6 +8247,9 @@ var FR = {
   "The model service blocked the content": "Le filtre de contenu du service de modèles a bloqué le contenu",
   "{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.": "Le filtre de contenu de {provider} a bloqué cette requête. La clé API n’est pas en cause ; modifiez la saisie ou démarrez une nouvelle discussion.",
   "{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.": "Le filtre de contenu de {provider} a bloqué cette requête ({status}). La clé API n’est pas en cause ; modifiez la saisie ou démarrez une nouvelle discussion.",
+  "The model service refused the content": "Le service de modèles a refusé le contenu pour des raisons de sécurité",
+  "{provider} refused this request under its content safety policy. Edit the input or start a new chat.": "{provider} a refusé cette requête selon sa politique de sécurité du contenu. Modifiez la saisie ou démarrez une nouvelle discussion.",
+  "{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.": "{provider} a refusé cette requête selon sa politique de sécurité du contenu ({status}). Modifiez la saisie ou démarrez une nouvelle discussion.",
   "{provider} is out of balance or quota.": "Le solde ou le quota de {provider} est épuisé.",
   "{provider} is out of balance or quota ({status}).": "Le solde ou le quota de {provider} est épuisé ({status}).",
   "The DeepSeek account balance is too low.": "Le solde du compte DeepSeek est insuffisant.",
@@ -8457,6 +8496,14 @@ var FR = {
   "Saving": "Enregistrement",
   "Manage models": "Gérer les modèles",
   "Whale": "Baleine",
+  "Dolphin": "Dauphin",
+  "Octopus": "Poulpe",
+  "Turtle": "Tortue",
+  "Crab": "Crabe",
+  "Pufferfish": "Poisson-globe",
+  "Jellyfish": "Méduse",
+  "Starfish": "Étoile de mer",
+  "Seahorse": "Hippocampe",
   "Star": "Étoile",
   "Moon": "Lune",
   "Wave": "Onde",
@@ -9520,6 +9567,7 @@ var FR = {
   "Unknown theme": "Thème inconnu",
   "Accent must be a #rrggbb color": "La couleur d’accentuation doit être au format #rrggbb",
   "Type the key first": "Saisissez d’abord la clé",
+  "A key cannot contain null bytes": "Une clé ne peut pas contenir d’octets nuls",
   "Choose every Bot or a list of Bots": "Choisissez tous les Bots ou une liste de Bots",
   "This request is gone": "Cette demande n’existe plus",
   "This request was already answered": "Cette demande a déjà été traitée",
@@ -10739,6 +10787,9 @@ var DE = {
   "The model service blocked the content": "Der Inhaltsfilter des Modelldienstes hat den Inhalt blockiert",
   "{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.": "Der Inhaltsfilter von {provider} hat diese Anfrage blockiert. Der API-Schlüssel ist nicht das Problem; ändere die Eingabe oder starte einen neuen Chat.",
   "{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.": "Der Inhaltsfilter von {provider} hat diese Anfrage blockiert ({status}). Der API-Schlüssel ist nicht das Problem; ändere die Eingabe oder starte einen neuen Chat.",
+  "The model service refused the content": "Der Modelldienst hat den Inhalt aus Sicherheitsgründen abgelehnt",
+  "{provider} refused this request under its content safety policy. Edit the input or start a new chat.": "{provider} hat diese Anfrage gemäß seiner Inhaltsrichtlinie abgelehnt. Ändere die Eingabe oder starte einen neuen Chat.",
+  "{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.": "{provider} hat diese Anfrage gemäß seiner Inhaltsrichtlinie abgelehnt ({status}). Ändere die Eingabe oder starte einen neuen Chat.",
   "{provider} is out of balance or quota.": "Guthaben oder Kontingent bei {provider} ist aufgebraucht.",
   "{provider} is out of balance or quota ({status}).": "Guthaben oder Kontingent bei {provider} ist aufgebraucht ({status}).",
   "The DeepSeek account balance is too low.": "Das Guthaben des DeepSeek-Kontos reicht nicht aus.",
@@ -11001,6 +11052,14 @@ var DE = {
   Squircle: "Squircle",
   Bull: "Stier",
   Blossom: "Blüte",
+  Dolphin: "Delfin",
+  Octopus: "Oktopus",
+  Turtle: "Schildkröte",
+  Crab: "Krabbe",
+  Pufferfish: "Kugelfisch",
+  Jellyfish: "Qualle",
+  Starfish: "Seestern",
+  Seahorse: "Seepferdchen",
   Gumdrop: "Fruchtgummi",
   Peanut: "Erdnuss",
   Bubbles: "Blasen",
@@ -12085,6 +12144,7 @@ var DE = {
   "Unknown theme": "Unbekanntes Design",
   "Accent must be a #rrggbb color": "Die Akzentfarbe muss im Format #rrggbb angegeben werden",
   "Type the key first": "Gib zuerst den Schlüssel ein",
+  "A key cannot contain null bytes": "Ein Schlüssel darf keine Nullbytes enthalten",
   "Choose every Bot or a list of Bots": "Wähle alle Bots oder bestimmte Bots aus",
   "This request is gone": "Diese Anfrage existiert nicht mehr",
   "This request was already answered": "Diese Anfrage wurde bereits beantwortet",
@@ -13362,6 +13422,9 @@ var ZH = {
   "The model service blocked the content": "模型服务的内容审核拦截了这条内容",
   "{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.": "{provider} 的内容审核拦截了这次请求。问题不在 API Key；请修改输入内容或新开一个对话。",
   "{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.": "{provider} 的内容审核拦截了这次请求（{status}）。问题不在 API Key；请修改输入内容或新开一个对话。",
+  "The model service refused the content": "模型服务因内容安全拒绝了这条请求",
+  "{provider} refused this request under its content safety policy. Edit the input or start a new chat.": "{provider} 因内容安全策略拒绝了这次请求。请修改输入内容或新开一个对话。",
+  "{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.": "{provider} 因内容安全策略拒绝了这次请求（{status}）。请修改输入内容或新开一个对话。",
   "{provider} is out of balance or quota.": "{provider} 的余额或额度不够了。",
   "{provider} is out of balance or quota ({status}).": "{provider} 的余额或额度不够了（{status}）。",
   "The DeepSeek account balance is too low.": "DeepSeek 账号余额不足。",
@@ -13626,6 +13689,14 @@ var ZH = {
   Squircle: "圆角方",
   Bull: "牛角",
   Blossom: "花朵",
+  Dolphin: "海豚",
+  Octopus: "章鱼",
+  Turtle: "海龟",
+  Crab: "螃蟹",
+  Pufferfish: "河豚",
+  Jellyfish: "水母",
+  Starfish: "海星",
+  Seahorse: "海马",
   Gumdrop: "软糖",
   Peanut: "花生",
   Bubbles: "泡泡",
@@ -14833,6 +14904,7 @@ var HOST_ZH = {
   "Unknown theme": "未知主题",
   "Accent must be a #rrggbb color": "强调色必须是 #rrggbb 格式",
   "Type the key first": "请先输入密钥",
+  "A key cannot contain null bytes": "密钥不能包含空字符",
   "Choose every Bot or a list of Bots": "请选择所有 Bot 或指定的 Bot",
   "This request is gone": "这个请求已经不存在了",
   "This request was already answered": "这个请求已经处理过了",
@@ -15131,6 +15203,7 @@ var FAILURES = {
   INVALID_CREDENTIAL: "The API key is not in the right format",
   AUTH: "The API key was rejected",
   CONTENT_POLICY: "The model service blocked the content",
+  CONTENT_REFUSED: "The model service refused the content",
   QUOTA: "The account is out of quota",
   ACCOUNT_QUOTA: "The account is out of quota",
   ACCOUNT_SIGN_IN_REQUIRED: "The DeepSeek account needs a sign-in",
@@ -15257,6 +15330,14 @@ var paintCss = (color) => GRADIENTS[color] ? `linear-gradient(135deg,${GRADIENTS
 var CHARACTERS = {
   whale: { label: "Whale", body: "M65.3 20.9l5.1 .1 4.8 .9 4.8 1.7 4.3 2.3 3.8 3.1 3 3.4 2.3 3.8 1.6 4.3 .9 4.3 0 4.8-.8 4.8-1.4 4.3-2.3 4.3-3.2 4.3-3.4 3.3-4.3 3.1-7.2 3.5-7.6 1.7-7.2 .1-9.6-1.6-3.3-1-2.9-1.7-8.8-8.9-6-4.7-3.3-.5-7.7 1.1-4.8-.1-4.7-1.2-1.9-1.2-1-1-.5-1.5 .4-1.4 1.1-1.3 1.9-1.3 4.7-1.5 7.7-.6 1.1-.5 .7-1 0-1.4-2.8-7.2-1.2-5.3-.1-4.3 .4-1.4 .9-1.2 1.9-.2 2 1 2.2 2.3 2.2 3.4 3.2 7.6 1.9 9.7 .5-.1 1.1-7.2 1.8-4.8 3.2-5.2 3.9-4.3 4.9-3.9 5.6-2.9 5.8-1.9z", paints: [["M93.3 55.8l1-.3 .1 1.2-2.4 5.3-3.4 4.8-3.8 3.8-4.8 3.4-5.7 2.8-4.8 1.5-4.8 .4 20.1-17.4 5.2-3.7z", "#fff", 1]], shade: "M88.6 29.5l2.4 2.9 1.9 2.8 2.4 6.3 .5 3.3 .1 5.3-1.5 6.6-1.9 4.3-2 3.3-4.8 5.4-5.7 4.3-7.2 3.3-6.2 1.5-6.7 .1-3.3-.2-9.6-1.8-3.3-1.5-2.4-1.9-8.6-8.9-5.3-3.9-3.3-.1-2.9 .2-3.3 .8-5.8 0-4.3-1-2.9-1.9 .6-.6 3.8-1.3 10.5-2.5 4.3 .9 1.4-.1 2.2-1.7 .5-1.4-.3-1.5-1.2-1.4-2.2-1.4-1.2-1.9-.6-12 .4-3.3 .5-.5 2.9 3.8 2.4 4.8 1.9 5.7 .7 5.8 .7 2.8 2.1 2.4 2.7 5.5 3.8 4.3 2.9 2.2 3.3 1 3.4-.4 6.2-3 7.1-4.5 7.3-5.6 6.6-5.9 5.9-6.5 3.7-5.3 1.7-4.2 .1-2.9z", light: "M55.6 22.8l1.9-.3 1.5 .3 .6 1 .1 .9-2 4.3-3.8 5.3-5.8 6.2-5.4 4.4-4.8 2.3-1.4 0-1.2-.5-.8-1.9 .5-3.3 2.5-4.8 3.3-4.3 2.4-2.4 5.3-3.9zM19.3 28.1l-1.4 2 .3-1.1zM21.7 49.1l.6 .5-.3 .5-.8 0zM35.8 52l1.2-.4 .9 .7 .7 1.6-.4 .9-1.2 .1-2.6-.5zM7.2 52.9l-2.9 2.9 1.2-1.6z", eyes: [[72.5, 48.4, 9.3, 23, -15.8], [85.6, 43.4, 7, 22.9, -21.2]] },
   star: { label: "Star", body: "M40.1 4.4l1.5-.4 1.9 .1 5.2 1.1 1.9 .9 13.2 14.9 17.1-.8 5.2 1.1 1.8 .9 1.7 1.6 .7 2.4-.4 1.9-9.7 23.6 5.6 23.7 .1 1.9-.6 1.4-2.1 1.8-2.3 .5-19.9-1.8-16.6 15.5-1.9 1-1.9 .3-7-1.5-2.6-2.1-.9-2.4-2.8-24.1-16-13.6-1.1-1.5-.5-1.9 .4-1.9 1.2-1.5 18.9-13.6 7.1-24.6 1-1.7z", shade: "M52 7.7l14.3 16.1 1 2.9 .3 3.1 19.4-1.3 2-1.4 .7-2.3-.4-1 .5 .5 .5 1.9-.4 1.9-9.8 23.2 5.5 23.1 .1 3.4-2 2.4-2.8 .8-19.4-2.1-1.9 1.4-14.7 14-2.4 1.4-3.3 .1-4.7-1-2-1 .6-.2 3.3 .8 2.8 .1 5.1-2.1 .7-.9 .4-2.4-2.6-22.7-.3-.3-1.4 .2-1.4 .7-5.7 .7-5.6-1.2-16.7-13.8 1-.1 5.2 1 3.8-1.1 1-.7 1.9-.4 .4-.4 1.5 .3 .4-.4 1 .2 18-12.8 6.7-23.5 0-1.8-.4-.5-.3-1.9 .4-2.4z", light: "M40.1 4.4l2-.1 4.7 1 .7 1-.5 1.4-2.8 1.5-6.6 23.1 .7 1.2 .6 .3-18.1 12.5-1.8 2.1-3.4 .7-5.2-1.2-.3-.4 .3-.9 1.4-1.4 18.3-12.9 .9-2.3 6.4-22.7 .8-1.4z", eyes: [[53.9, 53.4, 7.2, 18.8, -10], [65.1, 49.2, 7.2, 18.8, -10]] },
+  dolphin: { label: "Dolphin", body: "M33.8 19.8l1.5-.5 2.6 1 6.3 6.3 3.2 1.5 7.6-.5 5.1 .4 5 1.2 9.6 3.3 3.1 .6 2.6 .1 10.8-1.3 1.9 .3 1.4 .9 1.1 1.5 .4 1.7-.4 1.9-1.5 1.9-9.3 5.5-2.5 2-2.5 3.3-3.2 6.9-3.1 4.5-4.6 4.4-5.7 3.7-4.4 1.7-7 1.6-5.1 .6-4.4-.2-4.4-.8-4.5-1.5-3.8-1.9-5.1-3.3-1.9 .8-1.9 1.7-3.9 7.1-2 2.6-2.3 1.6-1.9 .1-1.4-1.7-.4-2.6 .3-3.1 1.6-6.4-.3-5.7-.8-1.9-2.8-3.3-1.9-3.3-.9-2.9 .4-2.5 1.1-1.2 1.3-.5 3.1 .5 3.8 2.1 5.1 4.6 1.9 .6 4.9-9.9 7-8.9 .5-3.2-.9-7.6 .6-2.6z", paints: [["M68 50.9l1.6-.6 .6 .1 1.8 1.1 1.1 1.3 .9 1.9 .4 1.9-.4 3.8-1.2 2.5-3.9 3.8-5 3.3-2.6 1.2-.8 0-2.2-1.9-1-2.6 .2-3.8 1.1-3.8 1.5-3.2 1.9-2.5z", "#fff", 1]], shade: "M38.8 22.3l.3-.4 .7 .2 3.6 4-2.4 1.1-1.9 .3-1.2-.5 .1-2.2zM94.9 33.7l.9 1.9 0 1.9-.6 1.3-2.1 1.9-8.3 4.7-2.6 2.3-2.2 2.5-3.4 7.6-2.6 3.8-5 5.1-3.9 2.6-5.7 2.6-7.6 1.8-10.8 .2-3.8-.8-5-1.9-2.6-1.3-5.1-3.6-2.5 1.2-1.7 1.8-4 7.6-2.6 2.7-2.5 1.1-1.3-.6 4.2-7.7 2.4-7.6 3-4.1 2.5-.9 2.5 .1 5.7 2.6 4.5 1 2.5-.1 5.7-1.5 7.2-4.1 8.4-5.7 7.3-6 5.1-5.2 1.9-1.2 2.5-.7 6.3 .6 3.2-.2 8.9-3.2 .9-1.2zM11.4 49l3-.2 3.7 4-1 1.9-3.3 3.1-2 1.6-1.2 .3-3.2-3.1-.5-1.9 1.2-3.2 1.2-1.3z", light: "M33.9 19.8l-1.2 1.9 .1-.7zM32.6 35l.2-.3 6.7 2.2 1.7 1.3-5.8 6.3-8.3 8-2.6 .7-3.3-.4 4-8.9 3.8-5zM4.8 46.4l.1 .7-.7 .6zM10.5 68.6l.2 0 0 1.3-.8 2-.2-.7 .7-1.3z", eyes: [[55.6, 50.7, 7.2, 17.9, -15.7], [68.7, 45.7, 5.6, 17.9, -20.7]] },
+  octopus: { label: "Octopus", body: "M42.8 4.4l4.9-.4 4.2 .2 4.3 .7 4.2 1.3 4.2 2 3.5 2.3 3.4 3 2.4 2.8 3.5 6.4 1.6 7-.3 7-.8 3.5-1.6 4.2 .2 .7 1.3 2.9 9.1 13.3 .6 1.4 0 2.1-1 2.1-1.5 1.3-1.4 .5-2.1-.1-1.4-.5-9.2-6.5-.7-.4-.7 .2 .3 4.1 3.8 15.5-.3 1.4-1 1.7-1.4 1.1-1.4 .5-2.1-.1-2.1-1.1-7.7-12-1.4-1.5-.8 0-.7 3.7-.7 17.5-1.4 2.4-1.4 1-1.4 .4-2.8-.5-2-1.8-4.3-15.9-1.4-2.5-.7-.5-.7 .1-2.1 3-5.6 14.3-2.2 2-2.8 .4-1.4-.4-1.4-1.1-1.3-2.3 .8-22.5-.2-3.5-1.5-5.6-5.2-11.2-1.7-5-.9-5.6 .5-6.3 1.4-4.9 2-4.3 2.8-4.2 4-4.2 4.2-3.3 5-2.7 4.9-1.9z", paints: [["M62.3 58.5l2.3-.7 .9 .7 .1 4.2-1.1 3.5-1.3 1.8-2.1 1.5-5.7 1.4-.7-1.1-.3-1.5 .1-1.4 .7-2.1 2.9-3.5z", "#fff", 1]], shade: "M71.9 14.9l.7 0 2.7 3.5 2 4.3 1.4 4.9 0 9.1-1.5 5.6-1.1 2.1 1.4 3.6 9.7 14 0 3.5-.7 1.4-2.2 1.6-3.5-.1-8.5-6.1-2.1-1.1-.7 .2 .3 4.8 3.3 12 .2 2.1-.3 2.8-1.4 1.6-1.4 .7-3.5 0-1.4-.9 1.4-.3 1-1.1-4.2-8.4-4.5-1.1-1.4-1-1.4-2-.8 .4-.5 .9-.5 4.2-.4 16.1-1.2 2.2-2.3 1.4-2.1 .1-2.1-.8 3.2-2.2 .8-.7 0-.7-1.1-14.7-2.2-2.9-2.1-.5-2.1 .8-2.1 1.5-2.8-1-1.3 1.4-2.6 5.6-3.2 9.1-1.4 2.3-.7 .6-2.1 .8-2.1-.1-1.4-.7 3.3-2.2 1.3-1.4 4.8-18.2 .2-6.4-1.8-8.4 .2-1.4 .8-1.4 1.1-1.4 7.7-3.8 8.4-5.4 6.3-4.9 5.4-4.9 5.2-5.7 3.5-5 2.1-4.8z", light: "M37.1 5.8l2.5 0 1.2 .7 .5 1.4-.1 1.4-2.2 4.9-4.3 5.6-5.8 5.7-5.8 4-4.2 1.6-2.1 .1-1.4-.6-1-1.6 .2-3.5 2.1-4.3 3.6-4.9 3.6-3.5 4.8-3.4 4.3-2.2z", eyes: [[55.3, 44.6, 7.8, 17.3, -7.5], [72, 38.4, 5.5, 17.6, -3.8]] },
+  turtle: { label: "Turtle", body: "M34.6 21.1l8-.6 4.5 .5 3.8 1 5.7 2.5 7.6 6 2.6 1 2.5-.4 5.7-2.6 3.8-.9 4.5 .1 4.4 1.3 2.6 1.5 1.9 1.7 1.6 2.2 1.3 2.5 .7 2.6 .2 3.1-.5 3.2-1 2.6-1.9 3.1-3 2.9-3.2 2-3.8 1.3-3.1 .3-3.2-.2-3.2-.9-5.7-2.5-1.9-.2-1.3 .5-1.1 1.9 0 3.2 4.5 14.6-.8 2.9-1.3 1.3-1.3 .6-2.5 .2-2.6-1.2-10.1-14-1.9-2.1-1.3-.7-9.5 2.1-25.4 11.9-1.9 .3-1.9-.4-1.5-.9-1-1.3-.5-1.2 0-2 1.1-2.4 4.2-3.9 1.6-2.5 0-1.3-2.5-6.4-.6-4.4 .6-5.7 1.8-5.1 3.8-5.7 5.7-5.2 7-3.9z", paints: [["M44.1 40.7l3-.6 2.5 .6 2.6 1.9 1.1 1.9 .4 2.6-.4 2.5-1.2 1.9-2.5 1.8-2.5 .4-1.9-.4-2.4-1.8-1.2-1.9-.7-2.5 .2-2.6 .9-2z", "#fff", 1]], shade: "M62.8 31.2l2.7 4.7 4.6 11.2 1.7 2.5 1.9 1.1 1.9 .4 .7-.3 4.4-3 3.9-3.3 5.7-6.4 1.2-2.2 1-2.8 .3-.1 .6 .8 1.4 2.5 1.2 5.1-.7 4.9-1.8 4-2 2.5-3.2 2.5-2.5 1.4-4.4 1.2-3.8 .1-5.1-1.3-4.5-2.4-3.1-.1-1.3 1.2-.6 1.2 .2 4.5 4.3 12.7 0 1.9-.6 1.2-2 2-1.3 .5-1.9 0-2.5-1.2 1.8-.6 1.1-.7 .2-.6-6.7-12.1-1.5-.5-5.1 .3-1.9-2.1-1.3-.6-3.8 1-5.7 .9-16.5 8-2.6 .9-5.7 3-1.9 .6-1.3 0-2.6-1.3 2.6-1 3.2-2.8 5.7-3.6 21.6-11.5 8.8-5.9 5.2-4.3 5.5-5.8 2.7-4z", light: "M29.9 22.3l3.2 .1 1.1 1.2 .2 1.3-1.6 4.4-4.3 5.7-5.6 5.1-5 3.2-4.5 1.5-1.9-.1-1.3-.6-.7-1.5 0-2.5 2.6-5.1 2.6-3.2 5.8-5 4.3-2.6zM74.9 28.7l2-.3 .6 .3 .1 .6-.6 1.9-1.7 2.6-.9 .6-1.9 .2-1.9-.8-1.3-1.7-.1-.9zM13.1 57.2l1 .1 .9 1.2 .2 1.3-.8 1.9-5.9 5.1-1.7 1.9-1 .7-1.3 .1-.1-.8 .8-1.3 5.5-5.1 .6-1.2 0-1.3 .8-1.8z", eyes: [[82.1, 44.3, 6.8, 15.9, -11.9], [91.7, 39.6, 4.6, 15.9, -19.9]] },
+  crab: { label: "Crab", body: "M92.2 16.6l1.5-.1 1.3 .7 .8 1.2 .1 1.8-4.2 10.7-2.6 3.6-1.5 4.2-1.6 2.7-2.5 2.1-3.5 1.4-4.2 0-5.4-2-1.2 .7-.6 1-.2 1.3 .4 1.8 5.9 9.6 .1 1.8-1.1 1.8-2.1 .9-1.8-.5-12-9.4-15.6 4.6-.6 .3-.3 1.1-2.5 12-1.3 1.8-2.5 .5-2-1.1-.8-1.8-.8-5.2-.5 2.2-1.3 3-3.1 3.6-3.5 2.1-5.7 1.5-5.1 6.6-1.8 .5-2-1.1-.7-1.8-.2-8.4-2.5-4.8-.8-3-.2-3 .4-2.4 1.1-3 1.5-2.4 4.9-4.2-.2-2.4 .3-2.4 2-4.8 2.7-3.6 3.9-3.6 5.4-3.5 6.6-3 6.6-2 7.2-1.1 6-.1 6 .9 4.8 1.7 4.8 3.1 .6 0 3.6-3 2.4-1.2 3-.5 3.6 .1 1.8-.5z", paints: [["M62 44.1l.6 .1 .6 .8-.3 2.1-2 2.4-2.5 2.2-7.2 2.2-2.4-.3-1.2-.8 0-2.1 1.5-1.8 1.5-.4 5.4 1.5 4.8-5.2z", "#fff", 1]], shade: "M95.5 17.8l.1 3-3.6 9.5-3.4 4.8-1.3 4.2-1.9 2.6-1.9 1.6-3.5 1.4-4.8-.2-4.2-1.8-1.2 .1-1.1 1.1-.5 2.4 .6 1.8 5.9 9-.1 2.4-1.2 1.4-1.2 .5-1.8 0-12-9.4-1.2-.3-1.2 .3-6 2.2-8.4 2.3-.9 3-2.1 10.7-1.2 1.3-1.8 .6-1.9-.6 3.4-3 .9-8.5-.6-.7-1.2-.4-3-.2-1.8 .3-.5 .5 .5 .6 0 3.6-.5 2.4-1.3 3-1.8 2.4-4.2 3-3.6 1.2-2.4 .2-1.6 1.6-3.8 5.4-1.8 .3-1.3-.3 2.8-2.4 4.6-10.8 1.1-1.4 5.2-4.6 2.9-3.6 1.9-3.6 .5-3 3.9-.7 4.8-1.7 13.3-6 10.7-6.5 3-2.5 3-3 .6 .5 3.6 6.5 1.2 1.4 3.6-1.2 4.2-3 2.9-3 1.9-2.6 4.1-3.1zM66.6 50.7l.4 0 5.8 7.2 0 .6-1.2 1.2-.6 0-8.1-7.8z", light: "M92.5 16.6l.1 .6-.4 .6-6.8 6.9-1.8 .4-1.6-.7 1.6-.9 7.7-6.4zM73.5 25l1.7-.6 1.2 .5 0 1.3-.5 1.2-3.1 3.4-3 1.9-.6-.1-.9-1.7-.3-1.2 .3-.6 3.3-3zM34.8 25.6l2.6 0 .7 .6 .2 1.2-1.5 3.5-2.8 3.6-4.1 4.2-3.5 3-4.6 3-2.8 1.2 2.4 1.2 .6 .6-.2 .6-6.6 .4-.2-.4 1-1.2-.2-.3-2.4-.6-.7-.9-.2-1.2 .2-1.8 2.5-4.2 4.8-4.9 3.1-2.3 6.5-3.5zM12.7 49.5l1.9-.3 1 .3 .3 .6-.3 1.8-1.4 2.4-4.4 3.9-2.4 1.1-1.8 0-.6-.6-.1-1.4 1.3-2.4 1.9-2.4 2.3-1.8 1.8-.6z", eyes: [[45, 42.8, 7.4, 17.7, -18.3], [61.7, 36.6, 5.4, 17.9, -29.3]] },
+  puffer: { label: "Pufferfish", body: "M40.1 4.7l1.8-.7 2 .7 .9 1.3 2.6 6.7 .7 1 .7 .3 4.8 .7 .7-.3 4.4-5.6 1.8-.7 1.3 .4 1.3 1.7-.1 6.8 .2 .9 .7 .4 2.1 .2 2-.6 5.5-4.2 1.4-.2 1.8 .8 .9 1.4 .1 1.3-2.1 6.2 0 4.2 1 2.7 3.8 7.6 1.8 6.2 1.7 1.1 6.8 1.4 1.5 1.6 .1 1.4-.9 1.5-6.8 3.7-1.8 1.7-1.9 7.5-3.1 6.9-2.8 4.2-5 5.5-1.9 2.7-.7 3.5 .4 6.8-.5 1.4-1.3 1.1-1.4 .1-1.1-.5-5.1-5.7-2.1-1-2-.4-7.6 .7-1.4 1.1-2.3 3.9-1.8 .7-1.4-.6-.7-1-.5-3.2-.8-1.6-5.6-1.6-5.5-2.6-4.8-3.2-4.1-3.9-5.5-6.8-3.2-8.5-1.3-6.9 .1-7.6 1.4-6.9 2.9-6.8 4.8-6.9 5.6-5.3 6.2-3.8 8.3-3.2 2-8.4z", paints: [["M70.8 64.5l2.7 .2 1.4 .9 .7 1 .2 3.4-1.6 4.2-2.7 3.7-5.5 4.8-3.5 1.4-2.7-.2-1.2-1.5-.2-2.7 .9-3.5 1.6-3.4 2.3-3.2 2.4-2.3 2.4-1.7z", "#fff", 1]], shade: "M44.5 6l.3 0 .5 1.4 1.7 4.8 1.6 2.8-1.9-.1-1.6-1.3-1.5-6.2 .1-.7zM62.5 9.5l.4 1.4-.1 6.8 .5 1.4 1.5 1.4 .2 .7-.4 .6-1.4-.4-1.2-.9-1.4-2.8 .2-3.4 .9-3.4zM77 15l.7 1.4 0 .6-2.5 6.9 0 2.8 1.4 4.1 1.8 2.8 2 4.1 1.7 6.2 2.5 3.3 1.3 1.2 .7 .2 5.5-.6 0 2.1-1.4 1.3-6.1 3-2 1.9-1.5 6.9-3.4 7.5-2.7 4.2-5.3 5.5-2.1 3.4 0 9.6-.3 1.4-.6 .7-1.4 .3-1.6-.3 1.2-1.4-1.7-3.5-.7-.6-1.3 .1-1.4 .7-1.4-1.2-3.4-1.4-8.3 .7-1.9 1.8-.9 2.1-1.3 1.5-1.4 .5-1.4-.6 1.4-.4 1-1 .6-1.4 .2-4.2-1.1-1.8-2.1-.8-2.7 .4-.6 .9 .6 2.2-3.5-.9-4.8-1.9-2.7-1.5-4.9-3.4-4.2-4.2 4.2 1.3 2.1 .1 .6-.7-4.7-4.2-2.1-.2-.7-.7-2.9-.4 2.9-2.2 4.1-.9 3.3 .4 3.6 2 1.6 2.1 1.2 3.2 .7-.1 4.8-2.1 6.2-3.5 5.5-3.8 5.7-4.7 5.7-5.5 4.9-5.5 4.3-6.2 2.8-4.8 1.9-4.9 .7-3.4 0-2.8-.6-3.4 .3-2.1zM21.2 31.5l2.1 1.3-.1 1.5-1.3 1.4-2 .2-2.1-2.3 1.4-.5z", light: "M40.3 4.7l.9-.3 .2 .3-.4 .6-1.2 1-.7-.3zM58.9 8.8l.9-.3 .2 .3-1.3 1.4-3.1 6-1.3 1.4-1.4 0-.7-.6-.3-1.3 1-.2 1.9-1.2zM72.7 14.3l.8-.3 .6 .3-3.3 3.7-2.1 .9-1.5-.5 2.9-1.6zM36.8 15l1-.2 .7 1.6 1.3 4.1-.1 2.1-2.4 4.8-3.7 4.6-.7 .2-2.4-2.1-2.4-.9-6.2-.3-.7-.7-1.3 .2-1.6 1.7-1.2 .6-.4 .8-.2 1.4 1.4 1.4-.7 8.9-3.5 .4-2.5-1.1-1-2.1 .7-4.1 2.1-4.1 4-5.5 4.2-4.2 4.9-3.4 5.5-2.7zM17.8 61.1l1 0 .9 .7 .2 1-.6 1-4.3 2.7-1.4 1.5-1.3 .4-.1-.4 2.2-2.2 .6 0 .6-.6 .8-2.6z", eyes: [[56.6, 53.5, 9.1, 21.7, -12.7], [73.9, 47, 6.3, 21.5, -17.3]] },
+  jelly: { label: "Jellyfish", body: "M53.3 4.1l6.6 0 6.8 1 9.8 2.3 7.8 2.8 4.2 2.4 3.7 3.6 2.1 3.7 .8 3.8-.3 3.8-1.2 3.7-1.7 3-3.7 5.3-.1 7.5-1.8 15.8 .2 6.8-.7 2.3-1 1.2-1.5 .9-5.4 .9-1.1 2.2-1.2 5.3-.8 1.5-1.6 1.5-2.7 1-6.1-.6-1.5 .4-.8 1.5-.7 4.5-.6 1.5-1.6 1.6-2.3 .7-3-.8-4-4.5-2-1.3-2.3-.9-.7-.1-.8 .4-2.2 3.4-2.3 1.5-3 .1-2.3-1.4-1-1.7-1.2-3.8-1.5-2.9-9.1-13.4-5.1-12.3-2.3-3-4.9-4.5-1.9-2.3-1.6-3-.8-3.7 .4-4.5 2.2-5.3 3.9-5.3 5.6-5.1 6-4.1 8.3-4.2 9.1-5.6 6-2.3z", shade: "M91.8 16.9l.5-.7 2.3 4.5 .1 6.8-.8 3-1.5 3-3.6 4.5-.8 1.5-.1 9.8-.9 6.8-.4 .7-.1 12.8-.8 2.3-1.7 1.6-1.5 .7-3.8 .1-.8 .6-1.1 1.5-1 5.3-.6 1.5-1 1.5-1.5 .9-2.2 .7-3.1-.1-.7-.5-1.5 0-1.5 0-.8 .5-1.2 2.2-.3 3.8-.6 1.5-1.6 1.6-1.5 .6-1.5 .1-2.3-.8-.9-.8 2.4-.4 2.2-1.8-1.4-2.1-1.5-1.1-1.6 .2-2.2 1.8-3.8-2.3-3-.1-2.2 3.6-2.3 1.5-3 .1-1.5-.7 3-2 1-1.2-.7-3-1.8-5.2-1.5-2.4-1.5-1-5.3-.5-.9-.7-1.1-1.5 1.3-5.2-.1-5.3-4.9-5.3-5.6-3.5-1.5-.6-.7 .3-1.5-1.9-4-3.3 1 .6 3.7 .7 6.8-.2 6-.8 13.8-3.3 15.6-5.5 13.9-6.5 10.9-6.6 3.8-2.9 3.7-3.5 2.3-3zM78.9 51.6l.7 0 .8 2.2 .2 2.3-.4 3.7-.6 2.3-.9 1.3-.8 .9-1.4 .8-1.5-1.1-.8-1.5-.8-3.4 .1-4.5 1.5-1.7zM49.6 59.8l1.3 0 1.6 .8 1.9 10.5 1.2 4.5 .2 2.3-.3 2.3-.8 1.6-.8 .6-1.5-.2-2.3-1.7-2.2-4-2-5.4-.2-3.7 .5-3.1 1.6-3.7zM62.7 59.8l1-.7 1 .7 2.1 6.1 2.8 3.7 .5 1.5 0 2.3-.6 1.5-1.3 1.7-1.5 .7-1.5 0-1.5-.8-1.5-1.8-3-5.1 .1-5.3 1.4-.6 .6-.9z", light: "M43.4 6.4l1.4 0-4.4 3.7-4 3.8-2.3 3-1.5 3 .2 1.9 1.5 .6 3-.5 6.1-1.7 .2 .5-4 5.3-3.8 3.7-4.6 3.8-3.5 2.3-8.4 4-3.8 1.1-3.7 .4-3-.5-2.1-1.3-.8-1.5-.1-1.5 1.3-3.8 3.1-4.5 5.3-5.3 6.1-4.5 6.7-3.7 3-1.1 4.7-3.4z", eyes: [[61.7, 34.1, 6.8, 16.8, -21], [78.5, 27.8, 5.5, 17, -29.2]] },
+  starfish: { label: "Starfish", body: "M41 4.2l4.5 .1 6.4 1.4 2.8 1.3 2.8 2.5 6.4 9.5 .7 .3 9.9-1.8 7.8 1.5 2.8 1 2.7 1.8 1.7 2.2 1.3 2.8 .5 2.8-.7 4.3-5 9.9-3.5 8.4 1.5 6.4 4 12-.2 4.3-2.1 4.2-1.6 1.7-2.1 1.4-4.3 1.2-2.8-.1-12.7-3.1-11.5 13-3.4 2.1-3.5 .7-2.8-.3-7.1-1.6-2.8-1.4-2.5-2.3-1.6-2.8-.7-2.8-.5-18.4-.5-.7-12.6-8.5-2.6-3.6-1-4.2 .3-2.8 .7-2.1 2.6-3.7 2.1-1.6 13.7-7.5 .4-.6 3.3-17.7 .9-2.9 1.5-2.4 1.9-1.8 2.3-1.4z", shade: "M57.4 9.8l.9 .7 5.6 8.5 0 .7 2.9 2.8 0 .7 1.4 1.5 0 1.4 .8 .7-.1 5.6 .6 1-.5-.3-.9-2.1-1.2-1.4-3.7-2.2-2.1-.6-2.2 .1-4.9 1.4-.5-.8-1.2-5 .9-4.9 2.9-4.1zM88.5 23.2l.1-.2 .9 1 1.3 2.8 0 6.3-6.1 12.1-2.8 7 1.4 6.4 4.1 11.3-.1 5-1.5 3.5-2.8 2.9-2.8 1.5-2.9 .6-2.8-.1-12.7-3.2-2.6 2.5-8.1 9.9-2.8 2.1-2.1 .9-7-.1-.8-.4-5.4-1.1-2.3-1.2-.9-.9 .9-.3 4.9 1 2.8-.4 3.6-1.7 4.3-3.5 .4-.7-.1-5.7-1.1-9.2 .5-4.9-1.2-.2-.7 .7-1.4 0-2.1 1.1-2.2 .1-1.4 .7-4.2-.1-.7-.7-2.1 0-.7-.7-2.2-.1-1.4-1.5-.7 0-12.7-8.5 1.4-.2 4.9 1 2.9-.4 2.4-1.1 3.2-2.3 5-4.8 2.1-1.2 4.2-.5 2 .3 .6 4.9 1 2.2 1.4 1.5 1.4 .7 2.1 .2 4.3-1.2 6.3-3.9 5.7-5.2 3.7-4.9 1.5-2.8 1.1-3.5 2-2.1 2.3-1.7 2.8-1.4 9.9-2.4 1.4-2.6z", light: "M38.6 4.9l2-.3 6.3 1.5 .3 1.6-1.2 2.1-2.6 2.7-2.8 1.5-7.8-1.3-.3-1.5 1-2.1 2.8-2.9zM34.6 30.3l1.7 .1 .4 1.3 1 1 1.5 .2 0 .6-.8 0-13.4 6.9-2.6 4.1-3 2.5-2.2 .8-7-1.2-.7-.7 0-.7 1.4-2.9 2.1-2.1 2.1-1.4 6.4-3.1 8.5-5 .7 .4 2.1-.1z", eyes: [[59.7, 54.2, 7, 16.6, -10], [71.5, 49.7, 5.4, 16.6, -10]] },
+  seahorse: { label: "Seahorse", body: "M44.6 4l1.9 .3 1.4 1 1.1 1.8 .8 4.3 1.6 2.9 2.5 2.6 7.3 6.1 2.4 1.4 3.1 1.1 10.4 1.1 2 1.3 1.3 2.4-.4 3-1.7 2-11.6 3.3-4.4 2.1-3.4 3.6-1.9 4.3-.3 2.5 .5 1.2 1.2 1.2 5.1 3.1 2.1 1.8 2.2 3 1.2 3.7 .2 3.7-.7 3-1.1 2.5-3.2 4.2-.4 1.3 .4 .8 3.7 2.8 1.6 1.9 1.3 2.4 .3 2.5-.4 1.8-1.1 1.8-1.7 1.4-1.8 .7-2.5 0-2.4-.7-4.9-3.8-1.8-.8-9.8-.1-2.5-.6-1.8-1-2-1.8-1.5-2.4-1.8-8.6-.8-.6-5.5-1.7-3.7-2.4-3.2-3.8-2-4.9-.4-3.7 .4-3.7 3.6-9.1 .5-2.5-.3-2.4-1.6-4.9-.3-3.1 .4-4.2 1.1-3.7 3.1-5.3 3.6-4.5 8.6-6.8 4.2-4.1z", paints: [["M57.4 63.9l2.6 .7 1.8 1.7 1 2.5-.2 2.4-1.3 2.5-2 1.6-3 1.1-2.5-.2-1.4-.7-1.1-1.2-.4-1.9 .3-1.8 1-2.4 1.6-2.4 1.9-1.5z", "#fff", 0.35]], shade: "M48.3 5.9l.7 1.2 .2 3 .6 1.9 .6 1.2 2.8 3-.6 .6-1.2-.3-1.2-.9-2.4-3.6-.5-3.7zM58.1 26l1.9 .7 5.4 3.9 3.7 1.2 8.6-.6 1.3-1.5 .5-1.3 .8 1.9-.1 2.4-.6 1.3-1.3 1.3-1.2 .6-10.4 2.5-4.3 1.9-2.9 2.8-1.2 1.9-1.2 2.4-.6 2.4 0 1.3 1.9 3-.3 6.7 .6 2.4 .6 1 1.3 .8 4.2-1.8 .9-1.8 .4-2.5 1.9 3.2 1.1 3.6 .1 3.1-.7 3-1.8 3.6-3 3.8 0 1.2 .6 .6 .3 1.2-1.2 4.9 .5 1.8 .3 .4 .6-.3 2.4-2.5 1.3-2.5 1.8 2.6 .6 1.8 .1 2.4-.6 1.8-1.1 1.2-1.4 1.4-1.8 .6-3.1 0-1.8-.7-1.2-.6-3.1-2.9-2.4-1.2-10.4-.1-3.7-1.4-1.3-1.2 3.1-.7 3.7-2.7 2.2-3.3 .3-1.2-.2-1.3-.7-.6-1.6-.4-6.7-.2-3.1-.5-1.2-1.2-4.9-1.3-2.4-1.2-3.7-3.1 .6 .4 3.1-.1 3-1 3.1-1.6 5.2-3.8 4.8-4.9 1.8-5.5 0-2.4-.5-1.9-1.2-1.8-1.6-1.4-6.7-3.5-.4-.6 .2-.6 7.1-5.5 5.3-5 7.4-2.2z", light: "M42.9 4.6l1.2-.2 .4 .2-.2 .7-13.9 19.5-4 3.5-1.9 .8-1.2-.3-.3-.9 .3-2.5 2.4-4.3 3.1-4.2 2.5-2.5 5.4-3.9zM23.2 47.4l.7-.6 2 1.2 .8 1.2 .1 1.3-.4 1.3-1.9 2.2-2.4 1.1-.6-.2-.5-.8-.1-1.2 .5-1.8z", eyes: [[44.1, 32.3, 7.4, 17.8, -13], [55.1, 29.6, 6.3, 17.9, -18.3]] },
   moon: { label: "Moon", body: "M45.8 4.2l4.7-.2 4.2 .4 10.2 2.4 3.7 1.6 3.6 2.1 3.3 2.5 3 3.1 4.6 6.7 3.4 8.3 1.5 8.8 .1 4.6-.8 7.8-2.6 8.8-3.9 7.7-5.1 6.7-6.1 5.3-4.1 2.6-3.6 1.6-27.2 10.2-2.8 .7-2.6 0-5.7-1.3-2-.8-1.9-1.7-1.1-2.6-6.5-37.7-.2-5.2 .8-7.7 1.3-5.2 3.1-7.8 4.2-6.7 3-3.6 3.9-3.6 6.3-4.2 4.1-1.8z", paints: [["M57.6 9.9l.2-.3 .2 .3 2 4.7 1.9 1.9 2.6 .5 1.5-.7 1.1-1.1 .4 .4-.1 1.6-.7 1.5-2.2 2.5-1.6 .7-2 0-1.6-.8-1.3-1.4-.8-2-.4-2.6 .1-3.1z", "#1783FF", 1]], shade: "M74.3 13.5l2.1 1.5 .3-.4-.3-.6 2.1 2.1 4.6 6.7 3.1 7.4 1.5 7.6 .1 10.4-.6 4.6-2.5 8.3-4.2 8.2-3.1 4.2-5.7 5.7-6.2 4.2-4.6 2-28 10.3-4.1 0-5.2-1.1-2-.9-.5-.7 .5 .5 1.5 0 3.6 1 2.6-.3 5.7-2.1 2.1-2.1-5.4-31.5-.2-4.1 .4-1.1-.1-2.6 .5-3.6 1.8-7.7 2.8-6.7 1.9-3.1 3.9-5.2 3.2-3.1 2.5-2 5.2-2.9 3.1-1.1 3.1-.8 2.1 0 .5-.4 2.6 .2 1-.3 1.6 .4 1-.5 2.1 .8 1-.8 2.1 1.2z", light: "M38 6.3l1.7-.3 2.5 .2 .6 .4 1.5 0 .5 .5 1.6 .3-3.1 1.3 .4 .7-2.5 1.6-.5 1-2.5 2.1-2.7 2.9-6.2 7.9-1.5 2.7-1 .9-1.2 2.6-1.4 1-1.3 3.7-1.3 .3-6-1.4-1 3.6-.8 0 .9-3.6-.5-1 1.1-3.6 2.7-5.7 4.1-6.2 5.7-5.8 3.1-2.4 3.6-2.2z", eyes: [[51.6, 48.5, 8.4, 22.1, -10], [66.8, 42.9, 8.4, 22.1, -10]] },
   wave: { label: "Wave", body: "M46.1 4l6.1 .3 9.6 2.1 4.5 1.8 4.1 2.4 3.5 2.8 4.4 4.8 2.6 4 2.1 4.1 2.2 6 4.8 26 .5 5.3-.3 4.1-1.2 3.8-1.5 2.8-2.4 2.5-2.1 1.4-3.1 1-3 .3-8.1-1.5-3.2 5.3-2.1 2.1-2.5 1.5-2.8 1-3 .4-9.1-1.6-2.7 4.2-3.4 3.1-4 1.7-4.6 .1-7-1.5-3.5-1.9-3.4-3.5-2.1-4-1.5-5.6-3.7-20.7-.6-5.6-.1-5 .5-6.1 2.3-9.6 2.3-5.5 2.7-4.9 2.7-3.7 3.2-3.6 4.2-3.6 4.7-2.9 4.4-2 4-1.2z", paints: [["M61.6 48.5l2.2-.3 2 1.1 1.1 2.2 .3 3-.6 3.1-1.5 3.5-2.5 4.1-2.4 2.8-5-2.2-3-2.2-2.3-3-.7-3.5 .6-2.6 1.8-2.1 1.6-.7 1.5 0 1.5 .6 1.5 1.3 2-3.6z", "#fff", 0.4]], shade: "M69.3 13.6l2.6 1.3 .5-.3 .5-1.3 2 1.7 .5 0 2.5 2.7 3.5 5.5 3.6 8.6 1.5 6.6 3.5 19.7 .5 5.5-.4 4.6-2 5-1 1.6-2.6 2.5-3 1.5-2.1 .5-4 0-6.6-1.4-1.4 2.9-1.9 2.5-2.7 2.6-3.1 1.5-2.5 .6-4 .1-7.1-1.5-1.5 2.8-2.6 3-2 1.6-3 1.4-4.5 .6-7.1-1.5-3.6-1.5-3.5-3.1 6.6 1.5 2.8-.5 .5-.5-.3-.5 3.2-2-.4-1 1.4-1.5-.3-1 .7-1.6-.2-2.5-3.4-19.2 .3-.5-.6-5 .5-.5-.1-4.6 .4-.5 .3-4 1-4.1 1.5-4.5 3.8-7.7 5.5-6.9 3.1-2.6 6.5-3.9 7.6-2.2 3.1 0 .5-.4 3 .5 1-.5 2.5 1z", light: "M36.5 6.1l2-.3 .5 .6 4.1 .5 1 .7-3.3 1.5-.3 1.2-3 2-.3 .8-2.8 2.6-3.5 4-3.9 5-2 3.6-1 .5-1.7 4-1.5 .5-1.4 4.6-1.6 .2-.5-.4-5.6-.9-.4-.4 1.4-5.1 1.5-3.5 2.6-5.1 4-5.5 6.6-6.2 4-2.5z", eyes: [[47.5, 37.2, 8.4, 22.1, -10], [61.6, 31.9, 8.4, 22.1, -10]] },
   squircle: { label: "Squircle", body: "M54.5 4.2l3.9-.2 3.7 .3 11.6 2.7 3.1 1.6 2.8 1.9 2.6 2.7 2.2 3.1 2.4 4.8 1.9 5.8 3.7 19.4 .8 11.1-.4 4.7-1 4.7-1.3 3.5-1.8 3.4-4.8 5.8-6.4 4.7-8 4-14.2 5.3-9.5 2.2-7.4 .1-10.5-2.2-5.3-2.5-4.3-3.7-3.3-4.8-2.7-6.3-2.4-9.5-2.8-17.9-.2-7.8 1.3-7.9 2.2-5.3 2.8-4.2 4.1-4.2 4.3-3.1 6.3-3.4 11.6-4.6 7.9-2.7z", shade: "M80.5 11.6l2.1 2.1 2.1 3.2 3.2 7.3 2.1 8.4 2.7 15.8 .5 7.9-.6 7.4-2 6.3-3.8 6.3-4.2 4.3-2.6 2-6.9 3.8-15.2 6.2-9.5 2.7-6.8 .6-6.2-.7-8.5-2-5.8-3.2-3.2-3.3 .5 .4 1.1-.2 5.8 1.4 2.1-.8 1.4-.7-.3-.5 1.4-1.1-.1-1 .8-.5 0-1.1 1.1-1 .1-2.1 .4-.6-.2-3.6-2.4-17.9-.2-9.5 .8-5.3 1.1-3.6 1.2-2.7 2.2-3.5 2.7-2.8 3.1-2.5 5.8-3.2 17.9-6.9 5.3-1.4 8.4-1.4 1.6-1.1 .5 .1 .9-1.5z", light: "M39.4 8.4l1.2 0-1.6 .7-1-.1 1-.1zM36.8 9.5l1 0 .6 .9 4.2 .6 .7 .6-3.8-.4-.3 .4 1.9 .3 .1 .7-3.2 1.6-6.9 5.8-5.3 6-4.7 6.1-3.8 3.7-.2 .5-1.8 .1-6.8-1.7 .4-3.6 2.1-4.2 2.2-3.2 4.2-4.3 4.2-3 3.1-1.8 5.3-2.5zM35.1 10.5l1.7 0-.5 .4zM36.5 11.1l.3-.5 2.2 .1 .4 .4-.4 .3z", eyes: [[52.6, 52.4, 8.4, 22.1, -10], [67.3, 46.9, 8.4, 22.1, -10]] },
@@ -15278,7 +15359,7 @@ var CHARACTERS = {
 };
 var PICKER_SHAPES = Object.keys(CHARACTERS);
 var PICKER_COLUMNS = 5;
-var DEFAULT_SHAPES = ["star", "moon", "gumdrop", "peanut", "bunny", "kitty", "acorn"];
+var DEFAULT_SHAPES = ["star", "moon", "dolphin", "octopus", "turtle", "crab", "puffer", "jelly", "starfish", "seahorse", "gumdrop", "peanut", "bunny", "kitty", "acorn"];
 var FALLBACK_SHAPE = "gumdrop";
 var MAIN_LOOK = Object.freeze({ shape: "whale", color: "deepseek" });
 var CHARACTER_COLORS = ["black", "brown", "red", "orange", "yellow", "green", "cyan", "blue", "violet", "magenta", "gray", "aurora"];
@@ -23162,6 +23243,8 @@ body[data-bt-layout=flat] .bt-q-inline .dv-view,body[data-bt-layout=flat] .bt-q-
 // src/client/secret-card.js
 var import_react19 = require("react");
 var MIN_VALUE = 4;
+var MIN_MULTI_HEIGHT = 20;
+var MAX_MULTI_HEIGHT = 160;
 var NONE = {};
 var KeyIcon = () => (0, import_react19.createElement)(
   "svg",
@@ -23189,15 +23272,44 @@ var scopeLabel = (scope, roster) => {
   return names.length === 0 ? t("No Bot") : names.join(t(" and "));
 };
 var when = (time) => Number.isFinite(time) ? new Date(time).toLocaleString(dateLocale(), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-function MaskedInput({ value, onChange, onEnter, label, autoFocus = false, disabled = false }) {
-  return (0, import_react19.createElement)("input", {
-    className: "bt-secret-input",
-    type: MASK_BY_CSS ? "text" : "password",
+function MaskedInput({ value, onChange, onEnter, label, autoFocus = false, disabled = false, multiline = false }) {
+  const ref = (0, import_react19.useRef)(null);
+  const fit2 = () => {
+    const el = ref.current;
+    if (!multiline || !el || typeof el.scrollHeight !== "number") return;
+    const scrollTop = el.scrollTop;
+    const parent = el.parentElement?.style && typeof el.parentElement.offsetHeight === "number" ? el.parentElement : null;
+    const prevMinHeight = parent ? parent.style.minHeight : "";
+    if (parent && parent.offsetHeight > 0) parent.style.minHeight = `${parent.offsetHeight}px`;
+    el.style.overflowY = "hidden";
+    el.style.height = "0px";
+    const next = Math.min(Math.max(el.scrollHeight, MIN_MULTI_HEIGHT), MAX_MULTI_HEIGHT);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > MAX_MULTI_HEIGHT ? "auto" : "hidden";
+    if (parent) parent.style.minHeight = prevMinHeight;
+    el.scrollTop = scrollTop;
+  };
+  (0, import_react19.useLayoutEffect)(fit2, [value, multiline]);
+  (0, import_react19.useLayoutEffect)(() => {
+    const el = ref.current;
+    if (!multiline || !el || typeof ResizeObserver !== "function") return;
+    let lastWidth = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === lastWidth) return;
+      lastWidth = el.clientWidth;
+      fit2();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [multiline]);
+  const common = {
+    ref,
+    className: multiline ? "bt-secret-input bt-secret-input-multi" : "bt-secret-input",
     disabled,
-    "data-masked": MASK_BY_CSS ? "" : void 0,
+    "data-masked": MASK_BY_CSS ? "" : multiline ? "blur" : void 0,
     value,
     autoFocus,
-    autoComplete: MASK_BY_CSS ? "off" : "new-password",
+    autoComplete: multiline || MASK_BY_CSS ? "off" : "new-password",
     autoCorrect: "off",
     autoCapitalize: "off",
     spellCheck: false,
@@ -23209,11 +23321,14 @@ function MaskedInput({ value, onChange, onEnter, label, autoFocus = false, disab
     placeholder: label ?? t("Paste or type the key"),
     onChange: (event) => onChange(event.target.value),
     onKeyDown: (event) => {
-      if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+      if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+      if (multiline && !event.metaKey && !event.ctrlKey) return;
       event.preventDefault();
       onEnter?.();
     }
-  });
+  };
+  if (multiline) return (0, import_react19.createElement)("textarea", { ...common, rows: 1 });
+  return (0, import_react19.createElement)("input", { ...common, type: MASK_BY_CSS ? "text" : "password" });
 }
 function ScopeSwitch({ value, onChange, bot }) {
   const options = [["all", t("All Bots")], ["bot", t("Only {name}", { name: bot.name })]];
@@ -23290,10 +23405,10 @@ function SecretCard({ sessionId, bot, request, roster, actions, inline = false }
     filling ? (0, import_react19.createElement)(
       "div",
       { className: "bt-secret-body" },
-      (0, import_react19.createElement)("label", { className: "bt-q-field bt-secret-field" }, (0, import_react19.createElement)(MaskedInput, { value, onChange: (next) => {
+      (0, import_react19.createElement)("label", { className: "bt-q-field bt-secret-field bt-secret-field-multi" }, (0, import_react19.createElement)(MaskedInput, { value, onChange: (next) => {
         hold();
         setValue(next);
-      }, onEnter: save, label: t("Value of {name}", { name: request.name }), autoFocus: replacing })),
+      }, onEnter: save, label: t("Value of {name}", { name: request.name }), autoFocus: replacing, multiline: true })),
       request.kind === "fill" ? (0, import_react19.createElement)(ScopeSwitch, { value: scope, onChange: (next) => {
         hold();
         setScope(next);
@@ -23440,8 +23555,8 @@ function ValueEditor({ secret, onSave }) {
     (0, import_react19.createElement)("div", { className: "bt-secret-edit-label" }, t("Replace the value")),
     (0, import_react19.createElement)(
       "div",
-      { className: "bt-secret-inline" },
-      (0, import_react19.createElement)("label", { className: "bt-q-field bt-secret-field" }, (0, import_react19.createElement)(MaskedInput, { value, onChange: edit, onEnter: save, label: t("New value of {name}", { name: secret.name }) })),
+      { className: "bt-secret-inline bt-secret-inline-multi" },
+      (0, import_react19.createElement)("label", { className: "bt-q-field bt-secret-field bt-secret-field-multi" }, (0, import_react19.createElement)(MaskedInput, { value, onChange: edit, onEnter: save, label: t("New value of {name}", { name: secret.name }), multiline: true })),
       (0, import_react19.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: !long, onClick: save }, t("Replace"))
     ),
     value !== "" && !long ? (0, import_react19.createElement)("div", { className: "bt-set-hint" }, t("At least {count} characters.", { count: MIN_VALUE })) : replaced ? (0, import_react19.createElement)("div", { className: "bt-set-hint bt-secret-ok", role: "status" }, (0, import_react19.createElement)(CheckIcon), t("Replaced. Bots get the new value from their next command.")) : null
@@ -23510,7 +23625,7 @@ function AddSecret({ actions, run: run2, onDone }) {
     { className: "bt-set-row bt-set-paste bt-secret-add" },
     (0, import_react19.createElement)("input", { className: "bt-input", "aria-label": t("Key name"), placeholder: t("NAME, e.g. GITHUB_TOKEN"), value: name, spellCheck: false, autoComplete: "off", autoFocus: true, onChange: (event) => setName(event.target.value.toUpperCase()) }),
     (0, import_react19.createElement)("input", { className: "bt-input", "aria-label": t("What it is for"), placeholder: t("What it is for"), value: purpose, autoComplete: "off", onChange: (event) => setPurpose(event.target.value) }),
-    (0, import_react19.createElement)("label", { className: "bt-q-field bt-secret-field" }, (0, import_react19.createElement)(MaskedInput, { value, onChange: setValue, onEnter: save, label: t("Value") })),
+    (0, import_react19.createElement)("label", { className: "bt-q-field bt-secret-field bt-secret-field-multi" }, (0, import_react19.createElement)(MaskedInput, { value, onChange: setValue, onEnter: save, label: t("Value"), multiline: true })),
     (0, import_react19.createElement)(
       "div",
       { className: "bt-secret-row-actions" },
@@ -23643,9 +23758,13 @@ var SECRET_CSS = `
 .bt-secret-name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:16px;padding:1px 6px;border-radius:6px;background:var(--bt-hover);color:var(--bt-ink)}
 .bt-secret-body{display:flex;flex-direction:column;gap:8px}
 .bt-secret-field{align-items:center;min-height:36px}
+.bt-secret-field-multi{padding:7px 11px}
+.bt-secret-body>.bt-secret-field,.bt-secret-add>.bt-secret-field{flex:none}
 .bt-secret-input{flex:1;width:100%;min-width:0;margin:0;padding:0;border:0;outline:none;background:transparent;color:var(--bt-ink);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:20px;letter-spacing:.04em}
+.bt-secret-input-multi{display:block;min-height:20px;max-height:160px;resize:none;overflow-x:hidden;overflow-y:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
 .bt-secret-input[data-masked]{-webkit-text-security:disc}
-.bt-secret-input::placeholder{color:var(--bt-ink-3);font-family:var(--bt-font);letter-spacing:0}
+.bt-secret-input[data-masked="blur"]{color:transparent;text-shadow:0 0 7px var(--bt-ink);caret-color:var(--bt-ink)}
+.bt-secret-input::placeholder{color:var(--bt-ink-3);font-family:var(--bt-font);letter-spacing:0;-webkit-text-security:none;text-shadow:none}
 .bt-secret-scope{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;align-self:flex-start;padding:2px;border-radius:999px;background:var(--bt-hover)}
 .bt-secret-glide{position:absolute;top:2px;bottom:2px;left:2px;width:calc(50% - 2px);border-radius:999px;background:var(--bt-main);box-shadow:0 1px 3px rgba(20,20,20,.08),inset 0 0 0 .5px color-mix(in srgb,var(--bt-ink) 6%,transparent);transition:${spring(SPRING_SHAPE, "transform")}}
 .bt-secret-glide[data-at="1"]{transform:translateX(100%)}
@@ -23691,6 +23810,8 @@ var SECRET_CSS = `
 .bt-secret-bot[aria-pressed=true]{background:var(--bt-active);color:var(--bt-ink);border-color:var(--bt-line-2)}
 .bt-secret-bot svg{width:13px;height:13px}
 .bt-secret-inline{display:flex;gap:8px;align-items:center}
+.bt-secret-inline-multi{align-items:flex-end}
+.bt-secret-inline-multi>.bt-soft-sm{margin-bottom:4px}
 .bt-secret-inline .bt-input{flex:1;height:34px}
 .bt-secret-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .bt-secret-row-actions .bt-set-hint{flex:1}
@@ -30557,18 +30678,27 @@ var freshInputAt = (submissions, steeredAt) => Math.max(
   ...(submissions ?? []).filter((sub) => sub.placement !== "queued").map((sub) => sub.time)
 );
 var mountMissed = false;
+var runningSlot = null;
 function findHost() {
-  const node = document.querySelector("[data-chat-flow] [data-chat-running]")?.closest("[data-chat-flow]") ?? document.querySelector("[data-chat-flow]");
+  const kept = runningSlot?.slot;
+  if (kept?.isConnected && kept.hasAttribute("data-chat-running") && kept.closest("[data-chat-flow]") === runningSlot.host) return runningSlot.host;
+  const slot = document.querySelector("[data-chat-flow] [data-chat-running]");
+  const node = slot?.closest("[data-chat-flow]") ?? document.querySelector("[data-chat-flow]");
+  runningSlot = slot ? { slot, host: node } : null;
   if (node === null && !mountMissed) {
     mountMissed = true;
     noteClientError("activity row", new Error("[data-chat-flow] not found"));
   }
   return node;
 }
+function releaseHost() {
+  runningSlot = null;
+}
 function useRunningHost(active) {
   const [host, setHost] = (0, import_react37.useState)(null);
   (0, import_react37.useEffect)(() => {
     if (!active) {
+      releaseHost();
       setHost(null);
       return void 0;
     }
@@ -30588,6 +30718,7 @@ function useRunningHost(active) {
     return () => {
       cancelAnimationFrame(frame2);
       observer.disconnect();
+      releaseHost();
     };
   }, [active]);
   return host;
@@ -41111,6 +41242,8 @@ function failureText2(code, { name, provider, status }) {
       return status === void 0 ? t("{provider} did not accept the current API key.", { provider }) : t("{provider} did not accept the current API key ({status}).", { provider, status });
     case "CONTENT_POLICY":
       return status === void 0 ? t("{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.", { provider }) : t("{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.", { provider, status });
+    case "CONTENT_REFUSED":
+      return status === void 0 ? t("{provider} refused this request under its content safety policy. Edit the input or start a new chat.", { provider }) : t("{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.", { provider, status });
     case "QUOTA":
       return status === void 0 ? t("{provider} is out of balance or quota.", { provider }) : t("{provider} is out of balance or quota ({status}).", { provider, status });
     case "ACCOUNT_QUOTA":
@@ -41144,8 +41277,9 @@ function fixesFor(code, { canSignIn, official, topUp, onAccount = false }) {
       return ["rekey", "model"];
     case "AUTH":
       return ["rekey", canSignIn ? "use-account" : null, "model"].filter(Boolean);
-    // A content audit is about the input, not the credentials; no key action helps.
+    // A content audit or refusal is about the input, not the credentials; no key action helps.
     case "CONTENT_POLICY":
+    case "CONTENT_REFUSED":
       return [];
     case "QUOTA":
       return official ? ["top-up"] : [];
