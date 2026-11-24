@@ -7,7 +7,6 @@ export const KO = {
   "Dispatch registered; delivery not recorded": "배정 등록됨, 전달 기록 없음",
   "Dispatch failed": "배정 실패",
   "No undispatched reason was recorded.": "미배정 사유가 기록되지 않았습니다.",
-  "Next version saved {time}": "다음 버전 저장 시간 {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "이 작업 트리의 파일 범위를 이미 배정된 다른 노드가 사용 중입니다. 해당 결과물을 기다리거나, 파일 경로를 수정하거나, 별도 작업 트리를 사용하세요.",
 
   "Archive 1 discussion": "토론 1개 보관",

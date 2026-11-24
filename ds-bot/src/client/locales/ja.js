@@ -7,7 +7,6 @@ export const JA = {
   "Dispatch registered; delivery not recorded": "割り当て登録済み、送達記録なし",
   "Dispatch failed": "割り当て失敗",
   "No undispatched reason was recorded.": "未割り当ての理由は記録されていません。",
-  "Next version saved {time}": "次の版の保存日時 {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "この作業ツリーのファイル範囲は別の割り当て済みノードが使用中です。その成果物を待つか、対象パスを変更するか、別の作業ツリーを使用してください。",
 
   "Archive 1 discussion": "議論を1件アーカイブ",

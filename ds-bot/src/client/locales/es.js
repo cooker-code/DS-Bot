@@ -7,7 +7,6 @@ export const ES = {
   "Dispatch registered; delivery not recorded": "Asignación registrada; entrega sin registrar",
   "Dispatch failed": "Error de asignación",
   "No undispatched reason was recorded.": "No se registró el motivo de la falta de asignación.",
-  "Next version saved {time}": "Siguiente versión guardada el {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Otro nodo asignado ocupa archivos coincidentes en este árbol de trabajo. Espera su entrega, modifica las rutas o utiliza otro árbol de trabajo.",
 
   "Archive 1 discussion": "Archivar una discusión",

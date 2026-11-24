@@ -95,8 +95,7 @@ function HandoffContext({ edge, onPlan, note }) {
   }, [Boolean(place)])
   if (!note && !edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null
   const version = note?.version ?? edge?.planVersion
-  const description = note?.description ?? [contextLabel(edge), edge.planReason && t('Plan change reason') + ' · ' + edge.planReason,
-    edge.planVersion && t('View plan v{version}', { version: edge.planVersion })].filter(Boolean).join('\n')
+  const description = note?.description ?? [contextLabel(edge), edge.planReason && t('Plan change reason') + ' · ' + edge.planReason].filter(Boolean).join('\n')
   return h(Fragment, null,
     h('button', { ref: trigger, type: 'button', className: 'bt-tool', 'aria-label': description, 'data-plan-note-version': note?.version,
       'aria-describedby': place ? id : undefined, onMouseEnter: show, onMouseLeave: leave,

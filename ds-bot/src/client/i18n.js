@@ -17,7 +17,6 @@ const ZH = {
   "Dispatch registered; delivery not recorded": "已登记派工，尚无送达记录",
   "Dispatch failed": "派工失败",
   "No undispatched reason was recorded.": "未派发原因未记录。",
-  "Next version saved {time}": "后续版本保存于 {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "同一工作树的文件范围仍被其他已派工节点占用。需要等待其交付、调整文件范围或使用独立工作树。",
 
   "Copy all outputs": "复制全部输出",
@@ -28,7 +27,6 @@ const ZH = {
   "Full plan": "完整内容",
   "Compare with v{version}": "与 v{version} 比较",
   "First plan version": "首版计划",
-  "View plan v{version}": "查看计划 v{version}",
   "Node numbers identify work items within this plan version.": "节点编号代表这一版计划中的工作项，具体名称、负责人、前置依赖和验收标准见下方。",
   "Changes from plan v{before} to v{after}": "计划 v{before} → v{after} 的差异",
   "Before change": "修改前",

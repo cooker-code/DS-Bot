@@ -70,22 +70,19 @@ export function planDifferenceText(before, after, roster) {
 export function unsentPlanNotes(plans, rounds, entries, failures, roster) {
   const ordered = [...plans].sort((a, b) => a.version - b.version)
   const time = at => Number.isFinite(at) ? new Date(at).toLocaleString() : t('Not recorded')
-  return ordered.flatMap((plan, i) => {
+  return ordered.flatMap(plan => {
     const bound = rounds.filter(round => round.planNode?.version === plan.version)
     if (bound.some(round => round.sentAt) || entries.some(entry =>
       entry.incoming.kind === 'Dispatch' && entry.incoming.planVersion === plan.version)) return []
     const anchor = entries.filter(entry => entry.at <= plan.at).at(-1)
     const reasons = failures.filter(failure => failure.version === plan.version)
-    const next = ordered[i + 1]
     const description = [t('Plan v{version}', { version: plan.version }) + ' · ' +
       t(bound.length ? 'Dispatch registered; delivery not recorded' : 'Not dispatched'),
     t('Saved {time}', { time: time(plan.at) }) + ' · ' +
       t('Saved by {name}', { name: roster?.byId?.[plan.by]?.name ?? plan.by ?? t('Not recorded') }),
     ...reasons.map(failure => t('Dispatch failed') + ' · ' + time(failure.at) + ' · ' + t('Node {n}', { n: failure.node }) + '\n' +
       hostText(failure.error.replace(/^Error:\s*/, ''))),
-    !reasons.length && t('No undispatched reason was recorded.'),
-    next && t('Plan v{version}', { version: next.version }) + ' · ' + t('Next version saved {time}', { time: time(next.at) }),
-    t('View plan v{version}', { version: plan.version })].filter(Boolean).join('\n')
+    !reasons.length && t('No undispatched reason was recorded.')].filter(Boolean).join('\n')
     return [{ version: plan.version, after: anchor?.key, description }]
   })
 }

@@ -144,7 +144,6 @@ var JA = {
   "Dispatch registered; delivery not recorded": "割り当て登録済み、送達記録なし",
   "Dispatch failed": "割り当て失敗",
   "No undispatched reason was recorded.": "未割り当ての理由は記録されていません。",
-  "Next version saved {time}": "次の版の保存日時 {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "この作業ツリーのファイル範囲は別の割り当て済みノードが使用中です。その成果物を待つか、対象パスを変更するか、別の作業ツリーを使用してください。",
   "Archive 1 discussion": "議論を1件アーカイブ",
   "Archived discussions": "アーカイブ済みの議論",
@@ -2686,7 +2685,6 @@ var KO = {
   "Dispatch registered; delivery not recorded": "배정 등록됨, 전달 기록 없음",
   "Dispatch failed": "배정 실패",
   "No undispatched reason was recorded.": "미배정 사유가 기록되지 않았습니다.",
-  "Next version saved {time}": "다음 버전 저장 시간 {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "이 작업 트리의 파일 범위를 이미 배정된 다른 노드가 사용 중입니다. 해당 결과물을 기다리거나, 파일 경로를 수정하거나, 별도 작업 트리를 사용하세요.",
   "Archive 1 discussion": "토론 1개 보관",
   "Archived discussions": "보관된 토론",
@@ -5273,7 +5271,6 @@ var ES = {
   "Dispatch registered; delivery not recorded": "Asignación registrada; entrega sin registrar",
   "Dispatch failed": "Error de asignación",
   "No undispatched reason was recorded.": "No se registró el motivo de la falta de asignación.",
-  "Next version saved {time}": "Siguiente versión guardada el {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Otro nodo asignado ocupa archivos coincidentes en este árbol de trabajo. Espera su entrega, modifica las rutas o utiliza otro árbol de trabajo.",
   "Archive 1 discussion": "Archivar una discusión",
   "Archived discussions": "Discusiones archivadas",
@@ -7860,7 +7857,6 @@ var FR = {
   "Dispatch registered; delivery not recorded": "Attribution enregistrée ; remise non enregistrée",
   "Dispatch failed": "Échec de l’attribution",
   "No undispatched reason was recorded.": "Le motif de l’absence d’attribution n’a pas été enregistré.",
-  "Next version saved {time}": "Version suivante enregistrée le {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Un autre nœud attribué occupe des fichiers communs dans cet arbre de travail. Attendez sa livraison, modifiez les chemins ou utilisez un autre arbre de travail.",
   "Archive 1 discussion": "Archiver une discussion",
   "Archived discussions": "Discussions archivées",
@@ -10402,7 +10398,6 @@ var DE = {
   "Dispatch registered; delivery not recorded": "Zuweisung erfasst; Zustellung nicht erfasst",
   "Dispatch failed": "Zuweisung fehlgeschlagen",
   "No undispatched reason was recorded.": "Der Grund für die fehlende Zuweisung wurde nicht erfasst.",
-  "Next version saved {time}": "Nächste Version gespeichert am {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Ein anderer zugewiesener Knoten belegt überlappende Dateien in diesem Arbeitsbaum. Warten Sie auf dessen Lieferung, ändern Sie die Pfade oder verwenden Sie einen separaten Arbeitsbaum.",
   "Archive 1 discussion": "Eine Diskussion archivieren",
   "Archived discussions": "Archivierte Diskussionen",
@@ -12990,7 +12985,6 @@ var ZH = {
   "Dispatch registered; delivery not recorded": "已登记派工，尚无送达记录",
   "Dispatch failed": "派工失败",
   "No undispatched reason was recorded.": "未派发原因未记录。",
-  "Next version saved {time}": "后续版本保存于 {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "同一工作树的文件范围仍被其他已派工节点占用。需要等待其交付、调整文件范围或使用独立工作树。",
   "Copy all outputs": "复制全部输出",
   "Copy this output": "复制这份输出",
@@ -13000,7 +12994,6 @@ var ZH = {
   "Full plan": "完整内容",
   "Compare with v{version}": "与 v{version} 比较",
   "First plan version": "首版计划",
-  "View plan v{version}": "查看计划 v{version}",
   "Node numbers identify work items within this plan version.": "节点编号代表这一版计划中的工作项，具体名称、负责人、前置依赖和验收标准见下方。",
   "Changes from plan v{before} to v{after}": "计划 v{before} → v{after} 的差异",
   "Before change": "修改前",
@@ -44039,19 +44032,16 @@ function planDifferenceText(before, after, roster) {
 function unsentPlanNotes(plans, rounds, entries2, failures, roster) {
   const ordered = [...plans].sort((a, b) => a.version - b.version);
   const time = (at) => Number.isFinite(at) ? new Date(at).toLocaleString() : t("Not recorded");
-  return ordered.flatMap((plan, i) => {
+  return ordered.flatMap((plan) => {
     const bound2 = rounds.filter((round) => round.planNode?.version === plan.version);
     if (bound2.some((round) => round.sentAt) || entries2.some((entry) => entry.incoming.kind === "Dispatch" && entry.incoming.planVersion === plan.version)) return [];
     const anchor = entries2.filter((entry) => entry.at <= plan.at).at(-1);
     const reasons = failures.filter((failure) => failure.version === plan.version);
-    const next = ordered[i + 1];
     const description = [
       t("Plan v{version}", { version: plan.version }) + " · " + t(bound2.length ? "Dispatch registered; delivery not recorded" : "Not dispatched"),
       t("Saved {time}", { time: time(plan.at) }) + " · " + t("Saved by {name}", { name: roster?.byId?.[plan.by]?.name ?? plan.by ?? t("Not recorded") }),
       ...reasons.map((failure) => t("Dispatch failed") + " · " + time(failure.at) + " · " + t("Node {n}", { n: failure.node }) + "\n" + hostText(failure.error.replace(/^Error:\s*/, ""))),
-      !reasons.length && t("No undispatched reason was recorded."),
-      next && t("Plan v{version}", { version: next.version }) + " · " + t("Next version saved {time}", { time: time(next.at) }),
-      t("View plan v{version}", { version: plan.version })
+      !reasons.length && t("No undispatched reason was recorded.")
     ].filter(Boolean).join("\n");
     return [{ version: plan.version, after: anchor?.key, description }];
   });
@@ -44219,11 +44209,7 @@ function HandoffContext({ edge, onPlan, note }) {
   }, [Boolean(place)]);
   if (!note && !edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null;
   const version = note?.version ?? edge?.planVersion;
-  const description = note?.description ?? [
-    contextLabel(edge),
-    edge.planReason && t("Plan change reason") + " · " + edge.planReason,
-    edge.planVersion && t("View plan v{version}", { version: edge.planVersion })
-  ].filter(Boolean).join("\n");
+  const description = note?.description ?? [contextLabel(edge), edge.planReason && t("Plan change reason") + " · " + edge.planReason].filter(Boolean).join("\n");
   return (0, import_react75.createElement)(
     import_react75.Fragment,
     null,

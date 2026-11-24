@@ -7,7 +7,6 @@ export const DE = {
   "Dispatch registered; delivery not recorded": "Zuweisung erfasst; Zustellung nicht erfasst",
   "Dispatch failed": "Zuweisung fehlgeschlagen",
   "No undispatched reason was recorded.": "Der Grund für die fehlende Zuweisung wurde nicht erfasst.",
-  "Next version saved {time}": "Nächste Version gespeichert am {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Ein anderer zugewiesener Knoten belegt überlappende Dateien in diesem Arbeitsbaum. Warten Sie auf dessen Lieferung, ändern Sie die Pfade oder verwenden Sie einen separaten Arbeitsbaum.",
 
   "Archive 1 discussion": "Eine Diskussion archivieren",

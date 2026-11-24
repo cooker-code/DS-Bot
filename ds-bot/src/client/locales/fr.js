@@ -7,7 +7,6 @@ export const FR = {
   "Dispatch registered; delivery not recorded": "Attribution enregistrée ; remise non enregistrée",
   "Dispatch failed": "Échec de l’attribution",
   "No undispatched reason was recorded.": "Le motif de l’absence d’attribution n’a pas été enregistré.",
-  "Next version saved {time}": "Version suivante enregistrée le {time}",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Un autre nœud attribué occupe des fichiers communs dans cet arbre de travail. Attendez sa livraison, modifiez les chemins ou utilisez un autre arbre de travail.",
 
   "Archive 1 discussion": "Archiver une discussion",

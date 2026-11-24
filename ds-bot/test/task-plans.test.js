@@ -53,8 +53,10 @@ test('unsent plan notes anchor after the last real handoff with a concise failur
   assert.equal(notes.length, 1)
   assert.equal(notes[0].version, 2)
   assert.equal(notes[0].after, 'reply')
-  for (const value of ['Plan v2', 'Not dispatched', 'Alice', 'Paths still reserved',
-    'Plan v3']) assert.ok(notes[0].description.includes(value), value)
+  for (const value of ['Plan v2', 'Not dispatched', 'Alice', 'Paths still reserved']) assert.ok(notes[0].description.includes(value), value)
+  assert.ok(!notes[0].description.includes('Plan v3'))
+  assert.ok(!notes[0].description.includes('Next version saved'))
+  assert.ok(!notes[0].description.includes('View plan'))
   assert.ok(!notes[0].description.includes('Add missing product context'))
   assert.ok(!notes[0].description.includes('User changed the time format'))
 })
