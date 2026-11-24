@@ -160,7 +160,7 @@ test('a blocked card has one status and no clock until its round actually starte
   assert.equal(row(card).times[1], 'Elapsed 2 min')
 })
 
-test('assigned, delivered and replacement rounds hide timing; old submitted rounds retain their status', () => {
+test('unstarted cards hide timing and handoffs retain the first confirmed start', () => {
   const first = { ownerId: 'dev', assignedAt: 10 }
   const card = { id: 'old', rounds: [first] }
   assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
@@ -171,7 +171,9 @@ test('assigned, delivered and replacement rounds hide timing; old submitted roun
   first.startedAt = 12
   assert.equal(row(card).times.length, 2)
   card.rounds.push({ ownerId: 'backup', assignedAt: 30 })
-  assert.deepEqual(row(card), { labels: ['In progress'], times: undefined })
+  assert.equal(projectCardSummary(card).startedAt, 12)
+  card.rounds[1].startedAt = 36
+  assert.equal(projectCardSummary(card).startedAt, 12)
 })
 
 test('an accepted plan retains its status before dispatch, even if the plan is blocked', () => {
@@ -180,6 +182,16 @@ test('an accepted plan retains its status before dispatch, even if the plan is b
   assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
   node.contextGap = 'Missing repository'
   assert.deepEqual(row(card), { labels: ['Blocked'], times: undefined })
+})
+
+test('replanning after a restart preserves the first start before and after the replacement starts', () => {
+  const node = { no: 1, ownerId: 'dev', dependsOn: [] }
+  const card = { id: 'restart', rounds: [{ ownerId: 'dev', startedAt: 20,
+    planNode: { version: 1, node: 1, block: { cause: 'restart', at: 40, decisions: [] } } }],
+    plans: [1, 2].map(version => ({ version, at: version * 10, nodes: [node] })) }
+  assert.equal(projectCardSummary(card).startedAt, 20)
+  card.rounds.push({ ownerId: 'dev', startedAt: 60, planNode: { version: 2, node: 1 } })
+  assert.equal(projectCardSummary(card).startedAt, 20)
 })
 
 test('parallel rounds keep their clocks and completed cards hide Bot icons and freeze at the last submission', () => {
@@ -262,7 +274,19 @@ test('task detail shows results below the criteria and switches to a read-only r
   runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => runtime })
   const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
-  const fields = body.children[0].children[1].children.filter(Boolean)
+  const [handoffs, ...fields] = body.children[0].children[1].children.filter(Boolean)
+  assert.equal(handoffs.type.name, 'TaskHandoffs')
+  const rounds = [
+    { ownerId: 'a', dispatchId: 'one', startedAt: 2, dispatchInput: 'Original input',
+      retries: [{ at: 6, input: 'Retry input', failedAt: 4 }], result: 'Final receipt' },
+    { ownerId: 'b', startedAt: 5, plan: 'Inspect output', planNode: { inputs: [] } },
+  ]
+  const timeline = handoffs.type({ detail: { rounds }, roster: { byId: { a: { name: 'Alice', color: 'red' } } } })
+  const rows = Array.from(timeline.children.at(-1))
+  assert.deepEqual(rows.map(row => row.children[0].children[1]), ['1. Alice', '2. b', '3. Alice · Retry'])
+  assert.deepEqual(rows.map(row => row.children[2].children[0]), ['Original input', 'Inspect output', 'Retry input'])
+  assert.deepEqual(rows.map(row => row.children[4].children[0]), ['Attempt failed', 'No recorded output', 'Final receipt'])
+  assert.deepEqual(Array.from(timeline.children[1].children[0], segment => segment.props['data-retry']), [false, false, true])
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
   assert.equal(results().props.placeholder.props.className, 'bt-empty')

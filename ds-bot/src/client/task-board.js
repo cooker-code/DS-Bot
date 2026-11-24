@@ -414,6 +414,13 @@ export const TASK_CSS = `
 .bt-project-times span{white-space:nowrap}
 @container (max-width:420px){.bt-project-row .bt-task-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}}
 .bt-drawer-body.bt-project-detail{display:block;overflow-wrap:anywhere}
+.bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
+.bt-handoff-bar>span{flex:1;min-width:0;position:relative}
+.bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.65) 4px 6px)}
+.bt-handoff-row{padding:5px 0;overflow-wrap:anywhere}
+.bt-handoff-row summary{cursor:pointer}
+.bt-handoff-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline:4px 6px}
+.bt-handoff-row p{white-space:pre-wrap;margin:3px 0 10px}
 .bt-project-detail>section+section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bt-line)}
 .bt-project-detail .bt-section-title{color:var(--bt-ink);font-size:17px;font-weight:600;line-height:1.35}
 .bt-requirement-attachments{display:grid;justify-items:start;grid-template-columns:minmax(0,1fr);gap:6px;margin-top:12px}

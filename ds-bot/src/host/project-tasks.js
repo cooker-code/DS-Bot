@@ -131,12 +131,14 @@ export const projectCardSummary = (card, taskId = card.id) => {
     taskId, ...(card.followsTaskId && { followsTaskId: card.followsTaskId }), ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
     ...(card.finishAfterIntegration && { finishAfterIntegration: card.finishAfterIntegration }),
     ...(card.updatedAt !== undefined ? { textUpdatedAt: card.updatedAt } : {}),
-    startedAt: round?.startedAt, submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
+    submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
     ...(card.clarification ? { clarification: card.clarification } : {}),
     ...(!card.completedWithTaskId && card.humanReview?.status === 'pending' && card.humanReview.version === card.plans?.at(-1)?.version
       ? { acceptanceRequest: { id: card.humanReview.id, artifact: card.humanReview.artifact } } : {}),
-    updatedAt: round?.submittedAt ?? round?.failedAt ?? round?.startedAt ?? round?.sentAt ?? round?.assignedAt,
+    updatedAt: round?.submittedAt ?? round?.failedAt ?? round?.retries?.at(-1)?.at ?? round?.startedAt ?? round?.sentAt ?? round?.assignedAt,
     status: taskPhase(card, projectStatus(round)), ...(card.plans?.length ? plannedSummary(card) : {}),
+    startedAt: (card.rounds ?? []).reduce((first, run) =>
+      Number.isFinite(run.startedAt) && (first === undefined || run.startedAt < first) ? run.startedAt : first, undefined),
   }
 }
 

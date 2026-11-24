@@ -372,7 +372,7 @@ export function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingM
   }
   if (room && view?.taskId) {
     const card = room.projectCards?.find(item => item.taskId === view.taskId)
-    return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, actions, openReference: path => actions.openTaskReference(room.sessionId ?? room.id, path), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
+    return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, roster, actions, openReference: path => actions.openTaskReference(room.sessionId ?? room.id, path), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
   }
   if ((bot || room) && view === 'settings') {
     return [
