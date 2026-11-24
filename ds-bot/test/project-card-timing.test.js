@@ -282,17 +282,19 @@ test('task detail shows results below the criteria and switches to a read-only r
     { ownerId: 'b', startedAt: 5, plan: 'Inspect output', planNode: { inputs: [] } },
   ]
   const flows = handoffs.type({ detail: { title: 'Example task', rounds }, history: { messages: [
-    { key: 'first', exchangeId: 'one', at: 1, from: 'manager', to: 'a', text: 'Original input' },
+    { key: 'user', exchangeId: 'intake', at: 0, sender: 'user', to: 'manager', text: 'User request' },
+    { key: 'first', exchangeId: 'one', replyTo: 'intake', at: 1, from: 'manager', to: 'a', text: 'Original input' },
     { key: 'second', exchangeId: 'two', replyTo: 'one', at: 7, from: 'a', to: 'b', text: 'Final receipt' },
   ] } })
   const rows = Array.from(flows.children.at(-1), row => row.props.entry)
-  assert.deepEqual(rows.map(r => r.owner), ['a', 'a', 'b'])
-  assert.equal(rows[0].incoming, rows[1].incoming)
-  assert.equal(rows[1].outputs[0], rows[2].incoming)
-  assert.equal(rows[1].reason, 'Service timed out')
+  assert.deepEqual(rows.map(r => r.owner), ['manager', 'a', 'a', 'b'])
+  assert.equal(rows[0].outputs[0], rows[1].incoming)
+  assert.equal(rows[1].incoming, rows[2].incoming)
+  assert.equal(rows[2].outputs[0], rows[3].incoming)
+  assert.equal(rows[2].reason, 'Service timed out')
   assert.deepEqual(Array.from(flows.children.at(-1), row => row.props.entry.label),
-    ['1. manager → a', '2. manager → a · Retry', '3. a → b'])
-  assert.deepEqual(Array.from(flows.children.find(child => child?.props?.className === 'bt-handoff-bar').children[0], segment => segment.props['data-retry']), [false, true, false])
+    ['1. User → manager', '2. manager → a', '3. manager → a · Retry', '4. a → b'])
+  assert.deepEqual(Array.from(flows.children.find(child => child?.props?.className === 'bt-handoff-bar').children[0], segment => segment.props['data-retry']), [false, false, true, false])
   assert.equal(flows.children[0].children[1].props.text, 'Example task')
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)

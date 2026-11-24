@@ -35,7 +35,7 @@ function handoffs(detail, history) {
   for (const { at, edge, attempt, reason } of ordered.sort((a, b) => a.at - b.at)) {
     if (!attempt) {
       const parent = received.get(edge.replyTo)
-      if (parent?.owner === edge.from) parent.outputs.push(edge)
+      if (parent && parent.owner === edge.from) parent.outputs.push(edge)
     }
     const row = { key: edge.key + '/receive/' + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason, outputs: [] }
     rows.push(row)
