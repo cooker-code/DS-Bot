@@ -11,6 +11,12 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Retry reason": "重试原因",
+  "The host restarted during execution.": "执行期间宿主重启，本次从中断处恢复。",
+  "The Bot wrote the tool call as text, so the tool did not run.": "Bot 把工具调用写成了普通文本，工具未执行。",
+  "The Bot ended its turn before calling a tool.": "Bot 在调用工具前结束了上一轮，工作尚未执行。",
+  "The previous attempt failed without an error message.": "上次执行失败，未记录具体错误。",
+  "No retry reason was recorded.": "未记录重试原因。",
   "Task handoffs": "作业交接情况",
   "No assignments yet": "尚未派工",
   "Handoff input": "本次输入",
