@@ -443,6 +443,9 @@ export const DE = {
   'The model service blocked the content': 'Der Inhaltsfilter des Modelldienstes hat den Inhalt blockiert',
   '{provider} blocked this request with its content filter. The API key is not the problem; edit the input or start a new chat.': 'Der Inhaltsfilter von {provider} hat diese Anfrage blockiert. Der API-Schlüssel ist nicht das Problem; ändere die Eingabe oder starte einen neuen Chat.',
   '{provider} blocked this request with its content filter ({status}). The API key is not the problem; edit the input or start a new chat.': 'Der Inhaltsfilter von {provider} hat diese Anfrage blockiert ({status}). Der API-Schlüssel ist nicht das Problem; ändere die Eingabe oder starte einen neuen Chat.',
+  'The model service refused the content': 'Der Modelldienst hat den Inhalt aus Sicherheitsgründen abgelehnt',
+  '{provider} refused this request under its content safety policy. Edit the input or start a new chat.': '{provider} hat diese Anfrage gemäß seiner Inhaltsrichtlinie abgelehnt. Ändere die Eingabe oder starte einen neuen Chat.',
+  '{provider} refused this request under its content safety policy ({status}). Edit the input or start a new chat.': '{provider} hat diese Anfrage gemäß seiner Inhaltsrichtlinie abgelehnt ({status}). Ändere die Eingabe oder starte einen neuen Chat.',
   '{provider} is out of balance or quota.': 'Guthaben oder Kontingent bei {provider} ist aufgebraucht.',
   '{provider} is out of balance or quota ({status}).': 'Guthaben oder Kontingent bei {provider} ist aufgebraucht ({status}).',
   'The DeepSeek account balance is too low.': 'Das Guthaben des DeepSeek-Kontos reicht nicht aus.',
@@ -709,6 +712,8 @@ export const DE = {
 
   // Shapes
   Whale: 'Wal', Star: 'Stern', Moon: 'Mond', Wave: 'Welle', Squircle: 'Squircle', Bull: 'Stier', Blossom: 'Blüte',
+  Dolphin: 'Delfin', Octopus: 'Oktopus', Turtle: 'Schildkröte', Crab: 'Krabbe', Pufferfish: 'Kugelfisch', Jellyfish: 'Qualle',
+  Starfish: 'Seestern', Seahorse: 'Seepferdchen',
   Gumdrop: 'Fruchtgummi', Peanut: 'Erdnuss', Bubbles: 'Blasen', Saucer: 'Untertasse', Sprout: 'Keimling', Bunny: 'Hase',
   Kitty: 'Kätzchen', Beacon: 'Leuchtfeuer', Plus: 'Plus', Magnet: 'Magnet', Acorn: 'Eichel', Pebbles: 'Kiesel', Cushion: 'Kissen',
   Ring: 'Ring', Gem: 'Edelstein',
@@ -1779,6 +1784,7 @@ export const DE = {
   'Unknown theme': 'Unbekanntes Design',
   'Accent must be a #rrggbb color': 'Die Akzentfarbe muss im Format #rrggbb angegeben werden',
   'Type the key first': 'Gib zuerst den Schlüssel ein',
+  'A key cannot contain null bytes': 'Ein Schlüssel darf keine Nullbytes enthalten',
   'Choose every Bot or a list of Bots': 'Wähle alle Bots oder bestimmte Bots aus',
   'This request is gone': 'Diese Anfrage existiert nicht mehr',
   'This request was already answered': 'Diese Anfrage wurde bereits beantwortet',

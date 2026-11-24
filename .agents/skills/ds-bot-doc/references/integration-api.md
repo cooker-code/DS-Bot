@@ -29,7 +29,7 @@
 | `im-chat` / `im-retry` | 聊天映射用 `id,chatKey,target`，企微私聊绑定群用已有私聊的 `chatKey` 和 `target:{roomId}`，在 `state.im.connections` 对应连接的 `chats[chatKey].target` 回读。`target:null` 清除目标（私聊恢复跟随连接 Bot），`remove:true` 删映射。重连用 `id`。 | true，路由及实际连接状态分别查看。 |
 | `im-login-start` / `im-login-wait` | 对支持扫码的平台传 `platform,botId` 开始，轮询同一 `loginId,botId,platform`。 | 开始返回 `loginId,qr,expiresAt,botId`，等待返回 `status`，成功另有连接 `id`。 |
 | `secret-store` / `secret-unlock` / `secret-encrypt` / `secret-decrypt` | 查存储状态用 `{}`。解锁、启用加密或解除加密按服务要求传 `passphrase`。 | 返回存储状态，可检查模式和锁定情况。原始密钥值不在此响应中。 |
-| `secret-set` / `secret-update` | 设置值用 `name,value,purpose?,scope?`，回应申请时用 `requestId,value,scope?`。更新用途或授权范围用 `name,purpose?,scope?`。 | 返回该项可展示的元数据。团队申请和密钥库分别保存。 |
+| `secret-set` / `secret-update` | 设置值用 `name,value,purpose?,scope?`，value 支持多行，CRLF/CR 规范为 LF、去除首尾空白，拒绝 NUL 字符，回应申请时用 `requestId,value,scope?`。更新用途或授权范围用 `name,purpose?,scope?`。 | 返回该项可展示的元数据。团队申请和密钥库分别保存。 |
 | `secret-allow` / `secret-cancel` / `secret-delete` | 授予已有申请或取消用 `requestId`，删除已有密钥用 `name`。 | 授权返回条目元数据；取消、删除核对申请或条目的最终状态。 |
 
 ## 浏览器、电脑与记忆

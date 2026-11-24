@@ -6,6 +6,16 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### Upstream changes adopted on 2026-11-24
+
+- Secret fields accept multiline values, grow with the input, and submit with Cmd/Ctrl+Enter. Secret redaction covers normalized line endings, encoded values and folded multiline output.
+- IM requests without a caller-provided cancellation signal time out after 60 seconds while waiting for response headers. A stalled request can release its chat's send queue.
+- The activity row reuses its running-message host while it remains attached, reducing repeated transcript searches.
+- The avatar picker includes dolphin, octopus, turtle, crab, pufferfish, jellyfish, starfish and seahorse characters.
+- Model content-safety refusals have a dedicated error explanation. Local ACP agents record updated team instructions after sending them.
+
+See the [per-PR sync record](upstream-changelog.md#2026-11-24--macos-插件同步) for scope and verification.
+
 ### Upstream changes adopted on 2026-11-23
 
 - Feishu discovers its long-connection endpoint and retries failed connections. Edited Discord messages retain their Markdown formatting.

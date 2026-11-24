@@ -2,6 +2,72 @@
 
 来源仓库为 [Fei2411/DS-Bot](https://github.com/Fei2411/DS-Bot)。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
 
+## 2026-11-24 · macOS 插件同步
+
+登记时间 2026-11-24 14:47 +0800（Asia/Taipei）。upstream/dev 第一父链 [c08ca3ab → fb0d3c03](https://github.com/Fei2411/DS-Bot/compare/c08ca3ab394fae9946f8bc34c610f3d4a7873ce7...fb0d3c033a952033c66daf737eb99835f98a25cb)，起点 `c08ca3ab394fae9946f8bc34c610f3d4a7873ce7`，终点 `fb0d3c033a952033c66daf737eb99835f98a25cb`。共 38 个 PR，采用 6（含 2 项部分采用），暂缓 25，跳过 6，需讨论 1。本地比较基线 `ac9f8877`。本批上游根目录 CHANGELOG.md 无改动，上游包版本仍为 0.3.10；本地用户可见变化另记 CHANGELOG.md。
+
+交付核验（2026-11-24 14:50 +0800）。实现候选 `8d23a780` 通过独立只读验收。去重后的 235 项定向测试中 233 项通过，2 项翻译完整性检查在本地基线同样失败且缺失键集合一致，本批无新增缺失。真实浏览器多行密钥测试 1 项、隔离模拟冒烟 57 步、181 个接口名检查和客户端生成一致性均通过。变更文件静态检查无错误、8 条风格警告。浏览器上下文与进程已关闭，临时 profile 与脚本已清理；冒烟及 CLI 夹具进程退出、3972/8972 端口释放，隔离测试目录已清理。未连接真实第三方 IM 或生产 ACP 服务。
+
+候选已合入本地 dev，发布提交 `827ce40b`，四段版本 **0.3.10.19**，npm 版本 `0.3.10-local.19`，安装包 `/tmp/ds-bot-0.3.10-local.19.tgz`。集成后的源码和客户端产物与验收候选一致。Web 链接与 Desktop 本地包安装均已更新，各 168 个包内文件与 tarball 一致。运行实例加载状态尚未核实，Desktop 的已授权只读请求返回 HTTP 401。未重启日用会话。
+
+### 新功能和设计解释
+
+| 功能或设计 | 能解决的问题和实际行为 | 本地采用判断 |
+| --- | --- | --- |
+| Bot 插件体系与面板 | 可发现、安装和启停内置插件、DSH 包或 MCP 服务，普通插件可按 Bot 开关，浏览器后端为全团队单选并可热切换。保留旧 browserPlugin 配置。目录有 HTTPS、响应大小和超时约束。普通第三方 DSH 浏览器插件仍自行管理浏览器隔离；未启用热重载的宿主可能需要重启才能完全加载或释放包。 | #2102、#2106、#2146 暂缓。需接入本地浏览器、权限、设置和 SQLite。设计已落地于上游，本地尚无此入口。见 [2026-11-22-bot-plugins](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-11-22-bot-plugins.md)。 |
+| Bot 派活与交卷 | delegate_work 创建有编号和状态的工作单，ask_back/answer_work 处理阻塞追问，cancel_work 静默取消，note_bot 只留信。连续无效往返会暂停并让用户继续或取消；有实质内容的连续文字协作采用返工检查点。 | #2130 需讨论现有项目卡与上游工作单的关系，#2139 等修复依赖它。上游取代了 message_bot，本地仍使用现有卡片和工具。见 [2026-10-16-bot-handoffs](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-10-16-bot-handoffs.md)。 |
+| 统一审批代审 | 目标是让单独、无工具的模型预审已有审批请求。必须取得原始用户消息和完整动作，只能单次批准；证据缺失、非文本上下文、提交表单或上传等转人工。模型限时 30 秒，人工回答或上下文变化使迟到结果失效。 | #1302 为第一阶段审核管线，设置与权限选择器还需后续工作。本地须接入卡片、群及子会话归属。普通权限内危险命令、MCP 副作用检测等仍是后续计划。见 [2026-11-10-approval-review](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-11-10-approval-review.md)。 |
+| 群最终回报与防空转 | 群派活默认等长任务、审批、接力、批次和 Goal 一起结束再向原派发者汇报，重启后对账。检测成环的无效接力并暂停，用户可点击继续；状态帖和记忆等元工具无法伪装实质进展。 | #2109、#2125、#2143 暂缓，需与本地项目节点和验收回执统一。见 [2026-10-07-group-chat](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-10-07-group-chat.md)、[2026-11-01-group-goal](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-11-01-group-goal.md)。 |
+| 后台任务轻量启动 | 同伴派活一律不复制目标 Bot 无关的前台历史；task_start 只在父会话不超过默认 600 条事件时 fork，较长会话用摘要新建，并保留检索父段的入口。用户打断触发的前台转后台仍 fork 以保留缓存。 | #2155 暂缓，依赖尚未采用的 #1887 和功能包。见 [2026-11-16-async-work](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-11-16-async-work.md)。 |
+| IM 来源与记忆边界 | 进行中的 IM 群轮次加入网页、桌面、定时任务等非 IM 输入后撤回外发来源；常驻团队记忆的删除须明确 always:true；达到 40 个主题后写入 earlier 溢流文件。 | #2154 暂缓，需适配本地任务来源与记忆实现。见 [2026-11-04-im](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-11-04-im.md)、[2026-11-09-memory-layers](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-11-09-memory-layers.md)。 |
+| DSH 公开能力的限制 | 新登记空闲压缩不支持保留尾部预算、切小窗口的预算约束、developer 角色兼容、长期 429 额度耗尽仍重试，以及缺少后台增量会话索引等五项限制。 | 属于上游现状说明，插件适配继续使用公开 API。见 [2026-10-13-dsh-concessions](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-10-13-dsh-concessions.md)。 |
+| 手机更新、通知与设计目录 | 手机增加更新与通知事件及 API，Bot 插件设计加入总索引。 | 手机相关跳过，索引用于核对已定设计。见 [2026-10-24-mobile-api](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-10-24-mobile-api.md)、[2026-10-24-mobile-app](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/2026-10-24-mobile-app.md)、[README](https://github.com/Fei2411/DS-Bot/blob/fb0d3c033a952033c66daf737eb99835f98a25cb/docs/plans/README.md)。 |
+
+### 本批 38 个 PR 的处理状态
+
+每个来源 PR 只有一行。采用行写明部分采用的余项，暂缓和需讨论行给出本地差异与后续验收条件。
+
+| 上游 PR | 状态 | 权重（1–10） | 功能或修复 | 本地处理、差异和重审条件 |
+| --- | --- | ---: | --- | --- |
+| [#2100](https://github.com/Fei2411/DS-Bot/pull/2100) | 暂缓 | 10 | 防止压缩、交接和本地 CLI 恢复后丢上下文 | 上游联动后台任务、聊天索引、记忆与换段；本地后台任务底座 #1887 未采用，并有按项目卡保存的历史与恢复。需分别验证压缩后任务约束、派工来源和 CLI 会话恢复，关联 #1841、#1863。 对照 `ds-bot/src/host/chat-index.js`。 |
+| [#2102](https://github.com/Fei2411/DS-Bot/pull/2102) | 暂缓 | 8 | Bot 插件运行时、插件目录和可切换浏览器后端 | 新增 builtin、DSH 包、MCP 三种插件，可按 Bot 开关并全团队切换浏览器。与本地浏览器挂载、工具权限、SQLite 团队存储不同，需适配插件状态和失效回滚；独立应用接线跳过。 对照 `ds-bot/src/host/browser-plugins.js`。 |
+| [#2101](https://github.com/Fei2411/DS-Bot/pull/2101) | 跳过 | 1 | Android 应用更新和离线通知 | 手机、配对与中继专用；插件内对申请卡的推送接线也只服务这些客户端。 |
+| [#2106](https://github.com/Fei2411/DS-Bot/pull/2106) | 暂缓 | 7 | Bot 插件面板和浏览器切换入口 | 依赖 #2102，本地设置仍为原导航且有项目设置；需将安装、按 Bot 开关、浏览器切换接入本地设置。独立应用入口跳过。 对照 `ds-bot/src/client/api.js`。 |
+| [#2109](https://github.com/Fei2411/DS-Bot/pull/2109) | 暂缓 | 9 | 群工作结束后向派发者回报并恢复原 IM 路由 | 上游持久保存 roomReports，等审批、迟到回复和群 Goal 完成。本地由项目卡、节点和轮次决定回执归属，需要统一原卡结案与 IM 回报，关联 #1892、#1902。 对照 `ds-bot/src/host/approvals.js`。 |
+| [#2113](https://github.com/Fei2411/DS-Bot/pull/2113) | 采用 | 8 | 本地智能体维护恢复及指令状态保存 | 部分采用。只修复 ACP 指令还未发送就提前保存 promptHash，保留本地模型思考强度与技能配置。resumeOnly、防止维护恢复失败后创建空会话的余项依赖 #2100 的恢复语义，暂缓。 |
+| [#2121](https://github.com/Fei2411/DS-Bot/pull/2121) | 跳过 | 1 | 导入时减少会话目录扫描 | 独立桌面应用的导入实现。 |
+| [#2120](https://github.com/Fei2411/DS-Bot/pull/2120) | 跳过 | 3 | 对照当前实现整理公开文档 | 正文作为本批设计核对资料。上游手册依赖尚未采用的功能，不覆盖本地项目卡和会话行为。 |
+| [#2123](https://github.com/Fei2411/DS-Bot/pull/2123) | 暂缓 | 8 | 将内置工具过滤统一到宿主事件 | 依赖本地尚未采用的 builtin-packs 和 #2019。需同时验证本地项目工具、Main 管理权限和每卡工具范围。 对照 `ds-bot/src/host/tools.js`。 |
+| [#2125](https://github.com/Fei2411/DS-Bot/pull/2125) | 暂缓 | 9 | 加固群最终回报与 IM 来源隔离 | 依赖 #2109；上游新增 room-reports 模块，本地群回执由卡片管理。验收原群审批、跨群派单、重启与最终回报只到发起方。 对照 `ds-bot/src/host/groups.js`。 |
+| [#2130](https://github.com/Fei2411/DS-Bot/pull/2130) | 需讨论 | 9 | 将 Bot 通讯改为派活与交卷状态机 | 上游以 delegate_work、ask_back、answer_work、cancel_work、note_bot 替换 message_bot，引入工作单和返工暂停。本地已有项目卡派工、节点轮次和重试规则。需决定上游工作单是否仅承担卡外协作，还是替换卡内派工；两种选择影响现有工具与历史记录迁移。 对照 `ds-bot/src/host/channel.js`。 |
+| [#2135](https://github.com/Fei2411/DS-Bot/pull/2135) | 暂缓 | 10 | 压缩重试保留输出空间与正确消息来源 | 上游在 parts.js 的压缩引擎和重试目标处理中修复，本地有任务内换段和上下文接续。与 #2100、#2136 一起验证切模型、压缩失败重试和原节点续跑。 对照 `ds-bot/src/host/parts.js`。 |
+| [#2140](https://github.com/Fei2411/DS-Bot/pull/2140) | 暂缓 | 9 | 后台交接隐藏回合、群继续信号和重复唤醒 | 依赖 #1887、#2130；本地继续任务由项目卡恢复流程处理，需要区分群继续与重跑某个节点。 对照 `ds-bot/src/host/groups.js`。 |
+| [#2146](https://github.com/Fei2411/DS-Bot/pull/2146) | 暂缓 | 5 | 插件面板增加浏览器控制区和官方标志 | 依赖 #2102、#2106。采用时须同步 NOTICE 来源声明并适配本地设置，当前没有插件面板入口。 对照 `ds-bot/src/client/i18n.js`。 |
+| [#2136](https://github.com/Fei2411/DS-Bot/pull/2136) | 暂缓 | 9 | 换段保留缓存并优先裁剪工具结果 | 本地 parts.js 有主动换段和群成员历史。需与 #2135 一起验证缓存、模型窗口预算和任务指令在换段后仍可读。 对照 `ds-bot/src/host/parts.js`。 |
+| [#2137](https://github.com/Fei2411/DS-Bot/pull/2137) | 暂缓 | 8 | 改进记忆召回、提示预算和整理性能 | 本地未采用对应主题搜索与整理改写，关联 #1852、#1955、#2080。需保持群与私聊范围，验证召回排序、合并条目与大规模主题整理。 对照 `ds-bot/src/host/memory-copy.js`。 |
+| [#2138](https://github.com/Fei2411/DS-Bot/pull/2138) | 暂缓 | 10 | 群轮次折叠、IM 分类和成员退出死锁 | 本地群批次还绑定项目节点及验收轮次，上游 roomReports 与本地卡归属不同。需验证成员中途退出时卡片能结束，混入桌面消息后回复停止外发。 对照 `ds-bot/src/host/groups.js`。 |
+| [#2139](https://github.com/Fei2411/DS-Bot/pull/2139) | 暂缓 | 9 | 将派活工作树与后台任务统一并处理竞态 | 依赖 #2130 和 #1887；本地已有项目节点所有权、回执与重启恢复。需避免同一节点由上游工作单和本地卡同时结案。 对照 `ds-bot/src/host/delivery.js`。 |
+| [#2141](https://github.com/Fei2411/DS-Bot/pull/2141) | 暂缓 | 8 | 隔离本地智能体侧聊、稳定提示前缀并优化聊天索引 | 本地已将上下文、侧栏和历史查询绑定所选群成员会话；上游还依赖功能包与较新的历史索引。需验证侧聊不污染正文、项目卡范围与模型前缀缓存。 对照 `ds-bot/src/host/browser/mount.js`。 |
+| [#2143](https://github.com/Fei2411/DS-Bot/pull/2143) | 暂缓 | 9 | 加固群空转判定、目标推进、变更跟踪和搜索 | 上游用有向环与实质工具判断暂停，本地用项目卡规则安排工作。需区分真实节点返工与无效互相确认；搜索保留群和任务双重过滤。 对照 `ds-bot/src/host/changes.js`。 |
+| [#2142](https://github.com/Fei2411/DS-Bot/pull/2142) | 暂缓 | 10 | 记忆作用域、写入因果与审核可靠性 | 本地群记忆和项目节点有独立范围，上游增加重放去重和审核状态处理。需验证群 A 的回执和记忆不会写到群 B，重试后条目只生效一次。 对照 `ds-bot/src/host/channel.js`。 |
+| [#2144](https://github.com/Fei2411/DS-Bot/pull/2144) | 暂缓 | 10 | 投递持久化、重启恢复和状态清理 | 上游连同后台工作树和 state.json 清理一起修改，本地使用 SQLite 事务与项目恢复。需验证落库失败、重启、重复投递时节点和消息归属一致。 对照 `ds-bot/src/host/delivery.js`。 |
+| [#2149](https://github.com/Fei2411/DS-Bot/pull/2149) | 跳过 | 1 | 独立应用设置自动更新开关 | 依赖独立应用 updater 和预加载接口；插件 About 页的接线仅为该应用服务。 |
+| [#2134](https://github.com/Fei2411/DS-Bot/pull/2134) | 跳过 | 2 | Safari 登录状态导入及浏览器快照修复 | 依赖独立应用读取浏览器数据并导入的后端；与已跳过 #1856 同范围。macOS 适用也需要独立应用后端。 |
+| [#1980](https://github.com/Fei2411/DS-Bot/pull/1980) | 采用 | 8 | 给未设取消信号的 IM 请求加超时 | 采用公共 boundedFetch 并接入本地 IM 环境。默认 60 秒未收到响应头就中止，不覆盖调用方自带信号，也不截断已开始读取的响应正文。 |
+| [#1981](https://github.com/Fei2411/DS-Bot/pull/1981) | 暂缓 | 7 | 合并排队中的团队保存操作 | 上游合并 state.json 快照保存。本地 store.save 支持 mutate 事务及修订号，不能让多次项目卡更新共用一次快照承诺；需按事务语义重新设计并发保存。 对照 `ds-bot/src/host/store.js`。 |
+| [#1989](https://github.com/Fei2411/DS-Bot/pull/1989) | 采用 | 5 | 活动行复用运行中消息的宿主位置 | 采用运行槽缓存、脱离文档时重找及停止后释放。保留本地直接遍历子元素的入场动画实现，该部分已独立优化。 |
+| [#1787](https://github.com/Fei2411/DS-Bot/pull/1787) | 采用 | 5 | 头像选择器新增八种水生角色 | 新增海豚、章鱼、海龟、螃蟹、河豚、水母、海星、海马，含头像绘制和各语言名称。 |
+| [#2154](https://github.com/Fei2411/DS-Bot/pull/2154) | 暂缓 | 9 | 加固 IM 混源、团队记忆和协作边界 | 群轮次混入非 IM 输入立即撤回外发来源；记忆满 40 个主题时溢流到 earlier；修改团队常驻记忆需 always:true。本地 IM 与记忆路径已分化，协作限制还依赖 #2130。 对照 `ds-bot/src/host/handoffs.js`。 |
+| [#2155](https://github.com/Fei2411/DS-Bot/pull/2155) | 暂缓 | 8 | 轻量启动后台任务并按上下文裁剪工具 | 依赖 #1887 和 #2019。上游同伴派活不复制无关前台，长会话以摘要建轻量任务；本地需保留任务卡上下文、权限和可检索历史。 对照 `ds-bot/src/host/capabilities.js`。 |
+| [#2157](https://github.com/Fei2411/DS-Bot/pull/2157) | 跳过 | 1 | 修复手机端动画与唤醒 | 仅 mobile 下的动画组件和测试。 |
+| [#2156](https://github.com/Fei2411/DS-Bot/pull/2156) | 暂缓 | 7 | 迁移旧对话并将会话段说明移出主状态 | 上游精简 state.json 并外置分段摘要，本地已采用 SQLite 拆分存储，且项目卡引用历史段。需核对迁移需求和摘要查找入口。 对照 `ds-bot/src/host/channel.js`。 |
+| [#2158](https://github.com/Fei2411/DS-Bot/pull/2158) | 暂缓 | 7 | 将中断的提问卡草稿放回输入框 | 本地草稿与当前会话、任务引用绑定。需验证 A 卡草稿被救回时不会覆盖 B 卡输入，也不会误发给其他 Bot，关联 #1909。 对照 `ds-bot/src/client/composer.js`。 |
+| [#2161](https://github.com/Fei2411/DS-Bot/pull/2161) | 暂缓 | 9 | 启动时恢复孤立工作单并记录 CLI 用量 | 工作单对账依赖 #2130；CLI 用量部分与本地适配器和统计实现冲突，需分别验证重启只恢复原节点以及一轮用量只统计一次。 对照 `ds-bot/src/host/channel.js`。 |
+| [#1993](https://github.com/Fei2411/DS-Bot/pull/1993) | 采用 | 6 | 升级 DSH 兼容目标并补充内容拒绝提示 | 部分采用 CONTENT_REFUSED 的错误说明和翻译。运行隔离冒烟使用已安装的 DSH 0.2.2-rc.5；测试依赖版本、其他夹具、独立应用和 Docker 的升级接线未采用。 |
+| [#2165](https://github.com/Fei2411/DS-Bot/pull/2165) | 暂缓 | 8 | 修复换段视图闪烁并折叠空分隔线 | 本地保留成员历史和手动会话入口，上游已在 #2042 删除这些入口。直接采用会改变本地打开历史会话的行为，需适配打开、页头、侧栏及视图切换的同一目标。 对照 `ds-bot/src/host/parts.js`。 |
+| [#2166](https://github.com/Fei2411/DS-Bot/pull/2166) | 采用 | 9 | 支持多行密钥输入和多种形式的脱敏 | 密钥输入支持换行、自动增高及 Cmd/Ctrl+Enter 提交，后台规范行尾并拒绝 NUL。脱敏覆盖多行、JSON、URL 编码及空格折叠形式，复用本地按消息缓存的失效机制。 |
+| [#1302](https://github.com/Fei2411/DS-Bot/pull/1302) | 暂缓 | 8 | 用独立模型预审待批准的操作 | 新增审核管线与动作取证，仍依赖后续权限选择器和设置工作。本地审批携带项目卡、群和子会话来源，需完整接入取证、取消、迟到结果和人工回退后再开放。 对照 `ds-bot/src/host/approvals.js`。 |
+
 ## 2026-11-23 · macOS 插件同步
 
 登记时间 2026-11-23 10:20 +0800（Asia/Taipei）。upstream/dev 第一父链 [6905f3fb → c08ca3ab](https://github.com/Fei2411/DS-Bot/compare/6905f3fbdd296282742f7ceee546816b2489b215...c08ca3ab394fae9946f8bc34c610f3d4a7873ce7)，共 99 个 PR。采用 12，暂缓 54，跳过 26，需讨论 7。上游 CHANGELOG 包含 0.3.9 和 0.3.10；本地插件采用范围见下表。

@@ -2324,3 +2324,24 @@ test('ACP errors with numeric, empty or object codes keep their message and get 
     err => err.code === 'LOCAL_AGENT_ERROR' && /"reason":"stopped"/.test(err.message) && !/\[object Object\]/.test(err.message),
   )
 })
+
+
+test('ACP persists team instructions only after sending the first prompt (#2113)', async (t) => {
+  const records = {}
+  const adapter = makeAdapter({ records })
+  t.after(() => adapter.dispose())
+  let persistedBeforePrompt = 'not called'
+  const spawnEngine = adapter.deps.spawnEngine
+  adapter.deps.spawnEngine = (...args) => {
+    const engine = spawnEngine(...args)
+    const prompt = engine.prompt.bind(engine)
+    engine.prompt = (...args) => {
+      persistedBeforePrompt = records.s1.promptHash
+      return prompt(...args)
+    }
+    return engine
+  }
+  await collect(adapter.stream(options('s1', [system('sys', 'New team instructions'), user('m1', 'hello')])))
+  assert.equal(persistedBeforePrompt, undefined)
+  assert.equal(typeof records.s1.promptHash, 'string')
+})
