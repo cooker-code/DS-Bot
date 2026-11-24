@@ -12884,8 +12884,6 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
-  "From {bot}": "来自 {bot}",
-  "To {bot}": "交给 {bot}",
   "No retry this time.": "本次未重试。",
   "No Bot handoffs recorded.": "暂无 Bot 交接记录。",
   "Node {n}": "节点 {n}",
@@ -43747,7 +43745,6 @@ function handoffs(detail, history) {
     if (!attempt) {
       const parent = received.get(edge.replyTo);
       if (parent?.owner === edge.from && !parent.outgoing) parent.outgoing = edge;
-      else rows2.push({ key: edge.key + "/send", owner: edge.from, outgoing: edge, at });
     }
     const row = { key: edge.key + "/receive/" + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason };
     rows2.push(row);
@@ -43800,9 +43797,7 @@ function TaskHandoffs({ detail, roster, history }) {
   const entries2 = handoffs(detail, history).map((entry, index) => {
     const bot = roster?.byId?.[entry.owner];
     const label = [
-      String(index + 1) + ". " + name(entry.owner),
-      entry.incoming && t("From {bot}", { bot: name(entry.incoming.from) }),
-      entry.outgoing && t("To {bot}", { bot: name(entry.outgoing.to) }),
+      String(index + 1) + ". " + name(entry.incoming.from) + " → " + name(entry.incoming.to),
       entry.reason && t("Retry")
     ].filter(Boolean).join(" · ");
     return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) };

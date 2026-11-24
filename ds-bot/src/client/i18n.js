@@ -11,8 +11,6 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
-  "From {bot}": "来自 {bot}",
-  "To {bot}": "交给 {bot}",
   "No retry this time.": "本次未重试。",
   "No Bot handoffs recorded.": "暂无 Bot 交接记录。",
   "Node {n}": "节点 {n}",

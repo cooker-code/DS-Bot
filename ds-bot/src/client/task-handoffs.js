@@ -13,8 +13,8 @@ function retryReason(retry) {
   return t('No retry reason was recorded.')
 }
 
-// Each delivery is shared by the sending and receiving steps. Only an explicit
-// parent exchange can attach a later send to a particular receiving turn.
+// One row per delivered handoff. Only an explicit parent exchange attaches
+// a later send as the receiving Bot’s output.
 function handoffs(detail, history) {
   const rows = []
   const received = new Map()
@@ -36,7 +36,6 @@ function handoffs(detail, history) {
     if (!attempt) {
       const parent = received.get(edge.replyTo)
       if (parent?.owner === edge.from && !parent.outgoing) parent.outgoing = edge
-      else rows.push({ key: edge.key + '/send', owner: edge.from, outgoing: edge, at })
     }
     const row = { key: edge.key + '/receive/' + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason }
     rows.push(row)
@@ -71,9 +70,8 @@ export function TaskHandoffs({ detail, roster, history }) {
   const name = id => roster?.byId?.[id]?.name ?? id
   const entries = handoffs(detail, history).map((entry, index) => {
     const bot = roster?.byId?.[entry.owner]
-    const label = [String(index + 1) + '. ' + name(entry.owner),
-      entry.incoming && t('From {bot}', { bot: name(entry.incoming.from) }),
-      entry.outgoing && t('To {bot}', { bot: name(entry.outgoing.to) }), entry.reason && t('Retry')].filter(Boolean).join(' · ')
+    const label = [String(index + 1) + '. ' + name(entry.incoming.from) + ' → ' + name(entry.incoming.to),
+      entry.reason && t('Retry')].filter(Boolean).join(' · ')
     return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) }
   })
   return h('section', { 'aria-label': t('Task handoffs') },
