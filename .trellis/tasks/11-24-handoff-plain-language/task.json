@@ -21,7 +21,7 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "实现与独立只读验收通过，已集成 dev 并准备 0.3.10.23 本地包。O3 实际模型话术待用户验收；无日用安装或远端发布。详见 research/verification.md。",
+  "notes": "实现与独立只读验收通过，已集成 dev；0.3.10.23 已安装到日用 desktop profile，包内 169 个文件与安装目录一致，待用户从 Dock 重启加载。O3 实际模型话术待用户验收。打包完成标准已写入项目 AGENTS.md；详见 research/verification.md。",
   "meta": {
     "planning_contract_version": "2",
     "ui": "false",
