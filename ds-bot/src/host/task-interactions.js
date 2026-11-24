@@ -6,6 +6,19 @@ import { textOf } from './text.js'
 
 const recent = new WeakMap()
 
+// Read archived parts through the history API without creating or waking their agents.
+async function* sessionEvents(ctx, sessionId, signal) {
+  let beforeSeq
+  for (;;) {
+    const page = await ctx.sessionController.page({ address: { kind: 'session', sessionId }, beforeSeq, maxMessages: 150 }, signal)
+    for (let i = page.records.length - 1; i >= 0; i--) yield page.records[i].event
+    if (!page.hasMore) return
+    const next = page.records[0]?.event.seq
+    if (!Number.isInteger(next) || (beforeSeq !== undefined && next >= beforeSeq)) throw new Error('Session history cursor did not advance')
+    beforeSeq = next
+  }
+}
+
 export async function taskInteractions(rt, room, card, signal, taskId = card.id) {
   const scopes = new Set([taskId, ...(card.intakes ?? [])].filter(id => typeof id === 'string' && id))
   const belongs = r => scopes.has(scopeOf(r)) && (!r.roomId || r.roomId === room.id)
@@ -41,7 +54,7 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
     let seq = old?.seq ?? -1
     const found = []
     try {
-      for await (const event of rt.eventsBackwards(session, signal, Infinity)) {
+      for await (const event of sessionEvents(rt.ctx, session, signal)) {
         if (event.seq <= (old?.seq ?? -1) || (Number.isFinite(since) && event.time < since)) break
         seq = Math.max(seq, event.seq)
         const source = event.data?.source

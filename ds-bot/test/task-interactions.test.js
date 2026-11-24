@@ -13,10 +13,11 @@ test('task history joins delivered exchanges, scoped posts and coordination with
     ledger: { records: () => [{ seq: 1, time: 2, intakeId: 'intake-1', who: 'User', text: 'Requirement' }] },
     taskPairMessages: () => [{ id: '1', time: 5, roomId: 'group', from: 'manager', to: 'dev', taskId: 'work', text: 'Assign' },
       { id: 'x', roomId: 'other', taskId: 'work', text: 'Other room' }],
-    eventsBackwards: async function* (id) {
-      if (id === 'm') throw new Error('archived session unavailable')
-      yield* events.toReversed()
-    },
+    ctx: { sessionController: { async page({ address, beforeSeq }) {
+      if (address.sessionId === 'm') throw new Error('archived session unavailable')
+      const batch = beforeSeq === undefined ? events.slice(2) : events.slice(0, 2)
+      return { records: batch.map(event => ({ event })), hasMore: beforeSeq === undefined }
+    } } },
   }
   async function read() {
     const { messages, incomplete } = await taskInteractions(rt, room, card)

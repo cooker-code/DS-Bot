@@ -44349,16 +44349,35 @@ function ProjectTaskDetail({ room: room2, card, roster, actions, readOnly, openR
   const activeRead = (0, import_react78.useRef)(null);
   const taskId = card?.taskId;
   const [history, setHistory] = (0, import_react78.useState)();
+  const readHistory = (0, import_react78.useRef)(null);
   (0, import_react78.useEffect)(() => {
     if (!taskId) return;
     const abort = new AbortController();
-    call("project-task-detail", { roomId: room2.id, taskId, interactionsOnly: true }, abort.signal).then((value) => {
-      if (!abort.signal.aborted) setHistory(value);
-    }, () => {
-      if (!abort.signal.aborted) setHistory((current) => ({ ...current, incomplete: true }));
-    });
-    return () => abort.abort();
-  }, [room2.id, room2.seq, taskId, card?.round, card?.updatedAt, card?.version, roster?.revision, attempt]);
+    let loading = false;
+    let pending = false;
+    readHistory.current = async () => {
+      pending = true;
+      if (loading) return;
+      loading = true;
+      while (pending && !abort.signal.aborted) {
+        pending = false;
+        try {
+          const value = await call("project-task-detail", { roomId: room2.id, taskId, interactionsOnly: true }, abort.signal);
+          if (!abort.signal.aborted) setHistory(value);
+        } catch {
+          if (!abort.signal.aborted) setHistory((current) => ({ ...current, incomplete: true }));
+        }
+      }
+      loading = false;
+    };
+    return () => {
+      readHistory.current = null;
+      abort.abort();
+    };
+  }, [room2.id, taskId]);
+  (0, import_react78.useEffect)(() => {
+    void readHistory.current?.();
+  }, [room2.id, taskId, room2.seq, roster?.revision, card?.updatedAt, attempt]);
   (0, import_react78.useEffect)(() => {
     if (!taskId) return;
     const abort = new AbortController();

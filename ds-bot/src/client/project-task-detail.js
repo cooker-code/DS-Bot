@@ -176,14 +176,30 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
   const activeRead = useRef(null)
   const taskId = card?.taskId
   const [history, setHistory] = useState()
+  const readHistory = useRef(null)
   useEffect(() => {
     if (!taskId) return
     const abort = new AbortController()
-    call('project-task-detail', { roomId: room.id, taskId, interactionsOnly: true }, abort.signal).then(value => {
-      if (!abort.signal.aborted) setHistory(value)
-    }, () => { if (!abort.signal.aborted) setHistory(current => ({ ...current, incomplete: true })) })
-    return () => abort.abort()
-  }, [room.id, room.seq, taskId, card?.round, card?.updatedAt, card?.version, roster?.revision, attempt])
+    let loading = false
+    let pending = false
+    readHistory.current = async () => {
+      pending = true
+      if (loading) return
+      loading = true
+      while (pending && !abort.signal.aborted) {
+        pending = false
+        try {
+          const value = await call('project-task-detail', { roomId: room.id, taskId, interactionsOnly: true }, abort.signal)
+          if (!abort.signal.aborted) setHistory(value)
+        } catch {
+          if (!abort.signal.aborted) setHistory(current => ({ ...current, incomplete: true }))
+        }
+      }
+      loading = false
+    }
+    return () => { readHistory.current = null; abort.abort() }
+  }, [room.id, taskId])
+  useEffect(() => { void readHistory.current?.() }, [room.id, taskId, room.seq, roster?.revision, card?.updatedAt, attempt])
   useEffect(() => {
     if (!taskId) return
     const abort = new AbortController()
