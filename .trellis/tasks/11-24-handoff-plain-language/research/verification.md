@@ -50,3 +50,24 @@
 - 扩展专项 72 项中 70 项通过，两个旧提示框夹具未传 roster，发现新增读取需保留既有可选参数契约；修正为 roster?.prefs 后这两项复跑 2/2 通过。
 - 接口覆盖 182、生成文件一致性与 diff --check 通过；lint 通过，保留仓库既有警告。
 - 实际设置页、Prompt 保存和缓存/宿主重启核查、固定候选独立回执与清理结果在后续追加。
+
+
+## Prompt 配置固定候选验收
+
+- 候选 b1aade1351f462dbb1324a6eec624b61dada4a33，独立测试者 plain_language_review 只读验收通过，未发现剩余可操作缺陷。
+- 72/72 主测试与独立 69/69 专项通过；接口覆盖 182、lint、生成一致性和 diff 检查通过。本次构建差异中的变量编号变化来自新增模块，office.js 无变化。
+- 独立审查补齐两点：自定义内容明确作为表达偏好，固定历史解读职责在末尾；模型说明明确基础模型、忽略群成员覆盖及本地 CLI 分支。提示词仍为软约束，不称其为硬权限隔离。
+- 真实 UI 验证：editSavePassed、refreshPreservedPrompt、resetPassed、promptInvalidatesCache、activeViewRegenerated、modelRuleVisible 均为 true。
+- 重启隔离宿主后：promptPersistedAcrossHostRestart、explanationCacheReusedAfterRestart、settingsReadBackAfterRestart 均为 true。
+- UI 与重启脚本退出 0，核实各自 Chrome PID 退出及 1 个本次临时 profile 删除；最终 2 个台架进程已退出，3197/8897 端口释放。
+- 最小截图位于功能工作树 gitignored 的 .playwright-mcp/humanprompt/settings-final.png；执行记录 /tmp/ds-bot-prompt-settings-ui.log 与 /tmp/ds-bot-prompt-settings-restart.log。使用正常应用、官方 CLI 隔离宿主与模拟模型，证明设置和调用链路，实际话术质量仍由用户验收。
+
+
+## 0.3.10.24 交付包
+
+- 四段版本 0.3.10.24，npm 版本 0.3.10-local.24；安装包 ds-bot/ds-bot-0.3.10-local.24.tgz，1,634,228 字节。
+- 已核对包内版本、client.js、channel.js、task-explanations.js 和共享 Prompt 与当前源码一致。
+- dev 合入固定候选后只追加发布与验收记录、包版本，重新构建并检查生成文件一致。
+
+- 日用 desktop 已通过官方 dsh plugin 命令安装 0.3.10-local.24，复用本次交付包；包内 170 个文件与安装目录逐字节一致，包含客户端、宿主和共享 Prompt。
+- 未退出或重启用户 DSH。当前 Desktop 业务 API 缺少有效登录会话（401），本轮未核实运行实例已加载新版；安装结果达到用户从 Dock 重启即可加载的状态。
