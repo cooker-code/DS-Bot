@@ -83,7 +83,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, retryOf, handoffText, parentExchangeId, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, requirementVersion, retryOf, handoffText, parentExchangeId, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -181,6 +181,7 @@ export function install(rt) {
       round.executionSession = targetSessionId
       round.sentAt ??= Date.now()
       round.dispatchInput ??= dispatchInput ?? text
+      if (Number.isSafeInteger(requirementVersion)) round.requirementVersion ??= requirementVersion
       const names = [...images, ...files].map(file => file.name).filter(Boolean)
       if (names.length) round.inputFiles ??= names
       await rt.save({ required: true })

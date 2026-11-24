@@ -128,6 +128,11 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
         }
         if (source.deferred) continue
         const body = textOf(event.data.content)
+        if (source.intakeSeq !== undefined && to === room.admin && !source.senderSessionId && !source.projectActorId) {
+          const post = ledger.find(post => post.seq === source.intakeSeq && !post.botId && post.who === 'User' && !post.kind)
+          if (post) found.push({ key: 'intake-' + post.seq, exchangeId: source.exchangeId, at: event.time,
+            sentAt: post.time, sender: 'user', to, postSeq: post.seq, kind: 'User request', text: taskMessage(post.text, room).body })
+        }
         if (source.role === 'room') {
           const recipient = roster.find(bot => bot.id === to)
           // Older deliveries have no sequence references. Require the named caller,
@@ -145,7 +150,7 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
             const post = posts.get(seq)
             if (!post || post.botId === to) continue
             found.push({ key: 'post-' + seq + '-' + to, exchangeId: source.exchangeId, at: event.time,
-              from: post.botId, to, postSeq: post.seq, sentAt: post.time, kind: 'Bot message', text: taskMessage(post.text, room).body })
+              from: post.botId, to, postSeq: post.seq, sentAt: post.time, kind: post.seq === returned?.seq ? 'Result return' : 'Bot message', text: taskMessage(post.text, room).body })
           }
         } else if (source.projectActorId && source.projectActorId !== to) {
           const delegated = body.includes('The group admin delegated this requirement to you as its task assistant.') &&
@@ -166,12 +171,21 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
     for (const row of cache.parts.get(session)?.rows ?? []) add(row)
   }
   for (const row of delivered.values()) add(row)
-  const rows = [...messages.values()].filter(row => !row.retryOf && row.from && row.to && row.from !== row.to)
+  const rows = [...messages.values()].filter(row => !row.retryOf && (row.from || row.sender === 'user') && row.to && row.from !== row.to)
   for (const retry of messages.values()) {
     if (!retry.retryOf) continue
     for (const edge of rows.filter(row => row.exchangeId === retry.retryOf && row.to === retry.to))
       (edge.retries ??= []).push({ at: retry.at, input: retry.input, restart: retry.restart })
   }
   linkHistory(rows, cache.parts.values(), belongs, room, roster)
+  for (const row of rows) {
+    const index = (card.rounds ?? []).findIndex(round => round.dispatchId === row.exchangeId && round.ownerId === row.to)
+    if (index < 0) continue
+    const round = card.rounds[index]
+    const plan = card.plans?.find(plan => plan.version === round.planNode?.version)
+    Object.assign(row, { kind: 'Dispatch', round: index + 1, planVersion: round.planNode?.version,
+      node: round.planNode?.node, planReason: plan?.reason,
+      requirementVersion: round.requirementVersion ?? (!card.requirementHistory?.length && !card.fieldEditTimes?.requirement ? 1 : undefined) })
+  }
   return { messages: rows.sort((a, b) => a.at - b.at), incomplete }
 }

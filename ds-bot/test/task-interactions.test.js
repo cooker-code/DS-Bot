@@ -95,3 +95,22 @@ test('legacy sender sessions link parallel sends and returned group results to t
     assert.equal(messages.at(-1).text, result)
   }
 })
+
+test('only the bound user intake delivered to the admin becomes the start of the handoff flow', async () => {
+  const room = { id: 'group', admin: 'lead', members: ['lead', 'dev'], sessions: { lead: 'thread' } }
+  const posts = [
+    { seq: 3, time: 1, intakeId: 'intake', who: 'User', text: 'Original user request' },
+    { seq: 4, time: 2, intakeId: 'other', who: 'User', text: 'Other request' },
+  ]
+  const events = [{ seq: 1, time: 3, type: 'user/message', data: { source: {
+    kind: 'bot', intakeId: 'intake', intakeSeq: 3, exchangeId: 'opening', role: 'request', roomId: 'group',
+  }, content: [{ type: 'text', text: 'Host intake envelope' }] } }]
+  const rt = { ledger: { records: () => posts }, taskPairMessages: () => [],
+    ctx: { sessionController: { page: async () => ({ records: events.map(event => ({ event })) }) } } }
+  const result = await taskInteractions(rt, room, { id: 'work', intakes: ['intake'] })
+  assert.equal(result.messages.length, 1)
+  assert.equal(result.messages[0].kind, 'User request')
+  assert.equal(result.messages[0].sender, 'user')
+  assert.equal(result.messages[0].to, 'lead')
+  assert.equal(result.messages[0].text, posts[0].text)
+})

@@ -277,7 +277,7 @@ export function developmentHandoff(rt, session, room, card, owner, number) {
   const legacyWorkspace = !round.planNode && round.workspace
   const folder = legacyWorkspace && 'Before starting, use working_directory to enter ' + legacyWorkspace.workDir + ' on branch ' + legacyWorkspace.workRef + '.'
   const text = [card.title, requirement, folder, previous && 'Previous delivery: ' + previous, round.planNode && nodeHandoff(card, round), 'Handoff: ' + round.plan, 'Acceptance: ' + card.acceptance].filter(Boolean).join('\n\n')
-  return { text, images: projectImages(card, lines), files: lines.flatMap(line => line.files ?? []), round }
+  return { text, images: projectImages(card, lines), files: lines.flatMap(line => line.files ?? []), round, requirementVersion: requirementHistory(room, card, lines).length + 1 }
 }
 
 export function install(rt) {

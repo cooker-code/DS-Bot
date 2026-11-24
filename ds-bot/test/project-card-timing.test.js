@@ -330,7 +330,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   assert.deepEqual(opened, ['plans/S8 Listen.md'])
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')
-  assert.deepEqual(Array.from(latest.headerControl.children[0], option => option.children[0]), ['v1 · Historical version', 'v2 · Current'])
+  assert.deepEqual(Array.from(latest.headerControl.children[0], option => option.children[0]), ['Requirement v1 · Historical version', 'Requirement v2 · Current'])
   assert.equal(latest.headerControl.props.value, 1)
   latest.headerControl.props.onChange({ target: { value: '0' } })
   assert.equal(show().value, '1. Earlier request')

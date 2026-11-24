@@ -98,7 +98,7 @@ function TaskField({ roomId, taskId, label, value, versions, sources, openRefere
         const selected = Number(event.target.value)
         setVersion(selected === currentVersion ? null : selected)
       } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index },
-        'v' + (index + 1) + ' · ' + t(index === currentVersion ? 'Current' : 'Historical version')))),
+        t('Requirement v{version}', { version: index + 1 }) + ' · ' + t(index === currentVersion ? 'Current' : 'Historical version')))),
     placeholder: visible.length || documents.length ? null : '—', maxLength,
     draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
     onEdit: readOnly ? undefined : () => {
