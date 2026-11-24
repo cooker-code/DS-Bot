@@ -12979,6 +12979,17 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
+  "Plain language": "人话",
+  "Copy explanation": "复制解释",
+  "Message view": "消息视图",
+  "AI explanation · Markdown keeps the full message": "AI 解释 · 完整消息见 Markdown",
+  "Explaining this message…": "正在解释这条消息…",
+  "Invalid explanation request.": "解释请求无效。",
+  "No recorded message is available to explain.": "没有可供解释的消息记录。",
+  "The full message is unavailable. Read the available Markdown instead.": "消息正文不完整，请查看 Markdown 中可读取的内容。",
+  "Generate the explanation in the host that owns this team.": "请在持有本团队写锁的宿主中生成解释。",
+  "No Bot is available to explain this message.": "没有可用的 Bot 解释这条消息。",
+  "The model wrote no explanation. Try again or read the Markdown.": "模型未返回解释，请重试或查看 Markdown。",
   "Saved by {name}": "保存者 {name}",
   "Saved {time}": "保存于 {time}",
   "Not dispatched": "未派发",
@@ -43857,18 +43868,41 @@ function CopyTaskText({ text, label }) {
     }
   }, status === t("Copied") ? (0, import_react73.createElement)(CheckIcon) : (0, import_react73.createElement)(CopyIcon), status && (0, import_react73.createElement)("span", { role: "status", className: "bt-task-copy-feedback" }, status));
 }
-function TaskContent({ header, panelId, selectedId, text, sections }) {
+function TaskContent({ header, panelId, selectedId, text, sections, explain }) {
   const [raw, setRaw] = (0, import_react73.useState)(false);
   const [search, setSearch] = (0, import_react73.useState)(false);
   const [query, setQuery] = (0, import_react73.useState)("");
   const [index, setIndex] = (0, import_react73.useState)(0);
   const active = (0, import_react73.useRef)(null);
+  const [human, setHuman] = (0, import_react73.useState)(false);
+  const [explanations, setExplanations] = (0, import_react73.useState)({});
+  const [attempt, retry] = (0, import_react73.useState)(0);
   (0, import_react73.useEffect)(() => {
     setIndex(0);
     setQuery("");
     setSearch(false);
   }, [selectedId]);
   const contentText2 = sections ? sections.map((section) => section.text).join("\n\n") : text;
+  const sourceIdentity = JSON.stringify([language(), (sections ?? [{ text }]).map((block) => [block.key, block.text])]);
+  const explanationFor = (block) => explanations.identity === sourceIdentity ? explanations[block.key ?? "text"] : void 0;
+  const sources = sections ?? [{ text }];
+  const shownText = human && !search ? sources.every((block) => explanationFor(block)?.text) ? sources.map((block) => explanationFor(block).text).join("\n\n") : "" : contentText2;
+  (0, import_react73.useEffect)(() => {
+    if (!human || !explain) return;
+    let current = true;
+    const sources2 = sections ?? [{ text }];
+    setExplanations({ identity: sourceIdentity });
+    for (const block of sources2) {
+      Promise.resolve().then(() => explain(block)).then((value) => {
+        if (current) setExplanations((values) => ({ ...values, [block.key ?? "text"]: { text: value.text } }));
+      }, (error) => {
+        if (current) setExplanations((values) => ({ ...values, [block.key ?? "text"]: { error: error.message } }));
+      });
+    }
+    return () => {
+      current = false;
+    };
+  }, [human, selectedId, sourceIdentity, attempt]);
   let matches2 = 0;
   const blocks = (sections ?? [{ text }]).map((section) => {
     const parts = search && query ? section.text.split(query) : [section.text];
@@ -43876,7 +43910,17 @@ function TaskContent({ header, panelId, selectedId, text, sections }) {
     matches2 += parts.length - 1;
     return { ...section, parts, offset };
   });
-  const renderText = (block) => raw || search ? (0, import_react73.createElement)("pre", null, block.parts.map((piece, i) => (0, import_react73.createElement)(
+  const renderText = (block) => human && !search ? (0, import_react73.createElement)(
+    "div",
+    { className: "bt-task-explanation" },
+    (0, import_react73.createElement)("small", null, t("AI explanation · Markdown keeps the full message")),
+    explanationFor(block)?.error ? (0, import_react73.createElement)(
+      "div",
+      { className: "bt-error", role: "alert" },
+      explanationFor(block).error,
+      (0, import_react73.createElement)("button", { type: "button", className: "bt-soft", onClick: () => retry((n) => n + 1) }, t("Retry"))
+    ) : explanationFor(block)?.text ? (0, import_react73.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: explanationFor(block).text, labels: mdLabels(), variant: "compact" }) : (0, import_react73.createElement)("p", { role: "status" }, t("Explaining this message…"))
+  ) : raw || search ? (0, import_react73.createElement)("pre", null, block.parts.map((piece, i) => (0, import_react73.createElement)(
     "span",
     { key: i },
     i ? (0, import_react73.createElement)("mark", {
@@ -43898,24 +43942,45 @@ function TaskContent({ header, panelId, selectedId, text, sections }) {
       (0, import_react73.createElement)(
         "div",
         { className: "bt-task-content-actions" },
-        (0, import_react73.createElement)("small", null, t("{n} lines", { n: contentText2.split("\n").length })),
-        (0, import_react73.createElement)("div", { className: "bt-task-content-modes" }, [true, false].map((mode) => (0, import_react73.createElement)("button", {
-          key: String(mode),
-          type: "button",
-          "aria-pressed": mode === (raw || search),
-          onClick: () => {
-            setRaw(mode);
-            setSearch(false);
-          }
-        }, mode ? t("Raw text") : "Markdown"))),
-        (0, import_react73.createElement)(CopyTaskText, { key: selectedId, text: contentText2, label: t(sections?.length > 1 ? "Copy all outputs" : "Copy") }),
+        !human && (0, import_react73.createElement)("small", null, t("{n} lines", { n: contentText2.split("\n").length })),
+        (0, import_react73.createElement)(
+          "div",
+          { className: "bt-task-content-modes", role: "group", "aria-label": t("Message view") },
+          (0, import_react73.createElement)("button", {
+            type: "button",
+            "aria-pressed": !search && (explain ? human : raw),
+            onClick: () => {
+              if (explain) {
+                setHuman(true);
+                setRaw(false);
+              } else setRaw(true);
+              setSearch(false);
+            }
+          }, t(explain ? "Plain language" : "Raw text")),
+          (0, import_react73.createElement)("button", {
+            type: "button",
+            "aria-pressed": !human && !raw && !search,
+            onClick: () => {
+              setHuman(false);
+              setRaw(false);
+              setSearch(false);
+            }
+          }, "Markdown")
+        ),
+        shownText && (0, import_react73.createElement)(CopyTaskText, { key: selectedId + human, text: shownText, label: t(human ? "Copy explanation" : sections?.length > 1 ? "Copy all outputs" : "Copy") }),
         (0, import_react73.createElement)("button", {
           type: "button",
           className: "bt-tool",
           title: t("Search"),
           "aria-label": t("Search"),
           "aria-expanded": search,
-          onClick: () => setSearch(!search)
+          onClick: () => {
+            if (explain) {
+              setHuman(false);
+              setRaw(false);
+            }
+            setSearch(!search);
+          }
         }, (0, import_react73.createElement)(SearchIcon))
       )
     ),
@@ -43950,7 +44015,10 @@ function TaskContent({ header, panelId, selectedId, text, sections }) {
           { className: "bt-task-content-section-head" },
           (0, import_react73.createElement)("span", null, block.label),
           block.control,
-          sections.length > 1 && (0, import_react73.createElement)(CopyTaskText, { text: block.text, label: t("Copy this output") })
+          sections.length > 1 && (!human || explanationFor(block)?.text) && (0, import_react73.createElement)(CopyTaskText, {
+            text: human ? explanationFor(block).text : block.text,
+            label: t(human ? "Copy explanation" : "Copy this output")
+          })
         ),
         renderText(block)
       )) : renderText(blocks[0])
@@ -44242,7 +44310,7 @@ function HandoffContext({ edge, onPlan, note }) {
     }, description), document.body)
   );
 }
-function HandoffRow({ entry, children, onPlan, reveal }) {
+function HandoffRow({ entry, children, onPlan, reveal, explain }) {
   const row = (0, import_react75.useRef)(null);
   const [open, setOpen] = (0, import_react75.useState)(false);
   const [tab, select] = (0, import_react75.useState)(0);
@@ -44296,16 +44364,24 @@ function HandoffRow({ entry, children, onPlan, reveal }) {
     "details",
     { ref: row, id: entry.id, className: "bt-handoff-row", onToggle: (e) => setOpen(e.currentTarget.open) },
     children,
-    open && (0, import_react75.createElement)(TaskContent, { key: tab, header: (0, import_react75.createElement)(
-      "div",
-      { className: "bt-handoff-content-tabs" },
-      tabBar,
-      (0, import_react75.createElement)(HandoffContext, { edge, onPlan })
-    ), panelId: id, selectedId: id + tab, text, sections }),
+    open && (0, import_react75.createElement)(TaskContent, {
+      key: tab,
+      header: (0, import_react75.createElement)(
+        "div",
+        { className: "bt-handoff-content-tabs" },
+        tabBar,
+        (0, import_react75.createElement)(HandoffContext, { edge, onPlan })
+      ),
+      panelId: id,
+      selectedId: id + tab,
+      text,
+      sections,
+      explain: tab < 2 && (edge || sections?.length) ? (block) => explain(block.key ?? edge.key) : void 0
+    }),
     open && [edge, ...tab === 1 ? entry.outputs : []].some((item) => item?.partial) && (0, import_react75.createElement)("small", null, t("Only part of the message is available."))
   );
 }
-function TaskHandoffs({ detail, roster, history }) {
+function TaskHandoffs({ detail, roster, history, roomId, taskId }) {
   const [planVersion, selectPlan] = (0, import_react75.useState)(null);
   const [reveal, setReveal] = (0, import_react75.useState)(null);
   const id = (0, import_react75.useId)();
@@ -44356,7 +44432,13 @@ function TaskHandoffs({ detail, roster, history }) {
     ) : history && (0, import_react75.createElement)("p", { className: "bt-empty" }, t("No Bot handoffs recorded.")),
     entries2.map((entry) => (0, import_react75.createElement)(
       HandoffRow,
-      { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null },
+      {
+        key: entry.key,
+        entry,
+        onPlan: selectPlan,
+        reveal: reveal?.key === entry.key ? reveal : null,
+        explain: (messageKey) => call("task-explanation", { roomId, taskId, messageKey, language: language() })
+      },
       (0, import_react75.createElement)(
         "summary",
         null,
@@ -44915,7 +44997,7 @@ function ProjectTaskDetail({ room: room2, card, roster, actions, readOnly, openR
         detail ? (0, import_react79.createElement)(
           import_react79.Fragment,
           null,
-          (0, import_react79.createElement)(TaskHandoffs, { detail, roster, history }),
+          (0, import_react79.createElement)(TaskHandoffs, { detail, roster, history, roomId: room2.id, taskId }),
           (0, import_react79.createElement)(TaskField, {
             roomId: room2.id,
             taskId,

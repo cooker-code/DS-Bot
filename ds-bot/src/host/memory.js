@@ -87,6 +87,7 @@ const NEWS_TEXT_MAX = 160
 
 export function install(rt) {
   const { ctx, config, home, state } = rt
+  rt.botShot = botShot
 
   if (config.memory === false) {
     Object.assign(rt, {

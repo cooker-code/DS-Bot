@@ -7,7 +7,8 @@ import { TaskContent, CopyTaskText } from './task-content.js'
 import { InfoIcon } from './icons.js'
 import { colorOf } from './characters.js'
 import { paintCss } from './inks.js'
-import { t } from './i18n.js'
+import { language, t } from './i18n.js'
+import { call } from './api.js'
 
 function retryReason(retry) {
   if (retry.restart) return t('The host restarted during execution.')
@@ -105,7 +106,7 @@ function HandoffContext({ edge, onPlan, note }) {
       onMouseEnter: cancelClose, onMouseLeave: leave }, description), document.body))
 }
 
-function HandoffRow({ entry, children, onPlan, reveal }) {
+function HandoffRow({ entry, children, onPlan, reveal, explain }) {
   const row = useRef(null)
   const [open, setOpen] = useState(false)
   const [tab, select] = useState(0)
@@ -140,12 +141,13 @@ function HandoffRow({ entry, children, onPlan, reveal }) {
   })) : undefined
   return h('details', { ref: row, id: entry.id, className: 'bt-handoff-row', onToggle: e => setOpen(e.currentTarget.open) },
     children, open && h(TaskContent, { key: tab, header: h('div', { className: 'bt-handoff-content-tabs' },
-      tabBar, h(HandoffContext, { edge, onPlan })), panelId: id, selectedId: id + tab, text, sections }),
+      tabBar, h(HandoffContext, { edge, onPlan })), panelId: id, selectedId: id + tab, text, sections,
+      explain: tab < 2 && (edge || sections?.length) ? block => explain(block.key ?? edge.key) : undefined }),
     open && [edge, ...(tab === 1 ? entry.outputs : [])].some(item => item?.partial) &&
       h('small', null, t('Only part of the message is available.')))
 }
 
-export function TaskHandoffs({ detail, roster, history }) {
+export function TaskHandoffs({ detail, roster, history, roomId, taskId }) {
   const [planVersion, selectPlan] = useState(null)
   const [reveal, setReveal] = useState(null)
   const id = useId()
@@ -173,7 +175,8 @@ export function TaskHandoffs({ detail, roster, history }) {
         title: entry.label, 'aria-label': entry.label, 'aria-controls': entry.id, 'data-retry': Boolean(entry.reason),
         onClick: () => setReveal({ key: entry.key }) })))
       : history && h('p', { className: 'bt-empty' }, t('No Bot handoffs recorded.')),
-    entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null },
+    entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null,
+      explain: messageKey => call('task-explanation', { roomId, taskId, messageKey, language: language() }) },
       h('summary', null, h('span', { className: 'bt-handoff-dot', style: { background: entry.background } }), entry.label, h(HandoffContext, { edge: entry.incoming, onPlan: selectPlan }),
         notes.filter(note => note.after === entry.key).map(noteIcon),
         Number.isFinite(entry.at) && h('time', null, new Date(entry.at).toLocaleString())))))

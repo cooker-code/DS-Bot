@@ -11,6 +11,17 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Plain language": "人话",
+  "Copy explanation": "复制解释",
+  "Message view": "消息视图",
+  "AI explanation · Markdown keeps the full message": "AI 解释 · 完整消息见 Markdown",
+  "Explaining this message…": "正在解释这条消息…",
+  "Invalid explanation request.": "解释请求无效。",
+  "No recorded message is available to explain.": "没有可供解释的消息记录。",
+  "The full message is unavailable. Read the available Markdown instead.": "消息正文不完整，请查看 Markdown 中可读取的内容。",
+  "Generate the explanation in the host that owns this team.": "请在持有本团队写锁的宿主中生成解释。",
+  "No Bot is available to explain this message.": "没有可用的 Bot 解释这条消息。",
+  "The model wrote no explanation. Try again or read the Markdown.": "模型未返回解释，请重试或查看 Markdown。",
   "Saved by {name}": "保存者 {name}",
   "Saved {time}": "保存于 {time}",
   "Not dispatched": "未派发",

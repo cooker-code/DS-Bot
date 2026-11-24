@@ -79,6 +79,25 @@ async function team(call) {
 }
 
 const user = (seq, text, time = seq) => ({ seq, time, type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text }] } })
+test('task-explanation generates on demand with memory off and allows cached reads on a read-only host', async t => {
+  const { rt, call, stop } = start({ memory: false })
+  t.after(stop)
+  const { chief, writer, room } = await team(call)
+  assert.equal(typeof rt.botShot, 'function')
+  rt.roomOf(room.id).projectCards = { current: { title: 'Check data', rounds: [] } }
+  rt.taskPairMessages = () => [{ id: 'original', taskId: 'current', roomId: room.id,
+    from: chief, to: writer.id, time: 1, text: '**Dispatched**; not started.' }]
+  let calls = 0
+  rt.botShot = async () => { calls++; return 'Assigned to the developer; work has not started.' }
+  const body = { roomId: room.id, taskId: 'current', messageKey: 'exchange-original' }
+  assert.equal(calls, 0)
+  assert.equal((await call('task-explanation', body)).value.cached, false)
+  rt.readOnly = () => 'Another host is writing'
+  assert.equal((await call('task-explanation', body)).value.cached, true)
+  assert.equal((await call('task-explanation', { ...body, language: 'ja' })).error.code, 'bot/read-only')
+  assert.equal(calls, 1)
+})
+
 test('project-task-list reads one room at the same revision as the team view, including on a read-only host', async t => {
   const { rt, call, stop } = start()
   t.after(stop)

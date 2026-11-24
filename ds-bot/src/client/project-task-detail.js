@@ -231,7 +231,7 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          h(TaskHandoffs, { detail, roster, history }),
+          h(TaskHandoffs, { detail, roster, history, roomId: room.id, taskId }),
           h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
             sources: detail.requirements ?? [], openReference, sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
