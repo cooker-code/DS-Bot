@@ -17,12 +17,13 @@ function receiptFiles(room, card, round, number) {
   const receipt = [round.result, binding?.feedback, binding?.checkpointArtifact, binding?.block?.evidence, ...(round.validation?.passed ?? []).map(check => check.evidence)].filter(Boolean).join('\n')
   const names = [...receipt.matchAll(/(?:<([^<>\n]+?\.(?:md|png|jpe?g|gif|webp))>|`([^`\n]+?\.(?:md|png|jpe?g|gif|webp))`|([^\s<>()`"'，、；：。,【】]+?\.(?:md|png|jpe?g|gif|webp))(?=$|[\s)>,;:，、；：。】]))/gi)]
     .map(match => match[1] ?? match[2] ?? match[3]).filter(path => !path.includes('://'))
-  const reports = [...new Set(names.filter(path => extname(path).toLowerCase() === '.md').map(path => dirname(resolve(root, path))))]
+  const reports = [...new Set(names.filter(path => extname(path).toLowerCase() === '.md' && !path.startsWith('同目录/')).map(path => dirname(resolve(root, path))))]
   const files = new Map()
   for (const name of names) {
     const mime = types[extname(name).toLowerCase()]
-    const base = mime !== 'text/markdown' && name === basename(name) && reports.length === 1 ? reports[0] : root
-    const path = resolve(base, name)
+    const sibling = name.startsWith('同目录/')
+    const base = reports.length === 1 && (sibling || (mime !== 'text/markdown' && name === basename(name))) ? reports[0] : root
+    const path = resolve(base, sibling ? name.slice('同目录/'.length) : name)
     if (!within(path, root)) continue
     const id = number + '-' + createHash('sha256').update(path).digest('hex')
     files.set(id, { id, root, path, name: basename(path), mime, kind: mime === 'text/markdown' ? 'markdown' : 'image' })
