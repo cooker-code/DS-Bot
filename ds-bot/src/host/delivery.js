@@ -83,7 +83,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -95,6 +95,7 @@ export function install(rt) {
     const source = {
       kind: SOURCE_KIND,
       form: 'relay',
+      ...(projectActorId && { projectActorId }),
       ...scopeFields(key),
       ...(intakeSeq !== undefined ? { intakeSeq } : {}),
       role,
@@ -264,5 +265,5 @@ export function install(rt) {
     return { ...record, ledger: true }
   }
 
-  Object.assign(rt, { resolveAgent, deliver, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
+  Object.assign(rt, { resolveAgent, deliver, taskPairMessages: pairMessages, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
 }

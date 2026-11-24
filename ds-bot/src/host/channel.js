@@ -1,3 +1,4 @@
+import { taskInteractions } from './task-interactions.js'
 import { readReceiptFile, taskResultView } from './task-result-view.js'
 import { readResultDocument } from './project-result-files.js'
 import { assistantId, projectNotice } from './project-assistant.js'
@@ -549,6 +550,7 @@ export function install(rt) {
           if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
           const cards = room.projectCards ?? {}
           if (typeof body.taskId !== 'string' || !Object.hasOwn(cards, body.taskId)) return fail('No such task', 'bot/not-found')
+          if (body.interactionsOnly === true) return ok(await taskInteractions(rt, room, cards[body.taskId], signal, body.taskId))
           if (typeof body.receiptFile === 'string') return ok(await readReceiptFile(rt, room, cards[body.taskId], body.receiptFile))
           if (typeof body.documentId === 'string') return ok(await readResultDocument(rt, cards[body.taskId], body.documentId, signal))
           if (typeof body.imageId === 'string') return ok(await readProjectImage(rt, room, cards[body.taskId], body.taskId, body.imageId, signal))

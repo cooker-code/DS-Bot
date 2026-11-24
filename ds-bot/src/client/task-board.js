@@ -414,6 +414,21 @@ export const TASK_CSS = `
 .bt-project-times span{white-space:nowrap}
 @container (max-width:420px){.bt-project-row .bt-task-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}}
 .bt-drawer-body.bt-project-detail{display:block;overflow-wrap:anywhere}
+.bt-task-copy-feedback{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.bt-task-detail-name{display:flex;gap:8px;align-items:flex-start;margin:0 0 16px}
+.bt-task-detail-name h2{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text;font-size:19px}
+.bt-task-detail-name button{flex:none}
+.bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
+.bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
+.bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
+.bt-task-content-head strong{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
+.bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
+.bt-task-content-modes [aria-pressed=true]{color:var(--bt-ink);background:var(--bt-card)}
+.bt-task-content-body{max-height:24rem;overflow:auto;padding:8px 10px;overflow-wrap:anywhere;user-select:text}
+.bt-task-content-body pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}
+.bt-task-find input{min-width:4em;flex:1}
 .bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
 .bt-handoff-bar>span{flex:1;min-width:0;position:relative}
 .bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.65) 4px 6px)}

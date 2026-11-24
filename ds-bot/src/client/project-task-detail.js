@@ -175,6 +175,31 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
   const [attempt, retry] = useState(0)
   const activeRead = useRef(null)
   const taskId = card?.taskId
+  const [history, setHistory] = useState()
+  const readHistory = useRef(null)
+  useEffect(() => {
+    if (!taskId) return
+    const abort = new AbortController()
+    let loading = false
+    let pending = false
+    readHistory.current = async () => {
+      pending = true
+      if (loading) return
+      loading = true
+      while (pending && !abort.signal.aborted) {
+        pending = false
+        try {
+          const value = await call('project-task-detail', { roomId: room.id, taskId, interactionsOnly: true }, abort.signal)
+          if (!abort.signal.aborted) setHistory(value)
+        } catch {
+          if (!abort.signal.aborted) setHistory(current => ({ ...current, incomplete: true }))
+        }
+      }
+      loading = false
+    }
+    return () => { readHistory.current = null; abort.abort() }
+  }, [room.id, taskId])
+  useEffect(() => { void readHistory.current?.() }, [room.id, taskId, room.seq, roster?.revision, card?.updatedAt, attempt])
   useEffect(() => {
     if (!taskId) return
     const abort = new AbortController()
@@ -206,7 +231,7 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          h(TaskHandoffs, { detail, roster }),
+          h(TaskHandoffs, { detail, roster, history }),
           h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
             sources: detail.requirements ?? [], openReference, sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
