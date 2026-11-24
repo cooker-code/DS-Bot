@@ -429,6 +429,12 @@ await step('DS Bot dispatches a project card with the original image', async () 
     ?? expect(cards[0].ownerId === botNamed('Coder').id && cards[0].round === 1 && cards[0].status === 'done', 'the owner did not receive, start and submit the image task')
   if (taskProblem) return taskProblem
   const card = await api('project-task-detail', { roomId: devRoomId, taskId: cards[0].taskId })
+  const history = await api('project-task-detail', { roomId: devRoomId, taskId: card.taskId, interactionsOnly: true })
+  if (history.incomplete) return 'could not read the project member session history'
+  if (!history.messages.some(row => row.exchangeId === card.rounds[0].dispatchId && row.from === chief().id && row.to === card.rounds[0].ownerId))
+    return 'the delivered dispatch must identify both Bots'
+  if (!history.messages.some(row => row.kind === 'Group message' && row.from === undefined && row.sender === 'User'))
+    return 'the scoped group intake must be visible in the timeline'
   const original = card.requirements[0]
   const { rows } = await api('group-rows', { roomId: devRoomId, from: original.seq })
   const answers = rows.filter(row => row.botId === chief().id && row.text?.includes('核对派工后能否看到附件'))
