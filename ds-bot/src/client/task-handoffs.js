@@ -2,6 +2,7 @@ import { createElement as h, useId, useState } from 'react'
 import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
 import { TaskPlans } from './task-plans.js'
 import { TaskContent, CopyTaskText } from './task-content.js'
+import { InfoIcon } from './icons.js'
 import { colorOf } from './characters.js'
 import { paintCss } from './inks.js'
 import { t } from './i18n.js'
@@ -55,14 +56,21 @@ function contextLabel(edge) {
     edge.round && t('Round {number}', { number: edge.round })].filter(Boolean).join(' · ')
 }
 
+function HandoffContext({ edge, onPlan }) {
+  if (!edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null
+  const description = [contextLabel(edge), edge.planReason && t('Plan change reason') + ' · ' + edge.planReason,
+    edge.planVersion && t('View plan v{version}', { version: edge.planVersion })].filter(Boolean).join('\n')
+  return h('button', { type: 'button', className: 'bt-tool', title: description, 'aria-label': description,
+    onClick: event => { event.preventDefault(); event.stopPropagation(); if (edge.planVersion) onPlan(edge.planVersion) } }, h(InfoIcon))
+}
+
 function HandoffRow({ entry, children, onPlan }) {
   const [open, setOpen] = useState(false)
   const [tab, select] = useState(0)
   const id = useId()
   const tabs = entry.reason ? ['Input', 'Output', 'Retry reason'] : ['Input', 'Output']
-  const [outputIndex, selectOutput] = useState(0)
-  const output = entry.outputs[outputIndex] ?? entry.outputs[0]
-  const edge = [entry.incoming, output][tab]
+  const output = entry.outputs[0]
+  const edge = tab === 0 ? entry.incoming : tab === 1 && entry.outputs.length === 1 ? output : undefined
   const text = [entry.incoming?.text ?? t('No recorded input'), output?.text ?? t('No recorded output'),
     entry.reason ?? t('No retry this time.')][tab]
   const tabBar = h('div', { className: 'bt-task-content-modes bt-handoff-tabs', role: 'tablist', 'aria-label': t('Task handoffs') },
@@ -74,13 +82,15 @@ function HandoffRow({ entry, children, onPlan }) {
         e.currentTarget.parentElement.children[next].focus()
         select(next)
       } }, t(label))))
+  const sections = tab === 1 && entry.outputs.length > 0 ? entry.outputs.map(item => ({
+    key: item.key, label: item.route + (Number.isFinite(item.at) ? ' · ' + new Date(item.at).toLocaleString() : ''),
+    text: item.text, control: h(HandoffContext, { edge: item, onPlan }),
+  })) : undefined
   return h('details', { className: 'bt-handoff-row', onToggle: e => setOpen(e.currentTarget.open) },
-    children, open && edge?.planReason && h('small', { className: 'bt-handoff-context' }, t('Plan change reason') + ' · ' + edge.planReason), open && h(TaskContent, { key: tab + '/' + outputIndex, header: h('div', { className: 'bt-handoff-content-tabs' }, tabBar, h('small', null, contextLabel(edge)),
-      edge?.planVersion && h('button', { type: 'button', className: 'bt-mini', onClick: () => onPlan(edge.planVersion) }, t('View plan v{version}', { version: edge.planVersion })),
-      tab === 1 && entry.outputs.length > 1 && h('select', { 'aria-label': t('Output recipient'), value: outputIndex,
-        onChange: e => selectOutput(Number(e.target.value)) }, entry.outputs.map((item, index) =>
-          h('option', { key: item.key, value: index }, item.route, contextLabel(item) && ' · ' + contextLabel(item), Number.isFinite(item.at) && ' · ' + new Date(item.at).toLocaleString())))), panelId: id, selectedId: id + tab, text }),
-    open && edge?.partial && h('small', null, t('Only part of the message is available.')))
+    children, open && h(TaskContent, { key: tab, header: h('div', { className: 'bt-handoff-content-tabs' },
+      tabBar, h(HandoffContext, { edge, onPlan })), panelId: id, selectedId: id + tab, text, sections }),
+    open && [edge, ...(tab === 1 ? entry.outputs : [])].some(item => item?.partial) &&
+      h('small', null, t('Only part of the message is available.')))
 }
 
 export function TaskHandoffs({ detail, roster, history }) {
@@ -91,7 +101,7 @@ export function TaskHandoffs({ detail, roster, history }) {
   const entries = handoffs(detail, history && { ...history, messages }).map((entry, index) => {
     const bot = roster?.byId?.[entry.owner]
     const label = [String(index + 1) + '. ' + (entry.incoming.sender === 'user' ? t('User') : name(entry.incoming.from)) + ' → ' + name(entry.incoming.to),
-      contextLabel(entry.incoming), entry.reason && t('Retry')].filter(Boolean).join(' · ')
+      ['User request', 'Result return', 'Dispatch'].includes(entry.incoming.kind) && t(entry.incoming.kind), entry.reason && t('Retry')].filter(Boolean).join(' · ')
     return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) }
   })
   return h('section', { 'aria-label': t('Task handoffs') },
@@ -105,7 +115,6 @@ export function TaskHandoffs({ detail, roster, history }) {
       entries.map(entry => h('span', { key: entry.key, style: { background: entry.background }, title: entry.label, 'data-retry': Boolean(entry.reason) })))
       : history && h('p', { className: 'bt-empty' }, t('No Bot handoffs recorded.')),
     entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan },
-      h('summary', null, h('span', { className: 'bt-handoff-dot', style: { background: entry.background } }), entry.label, entry.incoming.planVersion && h('button', { type: 'button', className: 'bt-mini',
-          onClick: event => { event.preventDefault(); event.stopPropagation(); selectPlan(entry.incoming.planVersion) } }, t('View plan v{version}', { version: entry.incoming.planVersion })),
+      h('summary', null, h('span', { className: 'bt-handoff-dot', style: { background: entry.background } }), entry.label, h(HandoffContext, { edge: entry.incoming, onPlan: selectPlan }),
         Number.isFinite(entry.at) && h('time', null, new Date(entry.at).toLocaleString())))))
 }

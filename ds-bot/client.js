@@ -12884,6 +12884,8 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
+  "Copy all outputs": "复制全部输出",
+  "Copy this output": "复制这份输出",
   "Plan created": "计划创建时间",
   "Node owner": "执行 Bot",
   "Execution plans": "执行计划",
@@ -40460,12 +40462,12 @@ var TASK_CSS = `
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
 .bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
-.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-content-tabs select{max-width:100%;font:inherit;color:var(--bt-ink);background:var(--bt-card);border:1px solid var(--bt-line);border-radius:4px}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
 .bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
 .bt-task-content-modes [aria-pressed=true],.bt-task-content-modes [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
 .bt-task-content-body{max-height:24rem;overflow:auto;padding:8px 10px;overflow-wrap:anywhere;user-select:text}
-.bt-task-content-body pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.bt-task-content-section+.bt-task-content-section{border-top:1px solid var(--bt-line);margin-top:12px;padding-top:10px}.bt-task-content-section-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;color:var(--bt-ink-2)}.bt-task-content-section-head>span{flex:1;min-width:0;overflow-wrap:anywhere}.bt-task-content-section-head>.bt-tool{flex:none}.bt-task-content-body pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
 .bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}
 .bt-task-find input{min-width:4em;flex:1}
 .bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
@@ -43680,7 +43682,7 @@ function CopyTaskText({ text, label }) {
     }
   }, status === t("Copied") ? (0, import_react73.createElement)(CheckIcon) : (0, import_react73.createElement)(CopyIcon), status && (0, import_react73.createElement)("span", { role: "status", className: "bt-task-copy-feedback" }, status));
 }
-function TaskContent({ header, panelId, selectedId, text }) {
+function TaskContent({ header, panelId, selectedId, text, sections }) {
   const [raw, setRaw] = (0, import_react73.useState)(false);
   const [search, setSearch] = (0, import_react73.useState)(false);
   const [query, setQuery] = (0, import_react73.useState)("");
@@ -43691,8 +43693,23 @@ function TaskContent({ header, panelId, selectedId, text }) {
     setQuery("");
     setSearch(false);
   }, [selectedId]);
-  const parts = search && query ? text.split(query) : [text];
-  const matches2 = parts.length - 1;
+  const contentText2 = sections ? sections.map((section) => section.text).join("\n\n") : text;
+  let matches2 = 0;
+  const blocks = (sections ?? [{ text }]).map((section) => {
+    const parts = search && query ? section.text.split(query) : [section.text];
+    const offset = matches2;
+    matches2 += parts.length - 1;
+    return { ...section, parts, offset };
+  });
+  const renderText = (block) => raw || search ? (0, import_react73.createElement)("pre", null, block.parts.map((piece, i) => (0, import_react73.createElement)(
+    "span",
+    { key: i },
+    i ? (0, import_react73.createElement)("mark", {
+      ref: block.offset + i - 1 === index ? active : void 0,
+      "data-current": block.offset + i - 1 === index
+    }, query) : null,
+    piece
+  ))) : (0, import_react73.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: block.text, labels: mdLabels(), variant: "compact" });
   (0, import_react73.useEffect)(() => {
     active.current?.scrollIntoView({ block: "nearest" });
   }, [query, index]);
@@ -43706,7 +43723,7 @@ function TaskContent({ header, panelId, selectedId, text }) {
       (0, import_react73.createElement)(
         "div",
         { className: "bt-task-content-actions" },
-        (0, import_react73.createElement)("small", null, t("{n} lines", { n: text.split("\n").length })),
+        (0, import_react73.createElement)("small", null, t("{n} lines", { n: contentText2.split("\n").length })),
         (0, import_react73.createElement)("div", { className: "bt-task-content-modes" }, [true, false].map((mode) => (0, import_react73.createElement)("button", {
           key: String(mode),
           type: "button",
@@ -43716,7 +43733,7 @@ function TaskContent({ header, panelId, selectedId, text }) {
             setSearch(false);
           }
         }, mode ? t("Raw text") : "Markdown"))),
-        (0, import_react73.createElement)(CopyTaskText, { key: selectedId, text, label: t("Copy") }),
+        (0, import_react73.createElement)(CopyTaskText, { key: selectedId, text: contentText2, label: t(sections?.length > 1 ? "Copy all outputs" : "Copy") }),
         (0, import_react73.createElement)("button", {
           type: "button",
           className: "bt-tool",
@@ -43747,7 +43764,22 @@ function TaskContent({ header, panelId, selectedId, text }) {
       query && (0, import_react73.createElement)("small", { role: "status" }, (matches2 ? index + 1 : 0) + " / " + matches2),
       matches2 > 1 && (0, import_react73.createElement)("button", { type: "button", onClick: () => setIndex((index + 1) % matches2) }, t("Next match"))
     ),
-    (0, import_react73.createElement)("div", { className: "bt-task-content-body", role: "tabpanel", id: panelId, "aria-labelledby": selectedId }, raw || search ? (0, import_react73.createElement)("pre", null, parts.map((piece, i) => (0, import_react73.createElement)("span", { key: i }, i ? (0, import_react73.createElement)("mark", { ref: i === index + 1 ? active : void 0, "data-current": i === index + 1 }, query) : null, piece))) : (0, import_react73.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text, labels: mdLabels(), variant: "compact" }))
+    (0, import_react73.createElement)(
+      "div",
+      { className: "bt-task-content-body", role: "tabpanel", id: panelId, "aria-labelledby": selectedId },
+      sections ? blocks.map((block) => (0, import_react73.createElement)(
+        "section",
+        { key: block.key, className: "bt-task-content-section", "aria-label": block.label },
+        (0, import_react73.createElement)(
+          "div",
+          { className: "bt-task-content-section-head" },
+          (0, import_react73.createElement)("span", null, block.label),
+          block.control,
+          sections.length > 1 && (0, import_react73.createElement)(CopyTaskText, { text: block.text, label: t("Copy this output") })
+        ),
+        renderText(block)
+      )) : renderText(blocks[0])
+    )
   );
 }
 
@@ -43932,14 +43964,32 @@ function contextLabel(edge) {
     edge.round && t("Round {number}", { number: edge.round })
   ].filter(Boolean).join(" · ");
 }
+function HandoffContext({ edge, onPlan }) {
+  if (!edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null;
+  const description = [
+    contextLabel(edge),
+    edge.planReason && t("Plan change reason") + " · " + edge.planReason,
+    edge.planVersion && t("View plan v{version}", { version: edge.planVersion })
+  ].filter(Boolean).join("\n");
+  return (0, import_react75.createElement)("button", {
+    type: "button",
+    className: "bt-tool",
+    title: description,
+    "aria-label": description,
+    onClick: (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (edge.planVersion) onPlan(edge.planVersion);
+    }
+  }, (0, import_react75.createElement)(InfoIcon));
+}
 function HandoffRow({ entry, children, onPlan }) {
   const [open, setOpen] = (0, import_react75.useState)(false);
   const [tab, select] = (0, import_react75.useState)(0);
   const id = (0, import_react75.useId)();
   const tabs = entry.reason ? ["Input", "Output", "Retry reason"] : ["Input", "Output"];
-  const [outputIndex, selectOutput] = (0, import_react75.useState)(0);
-  const output = entry.outputs[outputIndex] ?? entry.outputs[0];
-  const edge = [entry.incoming, output][tab];
+  const output = entry.outputs[0];
+  const edge = tab === 0 ? entry.incoming : tab === 1 && entry.outputs.length === 1 ? output : void 0;
   const text = [
     entry.incoming?.text ?? t("No recorded input"),
     output?.text ?? t("No recorded output"),
@@ -43966,24 +44016,23 @@ function HandoffRow({ entry, children, onPlan }) {
       }
     }, t(label)))
   );
+  const sections = tab === 1 && entry.outputs.length > 0 ? entry.outputs.map((item) => ({
+    key: item.key,
+    label: item.route + (Number.isFinite(item.at) ? " · " + new Date(item.at).toLocaleString() : ""),
+    text: item.text,
+    control: (0, import_react75.createElement)(HandoffContext, { edge: item, onPlan })
+  })) : void 0;
   return (0, import_react75.createElement)(
     "details",
     { className: "bt-handoff-row", onToggle: (e) => setOpen(e.currentTarget.open) },
     children,
-    open && edge?.planReason && (0, import_react75.createElement)("small", { className: "bt-handoff-context" }, t("Plan change reason") + " · " + edge.planReason),
-    open && (0, import_react75.createElement)(TaskContent, { key: tab + "/" + outputIndex, header: (0, import_react75.createElement)(
+    open && (0, import_react75.createElement)(TaskContent, { key: tab, header: (0, import_react75.createElement)(
       "div",
       { className: "bt-handoff-content-tabs" },
       tabBar,
-      (0, import_react75.createElement)("small", null, contextLabel(edge)),
-      edge?.planVersion && (0, import_react75.createElement)("button", { type: "button", className: "bt-mini", onClick: () => onPlan(edge.planVersion) }, t("View plan v{version}", { version: edge.planVersion })),
-      tab === 1 && entry.outputs.length > 1 && (0, import_react75.createElement)("select", {
-        "aria-label": t("Output recipient"),
-        value: outputIndex,
-        onChange: (e) => selectOutput(Number(e.target.value))
-      }, entry.outputs.map((item, index) => (0, import_react75.createElement)("option", { key: item.key, value: index }, item.route, contextLabel(item) && " · " + contextLabel(item), Number.isFinite(item.at) && " · " + new Date(item.at).toLocaleString())))
-    ), panelId: id, selectedId: id + tab, text }),
-    open && edge?.partial && (0, import_react75.createElement)("small", null, t("Only part of the message is available."))
+      (0, import_react75.createElement)(HandoffContext, { edge, onPlan })
+    ), panelId: id, selectedId: id + tab, text, sections }),
+    open && [edge, ...tab === 1 ? entry.outputs : []].some((item) => item?.partial) && (0, import_react75.createElement)("small", null, t("Only part of the message is available."))
   );
 }
 function TaskHandoffs({ detail, roster, history }) {
@@ -43998,7 +44047,7 @@ function TaskHandoffs({ detail, roster, history }) {
     const bot = roster?.byId?.[entry.owner];
     const label = [
       String(index + 1) + ". " + (entry.incoming.sender === "user" ? t("User") : name(entry.incoming.from)) + " → " + name(entry.incoming.to),
-      contextLabel(entry.incoming),
+      ["User request", "Result return", "Dispatch"].includes(entry.incoming.kind) && t(entry.incoming.kind),
       entry.reason && t("Retry")
     ].filter(Boolean).join(" · ");
     return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) };
@@ -44029,15 +44078,7 @@ function TaskHandoffs({ detail, roster, history }) {
         null,
         (0, import_react75.createElement)("span", { className: "bt-handoff-dot", style: { background: entry.background } }),
         entry.label,
-        entry.incoming.planVersion && (0, import_react75.createElement)("button", {
-          type: "button",
-          className: "bt-mini",
-          onClick: (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            selectPlan(entry.incoming.planVersion);
-          }
-        }, t("View plan v{version}", { version: entry.incoming.planVersion })),
+        (0, import_react75.createElement)(HandoffContext, { edge: entry.incoming, onPlan: selectPlan }),
         Number.isFinite(entry.at) && (0, import_react75.createElement)("time", null, new Date(entry.at).toLocaleString())
       )
     ))

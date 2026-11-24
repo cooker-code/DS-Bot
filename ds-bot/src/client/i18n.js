@@ -11,6 +11,8 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Copy all outputs": "复制全部输出",
+  "Copy this output": "复制这份输出",
   "Plan created": "计划创建时间",
   "Node owner": "执行 Bot",
   "Execution plans": "执行计划",

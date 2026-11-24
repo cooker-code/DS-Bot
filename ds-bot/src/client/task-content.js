@@ -17,23 +17,34 @@ export function CopyTaskText({ text, label }) {
     } }, status === t('Copied') ? h(CheckIcon) : h(CopyIcon), status && h('span', { role: 'status', className: 'bt-task-copy-feedback' }, status))
 }
 
-export function TaskContent({ header, panelId, selectedId, text }) {
+export function TaskContent({ header, panelId, selectedId, text, sections }) {
   const [raw, setRaw] = useState(false)
   const [search, setSearch] = useState(false)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const active = useRef(null)
   useEffect(() => { setIndex(0); setQuery(''); setSearch(false) }, [selectedId])
-  const parts = search && query ? text.split(query) : [text]
-  const matches = parts.length - 1
+  const contentText = sections ? sections.map(section => section.text).join('\n\n') : text
+  let matches = 0
+  const blocks = (sections ?? [{ text }]).map(section => {
+    const parts = search && query ? section.text.split(query) : [section.text]
+    const offset = matches
+    matches += parts.length - 1
+    return { ...section, parts, offset }
+  })
+  const renderText = block => raw || search
+    ? h('pre', null, block.parts.map((piece, i) => h('span', { key: i },
+      i ? h('mark', { ref: block.offset + i - 1 === index ? active : undefined,
+        'data-current': block.offset + i - 1 === index }, query) : null, piece)))
+    : h(MarkdownText, { text: block.text, labels: mdLabels(), variant: 'compact' })
   useEffect(() => { active.current?.scrollIntoView({ block: 'nearest' }) }, [query, index])
   return h('div', { className: 'bt-task-content' },
     h('div', { className: 'bt-task-content-head' }, h('div', { className: 'bt-task-content-context' }, header),
       h('div', { className: 'bt-task-content-actions' },
-      h('small', null, t('{n} lines', { n: text.split('\n').length })),
+      h('small', null, t('{n} lines', { n: contentText.split('\n').length })),
       h('div', { className: 'bt-task-content-modes' }, [true, false].map(mode => h('button', { key: String(mode), type: 'button',
         'aria-pressed': mode === (raw || search), onClick: () => { setRaw(mode); setSearch(false) } }, mode ? t('Raw text') : 'Markdown'))),
-      h(CopyTaskText, { key: selectedId, text, label: t('Copy') }),
+      h(CopyTaskText, { key: selectedId, text: contentText, label: t(sections?.length > 1 ? 'Copy all outputs' : 'Copy') }),
       h('button', { type: 'button', className: 'bt-tool', title: t('Search'), 'aria-label': t('Search'), 'aria-expanded': search,
         onClick: () => setSearch(!search) }, h(SearchIcon)))),
     search && h('div', { className: 'bt-task-find' }, h('input', { autoFocus: true, value: query, 'aria-label': t('Find in text'),
@@ -42,7 +53,8 @@ export function TaskContent({ header, panelId, selectedId, text }) {
         if (e.key === 'Enter' && matches) setIndex((index + (e.shiftKey ? matches - 1 : 1)) % matches) } }),
       query && h('small', { role: 'status' }, (matches ? index + 1 : 0) + ' / ' + matches),
       matches > 1 && h('button', { type: 'button', onClick: () => setIndex((index + 1) % matches) }, t('Next match'))),
-    h('div', { className: 'bt-task-content-body', role: 'tabpanel', id: panelId, 'aria-labelledby': selectedId }, raw || search
-      ? h('pre', null, parts.map((piece, i) => h('span', { key: i }, i ? h('mark', { ref: i === index + 1 ? active : undefined, 'data-current': i === index + 1 }, query) : null, piece)))
-      : h(MarkdownText, { text, labels: mdLabels(), variant: 'compact' })))
+    h('div', { className: 'bt-task-content-body', role: 'tabpanel', id: panelId, 'aria-labelledby': selectedId },
+      sections ? blocks.map(block => h('section', { key: block.key, className: 'bt-task-content-section', 'aria-label': block.label },
+        h('div', { className: 'bt-task-content-section-head' }, h('span', null, block.label), block.control,
+          sections.length > 1 && h(CopyTaskText, { text: block.text, label: t('Copy this output') })), renderText(block))) : renderText(blocks[0])))
 }
