@@ -12884,6 +12884,12 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
+  "Retry reason": "重试原因",
+  "The host restarted during execution.": "执行期间宿主重启，本次从中断处恢复。",
+  "The Bot wrote the tool call as text, so the tool did not run.": "Bot 把工具调用写成了普通文本，工具未执行。",
+  "The Bot ended its turn before calling a tool.": "Bot 在调用工具前结束了上一轮，工作尚未执行。",
+  "The previous attempt failed without an error message.": "上次执行失败，未记录具体错误。",
+  "No retry reason was recorded.": "未记录重试原因。",
   "Task handoffs": "作业交接情况",
   "No assignments yet": "尚未派工",
   "Handoff input": "本次输入",
@@ -43580,6 +43586,10 @@ function MembersSection({ title, controls, children }) {
   );
 }
 
+// src/shared/retry-prompts.js
+var RETRY_TEXT = "Your last reply wrote a tool call as plain text (<tool_call>…), so it did not run and nothing happened. Call the tool through the tool interface now, then reply as you meant to.";
+var RETRY_PROMISE_TEXT = "Your last reply said you would start working, but you ended the turn without calling any tool, so nothing ran. Call the tools you need and do the work now. If your last reply already was your whole answer, call skip_group_turn; it stays posted.";
+
 // src/client/task-handoffs.js
 var import_react73 = require("react");
 function legacyInput(rounds, round, index) {
@@ -43587,19 +43597,29 @@ function legacyInput(rounds, round, index) {
   const predecessors = node ? (node.inputs ?? []).map((input) => rounds[input.round - 1]) : [rounds[index - 1]];
   return [round.plan, ...predecessors.map((run2) => run2?.result)].filter(Boolean).join("\n\n");
 }
+function retryReason(retry) {
+  if (retry.restart) return t("The host restarted during execution.");
+  if (retry.input === RETRY_TEXT) return t("The Bot wrote the tool call as text, so the tool did not run.");
+  if (retry.input === RETRY_PROMISE_TEXT) return t("The Bot ended its turn before calling a tool.");
+  if (retry.failedAt) return retry.previousOutput || t("The previous attempt failed without an error message.");
+  return t("No retry reason was recorded.");
+}
 function handoffs(rounds) {
   const entries2 = [];
   for (const [index, round] of rounds.entries()) {
     const node = round.planNode;
+    const block = rounds[node?.previousRound - 1]?.planNode?.block;
+    const decision = block?.decisions?.find((item) => item.nextRound === index + 1);
     const firstAt = round.startedAt ?? round.sentAt ?? round.assignedAt;
     const attempts = [
       {
         at: round.retries?.length ? Math.min(firstAt ?? Infinity, round.retries[0].at) : firstAt,
         input: [round.dispatchInput ?? legacyInput(rounds, round, index), ...round.inputFiles ?? []].filter(Boolean).join("\n"),
         retry: Boolean(node?.previousRound),
-        restart: rounds[node?.previousRound - 1]?.planNode?.block?.cause === "restart"
+        restart: block?.cause === "restart",
+        reason: [...new Set([block?.reason, decision?.reason].filter(Boolean))].join("\n")
       },
-      ...(round.retries ?? []).map((retry) => ({ ...retry, retry: true }))
+      ...(round.retries ?? []).map((retry) => ({ ...retry, retry: true, reason: retryReason(retry) }))
     ];
     attempts.forEach((attempt, i) => {
       const next = attempts[i + 1];
@@ -43648,7 +43668,9 @@ function TaskHandoffs({ detail, roster }) {
       (0, import_react73.createElement)("strong", null, t("Handoff input")),
       (0, import_react73.createElement)("p", null, entry.input || t("No recorded input")),
       (0, import_react73.createElement)("strong", null, t("Handoff output")),
-      (0, import_react73.createElement)("p", null, entry.output || t("No recorded output"))
+      (0, import_react73.createElement)("p", null, entry.output || t("No recorded output")),
+      entry.retry && (0, import_react73.createElement)("strong", null, t("Retry reason")),
+      entry.retry && (0, import_react73.createElement)("p", null, entry.reason || t("No retry reason was recorded."))
     ))
   );
 }

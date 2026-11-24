@@ -3,6 +3,7 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { RETRY_PROMISE_TEXT, RETRY_TEXT } from '../src/shared/retry-prompts.js'
 import { projectCardSummary } from '../src/host/project-tasks.js'
 
 const { outputFiles } = await build({
@@ -278,14 +279,25 @@ test('task detail shows results below the criteria and switches to a read-only r
   assert.equal(handoffs.type.name, 'TaskHandoffs')
   const rounds = [
     { ownerId: 'a', dispatchId: 'one', startedAt: 2, dispatchInput: 'Original input',
-      retries: [{ at: 6, input: 'Retry input', failedAt: 4 }], result: 'Final receipt' },
+      retries: [{ at: 6, input: 'Retry input', failedAt: 4, previousOutput: 'Service timed out' }], result: 'Final receipt' },
     { ownerId: 'b', startedAt: 5, plan: 'Inspect output', planNode: { inputs: [] } },
   ]
   const timeline = handoffs.type({ detail: { rounds }, roster: { byId: { a: { name: 'Alice', color: 'red' } } } })
   const rows = Array.from(timeline.children.at(-1))
   assert.deepEqual(rows.map(row => row.children[0].children[1]), ['1. Alice', '2. b', '3. Alice · Retry'])
   assert.deepEqual(rows.map(row => row.children[2].children[0]), ['Original input', 'Inspect output', 'Retry input'])
-  assert.deepEqual(rows.map(row => row.children[4].children[0]), ['Attempt failed', 'No recorded output', 'Final receipt'])
+  assert.deepEqual(rows.map(row => row.children[4].children[0]), ['Service timed out', 'No recorded output', 'Final receipt'])
+  assert.equal(rows[0].children[5], false)
+  assert.deepEqual(rows[2].children.slice(5).map(el => el.children[0]).join('|'), 'Retry reason|Service timed out')
+  const recovery = handoffs.type({ detail: { rounds: [
+    { planNode: { block: { reason: 'Build interrupted', decisions: [
+      { reason: 'Waiting for restart' }, { nextRound: 2, reason: 'Runner is available again' },
+    ] } } },
+    { planNode: { previousRound: 1 }, retries: [{ restart: true }, {}, { input: RETRY_TEXT }, { input: RETRY_PROMISE_TEXT }] },
+  ] } })
+  const reasons = Array.from(recovery.children.at(-1)).slice(1).map(row => row.children[6].children[0])
+  assert.deepEqual(reasons, ['Build interrupted\nRunner is available again', 'The host restarted during execution.', 'No retry reason was recorded.',
+    'The Bot wrote the tool call as text, so the tool did not run.', 'The Bot ended its turn before calling a tool.'])
   assert.deepEqual(Array.from(timeline.children[1].children[0], segment => segment.props['data-retry']), [false, false, true])
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)

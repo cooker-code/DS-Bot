@@ -1,3 +1,4 @@
+import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
 import { dispatchedRound, interruptProject, inspectedTurn, pendingAfterFailure, recoveryInput } from './project-execution.js'
 // Turns: what each Bot Session is doing now (for its mascot), which turns another Bot
 // triggered, the waiters and inboxes of group rounds, and routing a finished turn's reply.
@@ -166,8 +167,6 @@ const noticeStopReason = (source, content) => {
   return /^ended abnormally \(([^)]*)\)/.exec(rest)?.[1] ?? 'error'
 }
 
-const RETRY_TEXT = 'Your last reply wrote a tool call as plain text (<tool_call>…), so it did not run and nothing happened. Call the tool through the tool interface now, then reply as you meant to.'
-const RETRY_PROMISE_TEXT = 'Your last reply said you would start working, but you ended the turn without calling any tool, so nothing ran. Call the tools you need and do the work now. If your last reply already was your whole answer, call skip_group_turn; it stays posted.'
 // The turn number a running turn gets when it started before this plugin was loaded and
 // dsh does not say which number it has. dsh numbers turns from 1, so this one is unused.
 const RECOVERED_TURN = -1
