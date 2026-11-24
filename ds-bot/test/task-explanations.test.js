@@ -14,7 +14,7 @@ async function setup(t) {
   const records = [{ id: 'm1', time: 1, roomId: 'group', taskId: 'card', from: 'lead', to: 'dev',
     text: '**节点3已 dispatch round4**；口径待确认，未授权生产写入。' }]
   const requests = []
-  const rt = { home, roomOf: id => id === room.id ? room : undefined, botOf: id => bots.find(bot => bot.id === id),
+  const rt = { home, state: { prefs: {} }, roomOf: id => id === room.id ? room : undefined, botOf: id => bots.find(bot => bot.id === id),
     readOnly: () => false, uiLanguage: () => 'Chinese (简体中文)', chatOf: id => id + '-session',
     ledger: { records: () => [] }, taskPairMessages: () => records,
     async botShot(...args) { requests.push(args); return '第 3 步已分配给开发，业务口径仍待确认，尚未获准写入生产。' } }
@@ -84,4 +84,32 @@ test('losing the team write lock during generation does not save an explanation'
   rt.botShot = async () => { rt.readOnly = () => true; return 'Completed explanation' }
   await assert.rejects(explainTaskMessage(rt, body), { code: 'bot/read-only' })
   await assert.rejects(explainTaskMessage(rt, body), { code: 'bot/read-only' })
+})
+
+test('custom prompt reaches the model, invalidates previous text and resetting restores the default', async t => {
+  const { rt, body, requests } = await setup(t)
+  await explainTaskMessage(rt, body)
+  rt.state.prefs.taskExplanationPrompt = '先说谁要做什么，再说明没定下来的事情对后续有什么影响。'
+  assert.equal((await explainTaskMessage(rt, body)).cached, false)
+  assert.ok(requests[1][1].includes(rt.state.prefs.taskExplanationPrompt))
+  assert.ok(requests[1][1].endsWith(EXPLANATION_SYSTEM.split('\n\n').at(-1)))
+  assert.ok(requests[1][1].indexOf('historical source data') > requests[1][1].indexOf(rt.state.prefs.taskExplanationPrompt))
+  assert.equal((await explainTaskMessage(rt, body)).cached, true)
+  assert.equal(requests.length, 2)
+  delete rt.state.prefs.taskExplanationPrompt
+  assert.equal((await explainTaskMessage(rt, body)).cached, false)
+  assert.equal(requests[2][1], EXPLANATION_SYSTEM)
+})
+
+test('explanations use the sender Bot, then the recipient, then the group admin', async t => {
+  const { rt, body, requests, room } = await setup(t)
+  await explainTaskMessage(rt, body)
+  assert.equal(requests[0][0].id, 'lead')
+  rt.botOf = id => id === 'dev' ? { id, name: 'Developer' } : undefined
+  await explainTaskMessage(rt, body)
+  assert.equal(requests[1][0].id, 'dev')
+  room.admin = 'admin'
+  rt.botOf = id => id === 'admin' ? { id, name: 'Admin' } : undefined
+  await explainTaskMessage(rt, body)
+  assert.equal(requests[2][0].id, 'admin')
 })

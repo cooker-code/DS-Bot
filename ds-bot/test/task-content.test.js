@@ -41,7 +41,7 @@ test('multiple outputs retain separate originals and search indexes span all out
 
 test('plain language displays its own explanation while Markdown and its copy retain the exact original', () => {
   const text = '**节点3已 dispatch round4**\n\n未授权生产写入。'
-  const identity = JSON.stringify(['en', [[undefined, text]]])
+  const identity = JSON.stringify(['en', [[undefined, text]], null])
   states = [false, false, '', 0, true, { identity, text: { text: '第 3 步已派给开发，尚未获准写入生产。' } }, 0]
   hook = 0
   const props = { selectedId: 'input', text, explain() { throw new Error('render must not generate') } }
@@ -65,7 +65,7 @@ test('a changed source never displays an older explanation and failed generation
   let view = module.exports.TaskContent(props)
   assert.equal(findAll(view, n => n.props?.text === 'stale explanation').length, 0)
   assert.equal(findAll(view, n => n.props?.role === 'status').length, 1)
-  states[5] = { identity: JSON.stringify(['en', [[undefined, props.text]]]), text: { error: 'provider failed' } }
+  states[5] = { identity: JSON.stringify(['en', [[undefined, props.text]], null]), text: { error: 'provider failed' } }
   hook = 0
   view = module.exports.TaskContent(props)
   assert.equal(findAll(view, n => n.props?.role === 'alert').length, 1)
@@ -75,7 +75,7 @@ test('a changed source never displays an older explanation and failed generation
 
 test('copying all explanations waits for every parallel output, including after a failure', () => {
   const sections = [{ key: 'a', text: 'first original' }, { key: 'b', text: 'second original' }]
-  const identity = JSON.stringify(['en', sections.map(block => [block.key, block.text])])
+  const identity = JSON.stringify(['en', sections.map(block => [block.key, block.text]), null])
   states = [false, false, '', 0, true, { identity, a: { text: 'First explanation' } }, 0]
   const render = () => { hook = 0; return module.exports.TaskContent({ selectedId: 'output', sections, explain() {} }) }
   const copies = () => findAll(render(), n => n.type?.name === 'CopyTaskText').map(n => n.props.text)
@@ -84,4 +84,14 @@ test('copying all explanations waits for every parallel output, including after 
   assert.deepEqual(copies(), ['First explanation'])
   states[5].b = { text: 'Second explanation' }
   assert.deepEqual(copies(), ['First explanation\n\nSecond explanation', 'First explanation', 'Second explanation'])
+})
+
+test('changing the configured prompt hides an explanation generated under the earlier prompt', () => {
+  const text = 'Recorded message'
+  states = [false, false, '', 0, true, { identity: JSON.stringify(['en', [[undefined, text]], 'old prompt']),
+    text: { text: 'Old explanation' } }, 0]
+  hook = 0
+  const view = module.exports.TaskContent({ text, explanationVersion: 'new prompt', explain() {} })
+  assert.equal(findAll(view, n => n.props?.text === 'Old explanation').length, 0)
+  assert.equal(findAll(view, n => n.props?.role === 'status').length, 1)
 })

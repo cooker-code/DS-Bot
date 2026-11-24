@@ -1,5 +1,6 @@
 import { taskInteractions } from './task-interactions.js'
 import { explainTaskMessage } from './task-explanations.js'
+import { TASK_EXPLANATION_PROMPT_LIMIT } from '../shared/task-explanation-prompt.js'
 import { readReceiptFile, taskResultView } from './task-result-view.js'
 import { readResultDocument } from './project-result-files.js'
 import { assistantId, projectNotice } from './project-assistant.js'
@@ -226,6 +227,9 @@ export function install(rt) {
   const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'session-times', 'run-stats', 'room-context', 'group-discussions', 'room-progress', 'task-reference', 'project-task-list', 'project-task-detail', 'task-explanation', 'project-branches', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
 
   async function setPrefs(body) {
+    if (body.taskExplanationPrompt !== undefined && body.taskExplanationPrompt !== null &&
+        (typeof body.taskExplanationPrompt !== 'string' || body.taskExplanationPrompt.length > TASK_EXPLANATION_PROMPT_LIMIT))
+      throw invalid('The explanation prompt must be text of at most {n} characters.'.replace('{n}', TASK_EXPLANATION_PROMPT_LIMIT))
     if (body.theme !== undefined) {
       if (typeof body.theme !== 'string' || !/^[a-z][\w-]{0,31}$/.test(body.theme)) throw invalid('Unknown theme')
       state.prefs.theme = body.theme
@@ -285,6 +289,11 @@ export function install(rt) {
       const sizes = Object.entries(body.memoryLimits ?? {}).filter(([scope, size]) => MEMORY_LIMIT_SCOPES.has(scope) && Number.isInteger(size) && size >= MEMORY_LIMIT_MIN && size <= MEMORY_LIMIT_MAX)
       if (sizes.length === 0) delete state.prefs.memoryLimits
       else state.prefs.memoryLimits = { ...state.prefs.memoryLimits, ...Object.fromEntries(sizes) }
+    }
+    if (body.taskExplanationPrompt !== undefined) {
+      const prompt = body.taskExplanationPrompt?.trim()
+      if (prompt) state.prefs.taskExplanationPrompt = prompt
+      else delete state.prefs.taskExplanationPrompt
     }
     return rt.save()
   }

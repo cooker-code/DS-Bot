@@ -11,6 +11,15 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Prompts": "提示词",
+  "Task message explanations": "任务人话解释",
+  "Plain-language prompt": "人话提示词",
+  "Restore default": "恢复默认",
+  "Saved changes apply the next time you open Plain language and refresh earlier explanations.": "保存后，下次打开「人话」会按新提示词重新生成解释。",
+  "Model selection": "使用模型",
+  "Message sender’s Bot model": "消息发送方 Bot 的模型",
+  "Uses the sender Bot’s base model, ignoring group member overrides. If that Bot is missing, uses the recipient or group admin. Standard models may fall back to the host default; local agents stay on their own CLI.": "使用发送方「Bot 设置」中的基础模型，不采用群成员模型覆盖。发送方 Bot 不存在时改用接收方或群管理员。普通模型可能回退到宿主默认模型；本地 Agent 保持使用自己的 CLI。",
+  "The explanation prompt must be text of at most 20000 characters.": "解释提示词须为文本，最多 20000 个字符。",
   "Plain language": "人话",
   "Copy explanation": "复制解释",
   "Message view": "消息视图",

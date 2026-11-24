@@ -30,7 +30,7 @@
 
 | 操作 | 业务及输入 | 服务、返回与数据层 |
 | --- | --- | --- |
-| `set-prefs` | 差量对象。`theme` 主题，`accent` 为十六进制颜色或 null，`layout` 为 bubble/flat，`width/flatWidth` 为 50–100 的整数百分比，`effects` 为 full/reduced/off，`motion` 为 normal/quiet/lively。`thinking,enterToSend,memoryAutoRecall` 为开关。`defaultBotModel` 为模型引用或 null。`memoryLimits` 以 bot/group/team 映射到每层 1000–200000 个字符。 | `channel.setPrefs` 写 `team_state.prefs_json`，返回完整 prefs。用 `state.prefs` 回读。 |
+| `set-prefs` | 差量对象。`theme` 主题，`accent` 为十六进制颜色或 null，`layout` 为 bubble/flat，`width/flatWidth` 为 50–100 的整数百分比，`effects` 为 full/reduced/off，`motion` 为 normal/quiet/lively。`thinking,enterToSend,memoryAutoRecall` 为开关。`defaultBotModel` 为模型引用或 null。`taskExplanationPrompt` 为任务人话解释的自定义话术提示词（字符串，最多 20000 字符）；传 null 或空白恢复默认。`memoryLimits` 以 bot/group/team 映射到每层 1000–200000 个字符。 | `channel.setPrefs` 写 `team_state.prefs_json`，返回完整 prefs。用 `state.prefs` 回读。taskExplanationPrompt 仅影响任务解释，保存后新生成或已打开的人话视图按新 Prompt 重新生成，旧缓存按实际 Prompt 失效；不更改消息、Bot 简介或执行模型。 |
 | `models` / `efforts` | `models {}` 刷新目录；`efforts {ref}` 查询某一模型支持的思考强度。 | `catalog/reasoningOf` 返回 `{modelsKey}` 和强度结构（无候选时 `{efforts:[]}`）。模型清单从 `state.models` 获取。 |
 | `providers` / `provider-key` | 读取可配置供应商用 `{}`。设置密钥用 `{provider,value}`，`value:null` 清除。 | [providers.js](../../../../ds-bot/src/host/providers.js) 的 `providersView/setProviderKey/clearProviderKey`，使用 DSH settings 和 credentials。返回供应商视图，读取可用状态与是否已配置。 |
 | `provider-add` / `provider-remove` | 添加用 `provider,custom?,key?`，自定义供应商还提供 `name,api,baseURL,models`。移除用 `provider`。 | `addProvider/removeProvider` 操作宿主供应商配置及其凭据，返回更新后的供应商视图。 |

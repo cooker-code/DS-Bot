@@ -17,7 +17,7 @@ export function CopyTaskText({ text, label }) {
     } }, status === t('Copied') ? h(CheckIcon) : h(CopyIcon), status && h('span', { role: 'status', className: 'bt-task-copy-feedback' }, status))
 }
 
-export function TaskContent({ header, panelId, selectedId, text, sections, explain }) {
+export function TaskContent({ header, panelId, selectedId, text, sections, explain, explanationVersion }) {
   const [raw, setRaw] = useState(false)
   const [search, setSearch] = useState(false)
   const [query, setQuery] = useState('')
@@ -28,7 +28,7 @@ export function TaskContent({ header, panelId, selectedId, text, sections, expla
   const [attempt, retry] = useState(0)
   useEffect(() => { setIndex(0); setQuery(''); setSearch(false) }, [selectedId])
   const contentText = sections ? sections.map(section => section.text).join('\n\n') : text
-  const sourceIdentity = JSON.stringify([language(), (sections ?? [{ text }]).map(block => [block.key, block.text])])
+  const sourceIdentity = JSON.stringify([language(), (sections ?? [{ text }]).map(block => [block.key, block.text]), explanationVersion ?? null])
   const explanationFor = block => explanations.identity === sourceIdentity ? explanations[block.key ?? 'text'] : undefined
   const sources = sections ?? [{ text }]
   const shownText = human && !search

@@ -106,7 +106,7 @@ function HandoffContext({ edge, onPlan, note }) {
       onMouseEnter: cancelClose, onMouseLeave: leave }, description), document.body))
 }
 
-function HandoffRow({ entry, children, onPlan, reveal, explain }) {
+function HandoffRow({ entry, children, onPlan, reveal, explain, explanationVersion }) {
   const row = useRef(null)
   const [open, setOpen] = useState(false)
   const [tab, select] = useState(0)
@@ -142,7 +142,7 @@ function HandoffRow({ entry, children, onPlan, reveal, explain }) {
   return h('details', { ref: row, id: entry.id, className: 'bt-handoff-row', onToggle: e => setOpen(e.currentTarget.open) },
     children, open && h(TaskContent, { key: tab, header: h('div', { className: 'bt-handoff-content-tabs' },
       tabBar, h(HandoffContext, { edge, onPlan })), panelId: id, selectedId: id + tab, text, sections,
-      explain: tab < 2 && (edge || sections?.length) ? block => explain(block.key ?? edge.key) : undefined }),
+      explanationVersion, explain: tab < 2 && (edge || sections?.length) ? block => explain(block.key ?? edge.key) : undefined }),
     open && [edge, ...(tab === 1 ? entry.outputs : [])].some(item => item?.partial) &&
       h('small', null, t('Only part of the message is available.')))
 }
@@ -176,6 +176,7 @@ export function TaskHandoffs({ detail, roster, history, roomId, taskId }) {
         onClick: () => setReveal({ key: entry.key }) })))
       : history && h('p', { className: 'bt-empty' }, t('No Bot handoffs recorded.')),
     entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null,
+      explanationVersion: roster?.prefs?.taskExplanationPrompt,
       explain: messageKey => call('task-explanation', { roomId, taskId, messageKey, language: language() }) },
       h('summary', null, h('span', { className: 'bt-handoff-dot', style: { background: entry.background } }), entry.label, h(HandoffContext, { edge: entry.incoming, onPlan: selectPlan }),
         notes.filter(note => note.after === entry.key).map(noteIcon),

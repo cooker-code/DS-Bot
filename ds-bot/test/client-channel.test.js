@@ -98,6 +98,29 @@ test('task-explanation generates on demand with memory off and allows cached rea
   assert.equal(calls, 1)
 })
 
+test('the explanation prompt can be saved, read back and reset through preferences', async t => {
+  const { rt, call, stop } = start({ memory: false })
+  t.after(stop)
+  await call('state')
+  const prompt = '先说明这条消息要求做什么，再说明哪些信息还没确认。'
+  await call('set-prefs', { taskExplanationPrompt: '  ' + prompt + '\n' })
+  assert.equal((await call('state')).value.prefs.taskExplanationPrompt, prompt)
+  for (const invalid of [false, 12, {}, 'x'.repeat(20001)]) {
+    const result = await call('set-prefs', { taskExplanationPrompt: invalid, width: 95 })
+    assert.equal(result.error.code, 'bot/invalid')
+    assert.equal(rt.state.prefs.taskExplanationPrompt, prompt)
+    assert.notEqual(rt.state.prefs.width, 95)
+  }
+  rt.readOnly = () => 'Another host is writing'
+  assert.equal((await call('set-prefs', { taskExplanationPrompt: 'changed' })).error.code, 'bot/read-only')
+  rt.readOnly = () => undefined
+  await call('set-prefs', { taskExplanationPrompt: null })
+  assert.equal((await call('state')).value.prefs.taskExplanationPrompt, undefined)
+  await call('set-prefs', { taskExplanationPrompt: prompt })
+  await call('set-prefs', { taskExplanationPrompt: '\n ' })
+  assert.equal((await call('state')).value.prefs.taskExplanationPrompt, undefined)
+})
+
 test('project-task-list reads one room at the same revision as the team view, including on a read-only host', async t => {
   const { rt, call, stop } = start()
   t.after(stop)
