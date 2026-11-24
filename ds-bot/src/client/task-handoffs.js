@@ -35,9 +35,9 @@ function handoffs(detail, history) {
   for (const { at, edge, attempt, reason } of ordered.sort((a, b) => a.at - b.at)) {
     if (!attempt) {
       const parent = received.get(edge.replyTo)
-      if (parent?.owner === edge.from && !parent.outgoing) parent.outgoing = edge
+      if (parent?.owner === edge.from) parent.outputs.push(edge)
     }
-    const row = { key: edge.key + '/receive/' + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason }
+    const row = { key: edge.key + '/receive/' + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason, outputs: [] }
     rows.push(row)
     if (edge.exchangeId) received.set(edge.exchangeId, row)
   }
@@ -49,8 +49,10 @@ function HandoffRow({ entry, children }) {
   const [open, setOpen] = useState(false)
   const [tab, select] = useState(0)
   const id = useId()
-  const edge = [entry.incoming, entry.outgoing][tab]
-  const text = [entry.incoming?.text ?? t('No recorded input'), entry.outgoing?.text ?? t('No recorded output'),
+  const [outputIndex, selectOutput] = useState(0)
+  const output = entry.outputs[outputIndex] ?? entry.outputs[0]
+  const edge = [entry.incoming, output][tab]
+  const text = [entry.incoming?.text ?? t('No recorded input'), output?.text ?? t('No recorded output'),
     entry.reason ?? t('No retry this time.')][tab]
   const tabBar = h('div', { className: 'bt-task-content-modes bt-handoff-tabs', role: 'tablist', 'aria-label': t('Task handoffs') },
     tabs.map((label, i) => h('button', { key: label, type: 'button', id: id + i, role: 'tab', 'aria-selected': i === tab,
@@ -62,13 +64,17 @@ function HandoffRow({ entry, children }) {
         select(next)
       } }, t(label))))
   return h('details', { className: 'bt-handoff-row', onToggle: e => setOpen(e.currentTarget.open) },
-    children, open && h(TaskContent, { header: tabBar, panelId: id, selectedId: id + tab, text }),
+    children, open && h(TaskContent, { key: tab + '/' + outputIndex, header: h('div', { className: 'bt-handoff-content-tabs' }, tabBar,
+      tab === 1 && entry.outputs.length > 1 && h('select', { 'aria-label': t('Output recipient'), value: outputIndex,
+        onChange: e => selectOutput(Number(e.target.value)) }, entry.outputs.map((item, index) =>
+          h('option', { key: item.key, value: index }, item.route, Number.isFinite(item.at) && ' · ' + new Date(item.at).toLocaleString())))), panelId: id, selectedId: id + tab, text }),
     open && edge?.partial && h('small', null, t('Only part of the message is available.')))
 }
 
 export function TaskHandoffs({ detail, roster, history }) {
   const name = id => roster?.byId?.[id]?.name ?? id
-  const entries = handoffs(detail, history).map((entry, index) => {
+  const messages = history?.messages.map(edge => ({ ...edge, route: name(edge.from) + ' → ' + name(edge.to) }))
+  const entries = handoffs(detail, history && { ...history, messages }).map((entry, index) => {
     const bot = roster?.byId?.[entry.owner]
     const label = [String(index + 1) + '. ' + name(entry.incoming.from) + ' → ' + name(entry.incoming.to),
       entry.reason && t('Retry')].filter(Boolean).join(' · ')

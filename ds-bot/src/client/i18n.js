@@ -32,6 +32,7 @@ const ZH = {
   "Loading message history…": "正在读取交互记录…",
   "Some session history is unavailable.": "部分会话历史无法读取，以下展示可核实的记录。",
   "Only part of the message is available.": "仅能读取部分消息正文。",
+  "Output recipient": "输出交接对象",
   "Retry reason": "重试原因",
   "The host restarted during execution.": "执行期间宿主重启，本次从中断处恢复。",
   "The Bot wrote the tool call as text, so the tool did not run.": "Bot 把工具调用写成了普通文本，工具未执行。",

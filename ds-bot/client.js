@@ -12905,6 +12905,7 @@ var ZH = {
   "Loading message history…": "正在读取交互记录…",
   "Some session history is unavailable.": "部分会话历史无法读取，以下展示可核实的记录。",
   "Only part of the message is available.": "仅能读取部分消息正文。",
+  "Output recipient": "输出交接对象",
   "Retry reason": "重试原因",
   "The host restarted during execution.": "执行期间宿主重启，本次从中断处恢复。",
   "The Bot wrote the tool call as text, so the tool did not run.": "Bot 把工具调用写成了普通文本，工具未执行。",
@@ -40429,7 +40430,7 @@ var TASK_CSS = `
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
 .bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
-.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-content-tabs select{max-width:100%;font:inherit;color:var(--bt-ink);background:var(--bt-card);border:1px solid var(--bt-line);border-radius:4px}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
 .bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
 .bt-task-content-modes [aria-pressed=true],.bt-handoff-tabs [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
@@ -43744,9 +43745,9 @@ function handoffs(detail, history) {
   for (const { at, edge, attempt, reason } of ordered.sort((a, b) => a.at - b.at)) {
     if (!attempt) {
       const parent = received.get(edge.replyTo);
-      if (parent?.owner === edge.from && !parent.outgoing) parent.outgoing = edge;
+      if (parent?.owner === edge.from) parent.outputs.push(edge);
     }
-    const row = { key: edge.key + "/receive/" + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason };
+    const row = { key: edge.key + "/receive/" + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason, outputs: [] };
     rows2.push(row);
     if (edge.exchangeId) received.set(edge.exchangeId, row);
   }
@@ -43757,10 +43758,12 @@ function HandoffRow({ entry, children }) {
   const [open, setOpen] = (0, import_react74.useState)(false);
   const [tab, select] = (0, import_react74.useState)(0);
   const id = (0, import_react74.useId)();
-  const edge = [entry.incoming, entry.outgoing][tab];
+  const [outputIndex, selectOutput] = (0, import_react74.useState)(0);
+  const output = entry.outputs[outputIndex] ?? entry.outputs[0];
+  const edge = [entry.incoming, output][tab];
   const text = [
     entry.incoming?.text ?? t("No recorded input"),
-    entry.outgoing?.text ?? t("No recorded output"),
+    output?.text ?? t("No recorded output"),
     entry.reason ?? t("No retry this time.")
   ][tab];
   const tabBar = (0, import_react74.createElement)(
@@ -43788,13 +43791,23 @@ function HandoffRow({ entry, children }) {
     "details",
     { className: "bt-handoff-row", onToggle: (e) => setOpen(e.currentTarget.open) },
     children,
-    open && (0, import_react74.createElement)(TaskContent, { header: tabBar, panelId: id, selectedId: id + tab, text }),
+    open && (0, import_react74.createElement)(TaskContent, { key: tab + "/" + outputIndex, header: (0, import_react74.createElement)(
+      "div",
+      { className: "bt-handoff-content-tabs" },
+      tabBar,
+      tab === 1 && entry.outputs.length > 1 && (0, import_react74.createElement)("select", {
+        "aria-label": t("Output recipient"),
+        value: outputIndex,
+        onChange: (e) => selectOutput(Number(e.target.value))
+      }, entry.outputs.map((item, index) => (0, import_react74.createElement)("option", { key: item.key, value: index }, item.route, Number.isFinite(item.at) && " · " + new Date(item.at).toLocaleString())))
+    ), panelId: id, selectedId: id + tab, text }),
     open && edge?.partial && (0, import_react74.createElement)("small", null, t("Only part of the message is available."))
   );
 }
 function TaskHandoffs({ detail, roster, history }) {
   const name = (id) => roster?.byId?.[id]?.name ?? id;
-  const entries2 = handoffs(detail, history).map((entry, index) => {
+  const messages = history?.messages.map((edge) => ({ ...edge, route: name(edge.from) + " → " + name(edge.to) }));
+  const entries2 = handoffs(detail, history && { ...history, messages }).map((entry, index) => {
     const bot = roster?.byId?.[entry.owner];
     const label = [
       String(index + 1) + ". " + name(entry.incoming.from) + " → " + name(entry.incoming.to),

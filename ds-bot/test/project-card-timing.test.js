@@ -288,7 +288,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   const rows = Array.from(flows.children.at(-1), row => row.props.entry)
   assert.deepEqual(rows.map(r => r.owner), ['a', 'a', 'b'])
   assert.equal(rows[0].incoming, rows[1].incoming)
-  assert.equal(rows[1].outgoing, rows[2].incoming)
+  assert.equal(rows[1].outputs[0], rows[2].incoming)
   assert.equal(rows[1].reason, 'Service timed out')
   assert.deepEqual(Array.from(flows.children.at(-1), row => row.props.entry.label),
     ['1. manager → a', '2. manager → a · Retry', '3. a → b'])
