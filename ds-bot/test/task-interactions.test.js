@@ -73,6 +73,7 @@ test('legacy sender sessions link parallel sends and returned group results to t
   const events = {
     d: [user(2, 'initial', 'request', 'Initial'),
       { time: 2, type: 'user/message', data: { source: { kind: 'time-context' } } },
+      { time: 2.5, type: 'tool/call', data: { callId: 'invalid', name: 'message_bot', arguments: 'null' } },
       call(3, 'post_to_group', report), done(4, 3),
       user(18, 'return', 'room', 'header · Lead finished the work you asked for]\nThis round so far (oldest first):\nDev: ' + report + '\nLead: ' + result)],
     l: [user(6, 'feedback', 'room', 'header\nThis round so far (oldest first):\nDev: ' + report, { askedBy: 'dev' }),

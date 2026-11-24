@@ -40,6 +40,7 @@ function linkHistory(rows, parts, belongs, room, roster) {
       if (event.type === 'tool/call' && input) {
         let args
         try { args = JSON.parse(event.arguments) } catch { continue }
+        if (!args || typeof args !== 'object') continue
         if (args.taskId && !belongs({ taskId: args.taskId })) continue
         calls.set(event.callId, { ...event, input, args })
       }
