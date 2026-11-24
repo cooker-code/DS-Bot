@@ -40462,7 +40462,7 @@ var TASK_CSS = `
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
 .bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
-.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-handoff-tooltip{position:fixed;z-index:80;box-sizing:border-box;padding:10px 12px;border:1px solid var(--bt-line);border-radius:8px;background:var(--bt-main);color:var(--bt-ink);box-shadow:var(--bt-glass-shadow);font-family:var(--bt-font);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
 .bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
 .bt-task-content-modes [aria-pressed=true],.bt-task-content-modes [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
@@ -43919,6 +43919,7 @@ function TaskPlans({ plans = [], roster, version, onSelect }) {
 
 // src/client/task-handoffs.js
 var import_react75 = require("react");
+var import_react_dom12 = require("react-dom");
 function retryReason(retry) {
   if (retry.restart) return t("The host restarted during execution.");
   if (retry.input === RETRY_TEXT) return t("The Bot wrote the tool call as text, so the tool did not run.");
@@ -43965,23 +43966,91 @@ function contextLabel(edge) {
   ].filter(Boolean).join(" · ");
 }
 function HandoffContext({ edge, onPlan }) {
+  const id = (0, import_react75.useId)();
+  const trigger = (0, import_react75.useRef)(null);
+  const tooltip = (0, import_react75.useRef)(null);
+  const timer = (0, import_react75.useRef)(null);
+  const [place, setPlace] = (0, import_react75.useState)(null);
+  const close = () => {
+    clearTimeout(timer.current);
+    setPlace(null);
+  };
+  const cancelClose = () => clearTimeout(timer.current);
+  const leave = () => {
+    timer.current = setTimeout(close, 120);
+  };
+  const show2 = () => {
+    clearTimeout(timer.current);
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(560, window.innerWidth - 16);
+    const below = viewBottom() - rect.bottom;
+    const above = rect.top - (window.visualViewport?.offsetTop ?? 0);
+    const useAbove = below < 180 && above > below;
+    setPlace({
+      width,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      ...useAbove ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 },
+      maxHeight: Math.max(40, (useAbove ? above : below) - 16)
+    });
+  };
+  (0, import_react75.useEffect)(() => () => clearTimeout(timer.current), []);
+  (0, import_react75.useEffect)(() => {
+    if (!place) return;
+    const scroll = (event) => {
+      if (event.target === window || !tooltip.current?.contains(event.target)) close();
+    };
+    const key = (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        close();
+      }
+    };
+    window.addEventListener("scroll", scroll, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      window.removeEventListener("scroll", scroll, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, [Boolean(place)]);
   if (!edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null;
   const description = [
     contextLabel(edge),
     edge.planReason && t("Plan change reason") + " · " + edge.planReason,
     edge.planVersion && t("View plan v{version}", { version: edge.planVersion })
   ].filter(Boolean).join("\n");
-  return (0, import_react75.createElement)("button", {
-    type: "button",
-    className: "bt-tool",
-    title: description,
-    "aria-label": description,
-    onClick: (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (edge.planVersion) onPlan(edge.planVersion);
-    }
-  }, (0, import_react75.createElement)(InfoIcon));
+  return (0, import_react75.createElement)(
+    import_react75.Fragment,
+    null,
+    (0, import_react75.createElement)("button", {
+      ref: trigger,
+      type: "button",
+      className: "bt-tool",
+      "aria-label": description,
+      "aria-describedby": place ? id : void 0,
+      onMouseEnter: show2,
+      onMouseLeave: leave,
+      onFocus: show2,
+      onBlur: close,
+      onClick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        if (edge.planVersion) onPlan(edge.planVersion);
+      }
+    }, (0, import_react75.createElement)(InfoIcon)),
+    place && (0, import_react_dom12.createPortal)((0, import_react75.createElement)("div", {
+      ref: tooltip,
+      id,
+      role: "tooltip",
+      className: "bt-handoff-tooltip",
+      style: place,
+      onMouseEnter: cancelClose,
+      onMouseLeave: leave
+    }, description), document.body)
+  );
 }
 function HandoffRow({ entry, children, onPlan }) {
   const [open, setOpen] = (0, import_react75.useState)(false);
@@ -45346,7 +45415,7 @@ function rectsOverlap(a, b) {
 
 // src/client/browser-pane.js
 var import_react81 = require("react");
-var import_react_dom12 = require("react-dom");
+var import_react_dom13 = require("react-dom");
 var PANEL_LINGER_MS = 300;
 var WIDTH_KEY = STORAGE.browserWidth;
 var READ_FLASH_MS = 2400;
@@ -45997,7 +46066,7 @@ function BotPanel({ pane, SessionProvider, renderSlot, memberChat, memberSession
     leaving || overlay ? null : (0, import_react81.createElement)("div", { className: "bt-panel-grip", role: "separator", "aria-orientation": "vertical", "aria-label": t("Resize panel"), onPointerDown: startResize }),
     // Over the whole window while dragging: the cursor stays a resize cursor and the
     // pages underneath (the chat, the guest) see no pointer.
-    dragging ? (0, import_react_dom12.createPortal)((0, import_react81.createElement)("div", { className: "bt-drag-shield", "aria-hidden": true }), document.body) : null,
+    dragging ? (0, import_react_dom13.createPortal)((0, import_react81.createElement)("div", { className: "bt-drag-shield", "aria-hidden": true }), document.body) : null,
     hasStrip ? (0, import_react81.createElement)(PanelStrip, { bot, viewingMember, memberSessionId, archivedReason, subject: pane.id, view, ids: tabState.ids, active, sides: sideChats, side: pane.side, canBrowse, reading, onView: switchView, actions: panelActions, useBrowserPages }) : null,
     view === "browser" && bot ? (0, import_react81.createElement)(BrowserView, { key: `browser:${active}`, bot, tabId: active, leaving, landed: landed && !settling, actions, useBrowserPages }) : view === "side" && sideChat ? (0, import_react81.createElement)("div", { key: `side:${sideChat.id}`, className: "bt-panel-view" }, (0, import_react81.createElement)(SideChatView, { subject: pane.id, chat: sideChat, roster, actions: panelActions })) : (0, import_react81.createElement)(
       "div",
@@ -46197,7 +46266,7 @@ var OPENING_CSS = `
 
 // src/client/overlays.js
 var import_react83 = require("react");
-var import_react_dom13 = require("react-dom");
+var import_react_dom14 = require("react-dom");
 var DIALOG_EXIT_MS2 = 160;
 var MENU_EXIT_MS3 = 120;
 function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useComputer, useRegistry, useBrowserPages, useBrowserTabs, useUpdate, useFrame, useSidebarPref, useSettingsShellHeld, actions }) {
@@ -46255,9 +46324,9 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
   return (0, import_react83.createElement)(
     import_react83.Fragment,
     null,
-    opening ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(OpeningCover, { model: opening, column: layout.column }), document.body) : null,
+    opening ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(OpeningCover, { model: opening, column: layout.column }), document.body) : null,
     // The panel must precede its CSS-anchored transcript, including after reopening it.
-    (0, import_react_dom13.createPortal)((0, import_react83.createElement)(
+    (0, import_react_dom14.createPortal)((0, import_react83.createElement)(
       import_react83.Fragment,
       null,
       pane ? (0, import_react83.createElement)(BotPanel, {
@@ -46294,9 +46363,9 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
         actions
       }) : null
     ), document.body),
-    ui2.newChat ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(NewChat, { key: `${ui2.newChat}:${ui2.newChatSection ?? ""}`, mode: ui2.newChat, sectionId: ui2.newChatSection ?? null, paneLeft: layout.column, roster, actions }), document.body) : null,
-    ui2.palette ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(CommandPalette, { key: ui2.palette.token, start: ui2.palette.query, token: ui2.palette.token, roster, actions, useSessions }), document.body) : null,
-    ui2.groupArchive && roster.roomsById[ui2.groupArchive.roomId] ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(DiscussionArchive, {
+    ui2.newChat ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(NewChat, { key: `${ui2.newChat}:${ui2.newChatSection ?? ""}`, mode: ui2.newChat, sectionId: ui2.newChatSection ?? null, paneLeft: layout.column, roster, actions }), document.body) : null,
+    ui2.palette ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(CommandPalette, { key: ui2.palette.token, start: ui2.palette.query, token: ui2.palette.token, roster, actions, useSessions }), document.body) : null,
+    ui2.groupArchive && roster.roomsById[ui2.groupArchive.roomId] ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(DiscussionArchive, {
       key: ui2.groupArchive.token,
       room: roster.roomsById[ui2.groupArchive.roomId],
       request: ui2.groupArchive,
@@ -46304,12 +46373,12 @@ function Overlays({ SessionProvider, renderSlot, useRoster, useUi, useSessions, 
       roster,
       useUi
     }), document.body) : null,
-    ui2.groupSearch && roster.roomsById[ui2.groupSearch.roomId] ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(GroupSearch, { key: ui2.groupSearch.token, room: roster.roomsById[ui2.groupSearch.roomId], roster, token: ui2.groupSearch.token, actions }), document.body) : null,
-    ui2.exchange ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(ExchangeDialog, { pair: ui2.exchange, paneLeft: layout.column, roster, actions }), document.body) : null,
-    ui2.voice ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(VoiceMode, { key: ui2.voice, sessionId: ui2.voice, paneLeft: layout.column, roster, actions, useSessions, useSessionStatus }), document.body) : null,
-    menu ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(ContextMenu, { key: `${menu.kind ?? ""}:${menu.id}:${menu.x}:${menu.y}`, menu, roster, actions, useWork, leaving: menuLeaving }), document.body) : null,
-    settings ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(SettingsDialog, { page: settings.page, id: settings.id, roster, actions, useUpdate, leaving: settingsLeaving }), document.body) : null,
-    owner ? (0, import_react_dom13.createPortal)((0, import_react83.createElement)(MemoryDialog, { key: owner.id, owner, actions, leaving: memoryLeaving }), document.body) : null
+    ui2.groupSearch && roster.roomsById[ui2.groupSearch.roomId] ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(GroupSearch, { key: ui2.groupSearch.token, room: roster.roomsById[ui2.groupSearch.roomId], roster, token: ui2.groupSearch.token, actions }), document.body) : null,
+    ui2.exchange ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(ExchangeDialog, { pair: ui2.exchange, paneLeft: layout.column, roster, actions }), document.body) : null,
+    ui2.voice ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(VoiceMode, { key: ui2.voice, sessionId: ui2.voice, paneLeft: layout.column, roster, actions, useSessions, useSessionStatus }), document.body) : null,
+    menu ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(ContextMenu, { key: `${menu.kind ?? ""}:${menu.id}:${menu.x}:${menu.y}`, menu, roster, actions, useWork, leaving: menuLeaving }), document.body) : null,
+    settings ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(SettingsDialog, { page: settings.page, id: settings.id, roster, actions, useUpdate, leaving: settingsLeaving }), document.body) : null,
+    owner ? (0, import_react_dom14.createPortal)((0, import_react83.createElement)(MemoryDialog, { key: owner.id, owner, actions, leaving: memoryLeaving }), document.body) : null
   );
 }
 

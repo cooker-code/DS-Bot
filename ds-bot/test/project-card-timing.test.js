@@ -257,7 +257,7 @@ test('the card distinguishes a recorded dev merge from completed post-merge chec
 test('task detail shows results below the criteria and switches to a read-only requirement snapshot', async () => {
   const { outputFiles } = await build({
     entryPoints: [fileURLToPath(new URL('../src/client/project-task-detail.js', import.meta.url))],
-    bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
+    bundle: true, format: 'cjs', write: false, external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
   })
   const history = [{ text: 'Earlier request', images: [] }]
   const detail = { requirement: 'First。Second。', acceptance: '1. Check output', requirementHistory: history, requirements: [

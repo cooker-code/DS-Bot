@@ -1,4 +1,6 @@
-import { createElement as h, useId, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { viewBottom } from './motion.js'
 import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
 import { TaskPlans } from './task-plans.js'
 import { TaskContent, CopyTaskText } from './task-content.js'
@@ -57,11 +59,50 @@ function contextLabel(edge) {
 }
 
 function HandoffContext({ edge, onPlan }) {
+  const id = useId()
+  const trigger = useRef(null)
+  const tooltip = useRef(null)
+  const timer = useRef(null)
+  const [place, setPlace] = useState(null)
+  const close = () => { clearTimeout(timer.current); setPlace(null) }
+  const cancelClose = () => clearTimeout(timer.current)
+  const leave = () => { timer.current = setTimeout(close, 120) }
+  const show = () => {
+    clearTimeout(timer.current)
+    const rect = trigger.current?.getBoundingClientRect()
+    if (!rect) return
+    const width = Math.min(560, window.innerWidth - 16)
+    const below = viewBottom() - rect.bottom
+    const above = rect.top - (window.visualViewport?.offsetTop ?? 0)
+    const useAbove = below < 180 && above > below
+    setPlace({ width, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      ...(useAbove ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
+      maxHeight: Math.max(40, (useAbove ? above : below) - 16) })
+  }
+  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => {
+    if (!place) return
+    const scroll = event => { if (event.target === window || !tooltip.current?.contains(event.target)) close() }
+    const key = event => { if (event.key === 'Escape') { event.stopPropagation(); close() } }
+    window.addEventListener('scroll', scroll, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', key, true)
+    return () => {
+      window.removeEventListener('scroll', scroll, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', key, true)
+    }
+  }, [Boolean(place)])
   if (!edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null
   const description = [contextLabel(edge), edge.planReason && t('Plan change reason') + ' · ' + edge.planReason,
     edge.planVersion && t('View plan v{version}', { version: edge.planVersion })].filter(Boolean).join('\n')
-  return h('button', { type: 'button', className: 'bt-tool', title: description, 'aria-label': description,
-    onClick: event => { event.preventDefault(); event.stopPropagation(); if (edge.planVersion) onPlan(edge.planVersion) } }, h(InfoIcon))
+  return h(Fragment, null,
+    h('button', { ref: trigger, type: 'button', className: 'bt-tool', 'aria-label': description,
+      'aria-describedby': place ? id : undefined, onMouseEnter: show, onMouseLeave: leave,
+      onFocus: show, onBlur: close,
+      onClick: event => { event.preventDefault(); event.stopPropagation(); close(); if (edge.planVersion) onPlan(edge.planVersion) } }, h(InfoIcon)),
+    place && createPortal(h('div', { ref: tooltip, id, role: 'tooltip', className: 'bt-handoff-tooltip', style: place,
+      onMouseEnter: cancelClose, onMouseLeave: leave }, description), document.body))
 }
 
 function HandoffRow({ entry, children, onPlan }) {
