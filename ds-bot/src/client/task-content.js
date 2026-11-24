@@ -28,13 +28,14 @@ export function TaskContent({ header, panelId, selectedId, text }) {
   const matches = parts.length - 1
   useEffect(() => { active.current?.scrollIntoView({ block: 'nearest' }) }, [query, index])
   return h('div', { className: 'bt-task-content' },
-    h('div', { className: 'bt-task-content-head' }, header,
+    h('div', { className: 'bt-task-content-head' }, h('div', { className: 'bt-task-content-context' }, header),
+      h('div', { className: 'bt-task-content-actions' },
       h('small', null, t('{n} lines', { n: text.split('\n').length })),
       h('div', { className: 'bt-task-content-modes' }, [true, false].map(mode => h('button', { key: String(mode), type: 'button',
         'aria-pressed': mode === (raw || search), onClick: () => { setRaw(mode); setSearch(false) } }, mode ? t('Raw text') : 'Markdown'))),
       h(CopyTaskText, { key: selectedId, text, label: t('Copy') }),
       h('button', { type: 'button', className: 'bt-tool', title: t('Search'), 'aria-label': t('Search'), 'aria-expanded': search,
-        onClick: () => setSearch(!search) }, h(SearchIcon))),
+        onClick: () => setSearch(!search) }, h(SearchIcon)))),
     search && h('div', { className: 'bt-task-find' }, h('input', { autoFocus: true, value: query, 'aria-label': t('Find in text'),
       placeholder: t('Find in text'), onChange: e => { setQuery(e.target.value); setIndex(0) },
       onKeyDown: e => { if (e.key === 'Escape') setSearch(false)
