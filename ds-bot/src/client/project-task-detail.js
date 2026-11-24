@@ -175,6 +175,15 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
   const [attempt, retry] = useState(0)
   const activeRead = useRef(null)
   const taskId = card?.taskId
+  const [history, setHistory] = useState()
+  useEffect(() => {
+    if (!taskId) return
+    const abort = new AbortController()
+    call('project-task-detail', { roomId: room.id, taskId, interactionsOnly: true }, abort.signal).then(value => {
+      if (!abort.signal.aborted) setHistory(value)
+    }, () => { if (!abort.signal.aborted) setHistory(current => ({ ...current, incomplete: true })) })
+    return () => abort.abort()
+  }, [room.id, room.seq, taskId, card?.round, card?.updatedAt, card?.version, roster?.revision, attempt])
   useEffect(() => {
     if (!taskId) return
     const abort = new AbortController()
@@ -206,7 +215,7 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          h(TaskHandoffs, { detail, roster }),
+          h(TaskHandoffs, { detail, roster, history }),
           h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
             sources: detail.requirements ?? [], openReference, sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,

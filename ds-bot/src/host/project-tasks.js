@@ -381,7 +381,7 @@ export function install(rt) {
           'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Final submission completes ordinary tasks automatically and opens human acceptance when required.',
           ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
         ].join('\n\n')
-        await projectNotice(rt, room, assistant, scope, 'delegate-' + original.seq, text, { images: projectImages(linked, lines), files: lines.flatMap(line => line.files ?? []) }, { goal, acceptance })
+        await projectNotice(rt, room, assistant, { ...scope, projectActorId: actor }, 'delegate-' + original.seq, text, { images: projectImages(linked, lines), files: lines.flatMap(line => line.files ?? []) }, { goal, acceptance })
         return JSON.stringify({ delegated: true, assistantId: assistant, ...scope })
       }
       if (args.action === 'report') {
@@ -619,7 +619,7 @@ export function install(rt) {
 async function notifyProjectChange(rt, room, args, actor, source, result) {
   const assistant = assistantId(room)
   const card = room.projectCards?.[result.taskId ?? args.taskId ?? source?.taskId]
-  const scope = card ? { taskId: card.id } : { intakeId: source?.intakeId }
+  const scope = { ...(card ? { taskId: card.id } : { intakeId: source?.intakeId }), projectActorId: actor }
   const round = card?.rounds[args.round - 1]
   if (args.action === 'record_merge' && round?.mergeReceipt) {
     await projectNotice(rt, room, assistant ?? room.admin, scope, round.dispatchId + ':merged',

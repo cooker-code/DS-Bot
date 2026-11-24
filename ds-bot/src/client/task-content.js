@@ -1,0 +1,46 @@
+import { createElement as h, useEffect, useRef, useState } from 'react'
+import { MarkdownText, writeClipboard } from './dsh-primitives.js'
+import { CopyIcon, CheckIcon, SearchIcon } from './icons.js'
+import { mdLabels, t } from './i18n.js'
+
+export function CopyTaskText({ text, label }) {
+  const [status, setStatus] = useState('')
+  useEffect(() => {
+    if (!status) return
+    const timer = setTimeout(() => setStatus(''), 1600)
+    return () => clearTimeout(timer)
+  }, [status])
+  return h('button', { type: 'button', className: 'bt-tool', 'aria-label': status || label, title: status || label,
+    onClick: async () => {
+      try { setStatus(await writeClipboard(text) ? t('Copied') : t('Copy failed')) }
+      catch { setStatus(t('Copy failed')) }
+    } }, status === t('Copied') ? h(CheckIcon) : h(CopyIcon), status && h('span', { role: 'status', className: 'bt-task-copy-feedback' }, status))
+}
+
+export function TaskContent({ label, text }) {
+  const [raw, setRaw] = useState(false)
+  const [search, setSearch] = useState(false)
+  const [query, setQuery] = useState('')
+  const [index, setIndex] = useState(0)
+  const active = useRef(null)
+  const parts = search && query ? text.split(query) : [text]
+  const matches = parts.length - 1
+  useEffect(() => { active.current?.scrollIntoView({ block: 'nearest' }) }, [query, index])
+  return h('div', { className: 'bt-task-content' },
+    h('div', { className: 'bt-task-content-head' }, h('strong', null, label),
+      h('small', null, t('{n} lines', { n: text.split('\n').length })),
+      h('div', { className: 'bt-task-content-modes' }, [true, false].map(mode => h('button', { key: String(mode), type: 'button',
+        'aria-pressed': mode === (raw || search), onClick: () => { setRaw(mode); setSearch(false) } }, mode ? t('Raw text') : 'Markdown'))),
+      h(CopyTaskText, { text, label: t('Copy') }),
+      h('button', { type: 'button', className: 'bt-tool', title: t('Search'), 'aria-label': t('Search'), 'aria-expanded': search,
+        onClick: () => setSearch(!search) }, h(SearchIcon))),
+    search && h('div', { className: 'bt-task-find' }, h('input', { autoFocus: true, value: query, 'aria-label': t('Find in text'),
+      placeholder: t('Find in text'), onChange: e => { setQuery(e.target.value); setIndex(0) },
+      onKeyDown: e => { if (e.key === 'Escape') setSearch(false)
+        if (e.key === 'Enter' && matches) setIndex((index + (e.shiftKey ? matches - 1 : 1)) % matches) } }),
+      query && h('small', { role: 'status' }, (matches ? index + 1 : 0) + ' / ' + matches),
+      matches > 1 && h('button', { type: 'button', onClick: () => setIndex((index + 1) % matches) }, t('Next match'))),
+    h('div', { className: 'bt-task-content-body' }, raw || search
+      ? h('pre', null, parts.map((piece, i) => h('span', { key: i }, i ? h('mark', { ref: i === index + 1 ? active : undefined, 'data-current': i === index + 1 }, query) : null, piece)))
+      : h(MarkdownText, { text, labels: mdLabels(), variant: 'compact' })))
+}
