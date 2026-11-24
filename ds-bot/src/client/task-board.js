@@ -421,10 +421,10 @@ export const TASK_CSS = `
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
 .bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
-.bt-task-content-head strong{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
 .bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
-.bt-task-content-modes [aria-pressed=true]{color:var(--bt-ink);background:var(--bt-card)}
+.bt-task-content-modes [aria-pressed=true],.bt-handoff-tabs [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
 .bt-task-content-body{max-height:24rem;overflow:auto;padding:8px 10px;overflow-wrap:anywhere;user-select:text}
 .bt-task-content-body pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
 .bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}

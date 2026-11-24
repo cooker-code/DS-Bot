@@ -533,7 +533,15 @@ export function install(rt) {
       ROOM_REPLY,
     ].filter(Boolean).join('\n\n')
     const shown = [...earlier, ...owed.flatMap(result => result.line ?? []), ...current]
-    return { text, images: shown.flatMap(line => line.images ?? []), files: shown.flatMap(line => line.files ?? []) }
+    const addressed = current.filter(line => {
+      if (!line.botId || line.botId === member.id || line.kind || line.seq <= (room.seen[member.id] ?? 0)) return false
+      const everyone = room.members.map(rt.botOf).filter(Boolean)
+      const { all, found } = mentionsOf(line, everyone) ?? mentionsIn(line.text ?? '', everyone, line.references)
+      return found.some(bot => bot.id === member.id) || (all && rt.isAdminOf(room, line.botId))
+    })
+    const groupHandoffSeqs = [...new Set([...addressed, ...results.flatMap(result =>
+      result.line?.botId && result.line.text && visible(result.line) ? [result.line] : [])].map(line => line.seq))]
+    return { text, groupHandoffSeqs, images: shown.flatMap(line => line.images ?? []), files: shown.flatMap(line => line.files ?? []) }
   }
 
   // The result lines a wake carries, oldest first, one per seq. A line that left the room's
@@ -786,7 +794,7 @@ export function install(rt) {
   // called it, which answers what the turn posts after the round moved on. What the
   // member writes before its last step is posted at once and collected in `said`, and
   // `heard` takes each such line once it is posted.
-  async function roomTurn(room, member, sessionId, { text, images = [], files = [] }, note, signal, round, by, said = [], heard = () => {}, onWork = () => {}) {
+  async function roomTurn(room, member, sessionId, { text, groupHandoffSeqs, images = [], files = [] }, note, signal, round, by, said = [], heard = () => {}, onWork = () => {}) {
     if (signal.aborted) return null
     const startedAt = Date.now()
     const exchangeId = randomUUID()
@@ -830,7 +838,7 @@ export function install(rt) {
       signal.addEventListener('abort', () => finish(null), { once: true })
     })
     try {
-      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, images, files, steer: busy, ...(by ? { askedBy: by } : {}), ...scopeFields(scopeOf(round)) })
+      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, groupHandoffSeqs, note, text, images, files, steer: busy, ...(by ? { askedBy: by } : {}), ...scopeFields(scopeOf(round)) })
       ;(round.calledIds ??= new Set()).add(member.id)
       // The prompt reached the member: its read position moves on.
       room.seen[member.id] = seenAt
@@ -1239,7 +1247,6 @@ export function install(rt) {
     }
     const prompt = roomPrompt(room, member, round, slot, await finishedLines(room, slot))
     round.shown?.push(member.id)
-    const text = prompt.text
     const said = []
     // The log lines this turn posted: its result for the Bot that called it.
     const posted = []
@@ -1256,7 +1263,7 @@ export function install(rt) {
       markSlotWorked(room.id, slot)
     }
     const reply = await roomTurn(
-      room, member, session.id, { text, images: prompt.images, files: prompt.files }, slot.note ?? 'your turn', signal, round, slot.by, said,
+      room, member, session.id, prompt, slot.note ?? 'your turn', signal, round, slot.by, said,
       (line) => {
         posted.push(room.seq)
         callFrom(room, round, member, line, called, { worked, byBot: answeredBot })

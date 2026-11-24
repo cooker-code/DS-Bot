@@ -21,6 +21,7 @@ export async function projectNotice(rt, room, toId, scope, event, text, attachme
   const result = await rt.admitRequest(key, async () => rt.deliver({
     ...scope, roomId: room.id, toId, sessionId: await rt.memberSession(room, toId), role: 'request', audience: 'user',
     recordExchange: false, text, ...attachments,
+    ...(typeof details === 'string' ? { handoffText: details } : details?.goal && { handoffText: [details.goal, details.acceptance].join('\n\n') }),
   }))
   if (!['sent', 'replay', 'expired'].includes(result.status)) throw new Error('Check project message delivery: ' + result.status)
 }

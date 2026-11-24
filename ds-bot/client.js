@@ -12884,6 +12884,10 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
+  "From {bot}": "来自 {bot}",
+  "To {bot}": "交给 {bot}",
+  "No retry this time.": "本次未重试。",
+  "No Bot handoffs recorded.": "暂无 Bot 交接记录。",
   "Node {n}": "节点 {n}",
   "Message text": "消息正文",
   "Next match": "下一个匹配",
@@ -16550,11 +16554,11 @@ var migrateBrowsers = (storage) => {
       const value = storage.getItem(key);
       if (value === null) continue;
       const previous = JSON.parse(value) ?? {};
-      const tabs = Object.fromEntries(Object.entries(previous).filter(([, page]) => page && typeof page === "object").map(([botId, page]) => {
+      const tabs2 = Object.fromEntries(Object.entries(previous).filter(([, page]) => page && typeof page === "object").map(([botId, page]) => {
         const tab = { id: `v1-${botId}`, url: page.url ?? "", title: page.title ?? "" };
         return [botId, { tabs: [tab], active: tab.id }];
       }));
-      storage.setItem(STORAGE.browsers, JSON.stringify(tabs));
+      storage.setItem(STORAGE.browsers, JSON.stringify(tabs2));
       for (const earlier of LEGACY_BROWSER_KEYS) storage.removeItem(earlier);
       return;
     } catch {
@@ -33685,7 +33689,7 @@ function UsagePage({ roster, actions, focusId }) {
   const [span, setSpan] = (0, import_react44.useState)(null);
   const [picking, setPicking] = (0, import_react44.useState)(false);
   const [by, setBy] = (0, import_react44.useState)("bot");
-  const tabs = (0, import_react44.useRef)(null);
+  const tabs2 = (0, import_react44.useRef)(null);
   const focus = focusOf(focusId);
   (0, import_react44.useEffect)(() => {
     let stopped = false;
@@ -33893,9 +33897,9 @@ function UsagePage({ roster, actions, focusId }) {
     (0, import_react44.createElement)(
       "div",
       { className: "bt-us-top" },
-      (0, import_react44.createElement)(Tabs, { label: t("Time range"), value: rangeId, onChange: chooseRange, options: rangeOptions, boxRef: tabs }),
+      (0, import_react44.createElement)(Tabs, { label: t("Time range"), value: rangeId, onChange: chooseRange, options: rangeOptions, boxRef: tabs2 }),
       view.scanning ? (0, import_react44.createElement)("span", { className: "bt-us-note", role: "status" }, t("Still reading older chats; totals may grow.")) : null,
-      picking ? (0, import_react44.createElement)(SpanPicker, { span, today, oldest, active: activeDays, near: tabs, onPick: pickSpan, onClose: () => setPicking(false) }) : null
+      picking ? (0, import_react44.createElement)(SpanPicker, { span, today, oldest, active: activeDays, near: tabs2, onPick: pickSpan, onClose: () => setPicking(false) }) : null
     ),
     error ? (0, import_react44.createElement)("div", { className: "bt-error", role: "alert", style: { padding: 0 } }, error) : null,
     body
@@ -40427,10 +40431,10 @@ var TASK_CSS = `
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
 .bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
-.bt-task-content-head strong{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head small{color:var(--bt-ink-2)}
 .bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
-.bt-task-content-modes [aria-pressed=true]{color:var(--bt-ink);background:var(--bt-card)}
+.bt-task-content-modes [aria-pressed=true],.bt-handoff-tabs [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
 .bt-task-content-body{max-height:24rem;overflow:auto;padding:8px 10px;overflow-wrap:anywhere;user-select:text}
 .bt-task-content-body pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
 .bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}
@@ -43647,12 +43651,17 @@ function CopyTaskText({ text, label }) {
     }
   }, status === t("Copied") ? (0, import_react73.createElement)(CheckIcon) : (0, import_react73.createElement)(CopyIcon), status && (0, import_react73.createElement)("span", { role: "status", className: "bt-task-copy-feedback" }, status));
 }
-function TaskContent({ label, text }) {
+function TaskContent({ header, panelId, selectedId, text }) {
   const [raw, setRaw] = (0, import_react73.useState)(false);
   const [search, setSearch] = (0, import_react73.useState)(false);
   const [query, setQuery] = (0, import_react73.useState)("");
   const [index, setIndex] = (0, import_react73.useState)(0);
   const active = (0, import_react73.useRef)(null);
+  (0, import_react73.useEffect)(() => {
+    setIndex(0);
+    setQuery("");
+    setSearch(false);
+  }, [selectedId]);
   const parts = search && query ? text.split(query) : [text];
   const matches2 = parts.length - 1;
   (0, import_react73.useEffect)(() => {
@@ -43664,7 +43673,7 @@ function TaskContent({ label, text }) {
     (0, import_react73.createElement)(
       "div",
       { className: "bt-task-content-head" },
-      (0, import_react73.createElement)("strong", null, label),
+      header,
       (0, import_react73.createElement)("small", null, t("{n} lines", { n: text.split("\n").length })),
       (0, import_react73.createElement)("div", { className: "bt-task-content-modes" }, [true, false].map((mode) => (0, import_react73.createElement)("button", {
         key: String(mode),
@@ -43675,7 +43684,7 @@ function TaskContent({ label, text }) {
           setSearch(false);
         }
       }, mode ? t("Raw text") : "Markdown"))),
-      (0, import_react73.createElement)(CopyTaskText, { text, label: t("Copy") }),
+      (0, import_react73.createElement)(CopyTaskText, { key: selectedId, text, label: t("Copy") }),
       (0, import_react73.createElement)("button", {
         type: "button",
         className: "bt-tool",
@@ -43705,17 +43714,12 @@ function TaskContent({ label, text }) {
       query && (0, import_react73.createElement)("small", { role: "status" }, (matches2 ? index + 1 : 0) + " / " + matches2),
       matches2 > 1 && (0, import_react73.createElement)("button", { type: "button", onClick: () => setIndex((index + 1) % matches2) }, t("Next match"))
     ),
-    (0, import_react73.createElement)("div", { className: "bt-task-content-body" }, raw || search ? (0, import_react73.createElement)("pre", null, parts.map((piece, i) => (0, import_react73.createElement)("span", { key: i }, i ? (0, import_react73.createElement)("mark", { ref: i === index + 1 ? active : void 0, "data-current": i === index + 1 }, query) : null, piece))) : (0, import_react73.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text, labels: mdLabels(), variant: "compact" }))
+    (0, import_react73.createElement)("div", { className: "bt-task-content-body", role: "tabpanel", id: panelId, "aria-labelledby": selectedId }, raw || search ? (0, import_react73.createElement)("pre", null, parts.map((piece, i) => (0, import_react73.createElement)("span", { key: i }, i ? (0, import_react73.createElement)("mark", { ref: i === index + 1 ? active : void 0, "data-current": i === index + 1 }, query) : null, piece))) : (0, import_react73.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text, labels: mdLabels(), variant: "compact" }))
   );
 }
 
 // src/client/task-handoffs.js
 var import_react74 = require("react");
-function legacyInput(rounds, round, index) {
-  const node = round.planNode;
-  const predecessors = node ? (node.inputs ?? []).map((input) => rounds[input.round - 1]) : [rounds[index - 1]];
-  return [round.plan, ...predecessors.map((run2) => run2?.result)].filter(Boolean).join("\n\n");
-}
 function retryReason(retry) {
   if (retry.restart) return t("The host restarted during execution.");
   if (retry.input === RETRY_TEXT) return t("The Bot wrote the tool call as text, so the tool did not run.");
@@ -43724,127 +43728,84 @@ function retryReason(retry) {
   return t("No retry reason was recorded.");
 }
 function handoffs(detail, history) {
+  const rows2 = [];
+  const received = /* @__PURE__ */ new Map();
   const rounds = detail.rounds ?? [];
-  const messages = history?.messages ?? [];
-  const dispatches = /* @__PURE__ */ new Map();
-  for (const message of messages) if (message.exchangeId && !message.repeated && !dispatches.has(message.exchangeId))
-    dispatches.set(message.exchangeId, message);
-  const used = /* @__PURE__ */ new Set();
-  const entries2 = [];
-  for (const [index, round] of rounds.entries()) {
-    const node = round.planNode;
-    const dispatch = dispatches.get(round.dispatchId);
-    if (dispatch) used.add(dispatch.key);
-    for (const retry of round.retries ?? []) {
-      const received = messages.find((m) => m.exchangeId === round.dispatchId && !used.has(m.key) && m.text === retry.input);
-      if (received) used.add(received.key);
-    }
-    const plan = detail.plans?.find((plan2) => plan2.version === node?.version);
-    const title = plan?.nodes?.find((item) => item.no === node.node)?.title;
-    const block = rounds[node?.previousRound - 1]?.planNode?.block;
+  const ordered = [];
+  for (const edge of history?.messages ?? []) {
+    if (!edge.from || !edge.to || edge.from === edge.to) continue;
+    ordered.push({ at: edge.at, edge });
+    const index = rounds.findIndex((round2) => round2.dispatchId && round2.dispatchId === edge.exchangeId && round2.ownerId === edge.to);
+    const round = rounds[index] ?? {};
+    const block = rounds[round.planNode?.previousRound - 1]?.planNode?.block;
     const decision = block?.decisions?.find((item) => item.nextRound === index + 1);
-    const firstAt = dispatch?.at ?? round.sentAt ?? round.startedAt ?? round.assignedAt;
-    const attempts = [
-      {
-        at: round.retries?.length ? Math.min(firstAt ?? Infinity, round.retries[0].at) : firstAt,
-        input: [round.dispatchInput ?? dispatch?.text ?? legacyInput(rounds, round, index), ...round.inputFiles ?? []].filter(Boolean).join("\n"),
-        retry: Boolean(node?.previousRound),
-        restart: block?.cause === "restart",
-        reason: [...new Set([block?.reason, decision?.reason].filter(Boolean))].join("\n")
-      },
-      ...(round.retries ?? []).map((retry) => ({ ...retry, retry: true, reason: retryReason(retry) }))
-    ];
-    attempts.forEach((attempt, i) => {
-      const next = attempts[i + 1];
-      const output = next ? next.previousOutput || (next.failedAt ? t("Attempt failed") : "") : [
-        round.result,
-        node?.lateResult,
-        node?.artifact,
-        node?.completed,
-        node?.checkpointArtifact,
-        node?.block?.reason,
-        node?.block?.evidence,
-        round.failedAt && t("Attempt failed"),
-        ...(round.resultFiles ?? []).map((file) => file.name)
-      ].filter(Boolean).join("\n");
-      entries2.push({
-        ...attempt,
-        from: i === 0 ? dispatch?.from : void 0,
-        title,
-        node,
-        round: index + 1,
-        key: (round.dispatchId ?? index) + "/" + i,
-        ownerId: round.ownerId,
-        waiting: !round.startedAt && !round.result && !node?.block && !round.failedAt && !attempt.retry,
-        output
-      });
-    });
-    if (round.submittedAt) entries2.push({
-      key: "submit-" + index,
-      at: round.submittedAt,
-      ownerId: round.ownerId,
-      kind: "Submitted result",
-      title,
-      output: round.result,
-      round: index + 1
-    });
-    if (node?.acceptedAt) entries2.push({
-      key: "approve-" + index,
-      at: node.acceptedAt,
-      ownerId: node.acceptedBy,
-      kind: "Approved result",
-      title,
-      input: round.result,
-      output: node.artifact,
-      round: index + 1
-    });
+    if (round.planNode?.previousRound) ordered.at(-1).reason = [...new Set([block?.reason, decision?.reason].filter(Boolean))].join("\n") || t("No retry reason was recorded.");
+    for (const [i, retry] of (round.retries?.length ? round.retries : edge.retries ?? []).entries())
+      ordered.push({ at: retry.at, edge, attempt: i + 1, reason: retryReason(retry) });
   }
-  for (const plan of detail.plans ?? []) entries2.push({
-    key: "plan-" + plan.version,
-    at: plan.at,
-    ownerId: plan.by,
-    kind: "Task plan",
-    title: "v" + plan.version,
-    input: plan.reason,
-    output: plan.nodes.map((n) => n.no + ". " + n.title).join("\n")
-  });
-  for (const m of messages) {
-    if (used.has(m.key)) continue;
-    entries2.push({
-      key: m.key,
-      at: m.at,
-      from: m.from,
-      sender: m.sender,
-      to: m.to,
-      ownerId: m.to ?? m.from,
-      kind: m.kind,
-      message: m.text,
-      partial: m.partial
-    });
+  for (const { at, edge, attempt, reason } of ordered.sort((a, b) => a.at - b.at)) {
+    if (!attempt) {
+      const parent = received.get(edge.replyTo);
+      if (parent?.owner === edge.from && !parent.outgoing) parent.outgoing = edge;
+      else rows2.push({ key: edge.key + "/send", owner: edge.from, outgoing: edge, at });
+    }
+    const row = { key: edge.key + "/receive/" + (attempt ?? 0), owner: edge.to, incoming: edge, at, reason };
+    rows2.push(row);
+    if (edge.exchangeId) received.set(edge.exchangeId, row);
   }
-  return entries2.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  return rows2;
 }
-function HandoffRow({ children }) {
+var tabs = ["Input", "Output", "Retry reason"];
+function HandoffRow({ entry, children }) {
   const [open, setOpen] = (0, import_react74.useState)(false);
+  const [tab, select] = (0, import_react74.useState)(0);
+  const id = (0, import_react74.useId)();
+  const edge = [entry.incoming, entry.outgoing][tab];
+  const text = [
+    entry.incoming?.text ?? t("No recorded input"),
+    entry.outgoing?.text ?? t("No recorded output"),
+    entry.reason ?? t("No retry this time.")
+  ][tab];
+  const tabBar = (0, import_react74.createElement)(
+    "div",
+    { className: "bt-task-content-modes bt-handoff-tabs", role: "tablist", "aria-label": t("Task handoffs") },
+    tabs.map((label, i) => (0, import_react74.createElement)("button", {
+      key: label,
+      type: "button",
+      id: id + i,
+      role: "tab",
+      "aria-selected": i === tab,
+      "aria-controls": id,
+      tabIndex: i === tab ? 0 : -1,
+      onClick: () => select(i),
+      onKeyDown: (e) => {
+        const next = { ArrowLeft: (i + 2) % 3, ArrowRight: (i + 1) % 3, Home: 0, End: 2 }[e.key];
+        if (next === void 0) return;
+        e.preventDefault();
+        e.currentTarget.parentElement.children[next].focus();
+        select(next);
+      }
+    }, t(label)))
+  );
   return (0, import_react74.createElement)(
     "details",
-    { className: "bt-handoff-row", onToggle: (event) => setOpen(event.currentTarget.open) },
-    children[0],
-    open && children.slice(1)
+    { className: "bt-handoff-row", onToggle: (e) => setOpen(e.currentTarget.open) },
+    children,
+    open && (0, import_react74.createElement)(TaskContent, { header: tabBar, panelId: id, selectedId: id + tab, text }),
+    open && edge?.partial && (0, import_react74.createElement)("small", null, t("Only part of the message is available."))
   );
 }
 function TaskHandoffs({ detail, roster, history }) {
   const name = (id) => roster?.byId?.[id]?.name ?? id;
   const entries2 = handoffs(detail, history).map((entry, index) => {
-    const bot = roster?.byId?.[entry.ownerId];
-    const flags = [entry.retry && t("Retry"), entry.restart && t("Restart recovery"), entry.waiting && t("Assigned, awaiting start")];
-    let route = name(entry.ownerId) ?? t("DS Bot");
-    if (entry.to || entry.kind === "Group message") route = (name(entry.from) ?? entry.sender ?? t("DS Bot")) + " → " + (name(entry.to) ?? t("Group chat"));
-    else if (entry.from) route = name(entry.from) + " → " + route;
-    const context = entry.kind ? t(entry.kind) : entry.node ? t("Dispatch") : "";
-    const nodeLabel = entry.node?.node && "v" + entry.node.version + " · " + t("Node {n}", { n: entry.node.node });
-    const label = [String(index + 1) + ". " + route, context, nodeLabel, entry.title, ...flags].filter(Boolean).join(" · ");
-    return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.ownerId })) };
+    const bot = roster?.byId?.[entry.owner];
+    const label = [
+      String(index + 1) + ". " + name(entry.owner),
+      entry.incoming && t("From {bot}", { bot: name(entry.incoming.from) }),
+      entry.outgoing && t("To {bot}", { bot: name(entry.outgoing.to) }),
+      entry.reason && t("Retry")
+    ].filter(Boolean).join(" · ");
+    return { ...entry, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) };
   });
   return (0, import_react74.createElement)(
     "section",
@@ -43861,16 +43822,18 @@ function TaskHandoffs({ detail, roster, history }) {
     entries2.length ? (0, import_react74.createElement)(
       "div",
       { className: "bt-handoff-bar", "aria-hidden": true },
-      entries2.map((entry) => (0, import_react74.createElement)("span", { key: entry.key, style: { background: entry.background }, title: entry.label, "data-retry": entry.retry }))
-    ) : (0, import_react74.createElement)("p", { className: "bt-empty" }, t("No assignments yet")),
+      entries2.map((entry) => (0, import_react74.createElement)("span", { key: entry.key, style: { background: entry.background }, title: entry.label, "data-retry": Boolean(entry.reason) }))
+    ) : history && (0, import_react74.createElement)("p", { className: "bt-empty" }, t("No Bot handoffs recorded.")),
     entries2.map((entry) => (0, import_react74.createElement)(
       HandoffRow,
-      { key: entry.key },
-      (0, import_react74.createElement)("summary", null, (0, import_react74.createElement)("span", { className: "bt-handoff-dot", style: { background: entry.background } }), entry.label, Number.isFinite(entry.at) && (0, import_react74.createElement)("time", null, new Date(entry.at).toLocaleString())),
-      entry.message !== void 0 ? (0, import_react74.createElement)(TaskContent, { label: t("Message text"), text: entry.message }) : (0, import_react74.createElement)(TaskContent, { label: t("Handoff input"), text: entry.input || t("No recorded input") }),
-      entry.partial && (0, import_react74.createElement)("small", null, t("Only part of the message is available.")),
-      entry.message === void 0 && (0, import_react74.createElement)(TaskContent, { label: t("Handoff output"), text: entry.output || t("No recorded output") }),
-      entry.retry && (0, import_react74.createElement)(TaskContent, { label: t("Retry reason"), text: entry.reason || t("No retry reason was recorded.") })
+      { key: entry.key, entry },
+      (0, import_react74.createElement)(
+        "summary",
+        null,
+        (0, import_react74.createElement)("span", { className: "bt-handoff-dot", style: { background: entry.background } }),
+        entry.label,
+        Number.isFinite(entry.at) && (0, import_react74.createElement)("time", null, new Date(entry.at).toLocaleString())
+      )
     ))
   );
 }
@@ -45046,7 +45009,7 @@ function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, 
     if (room2) await run2(actions.updateRoom(room2.id, { name: next }));
   };
   const subtitle = bot ? void 0 : roomSubtitle(room2, roster);
-  const tabs = bot ? roster.computer?.enabled === true ? ["details", "browser", "computer"] : ["details", "browser"] : ["details"];
+  const tabs2 = bot ? roster.computer?.enabled === true ? ["details", "browser", "computer"] : ["details", "browser"] : ["details"];
   return [
     (0, import_react79.createElement)(import_react79.Fragment, { key: "top" }, top),
     (0, import_react79.createElement)(
@@ -45074,11 +45037,11 @@ function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, 
       } }, current),
       bot ? roster.readOnly ? bot.role ? (0, import_react79.createElement)("span", { className: "bt-drawer-role" }, bot.role) : null : (0, import_react79.createElement)(BotLabel, { key: `role:${bot.id}`, bot, actions, run: run2 }) : subtitle ? (0, import_react79.createElement)("span", { className: "bt-drawer-role" }, subtitle) : null
     ),
-    tabs.length > 1 ? (0, import_react79.createElement)(
+    tabs2.length > 1 ? (0, import_react79.createElement)(
       "div",
       { key: "tabs", ref: glide2.box, className: "bt-tabs", role: "tablist", "data-move": side },
       (0, import_react79.createElement)("span", { ref: glide2.thumb, className: "bt-thumb", "aria-hidden": true }),
-      tabs.map((key) => (0, import_react79.createElement)("button", { key, type: "button", role: "tab", className: "bt-tab", "aria-selected": tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))
+      tabs2.map((key) => (0, import_react79.createElement)("button", { key, type: "button", role: "tab", className: "bt-tab", "aria-selected": tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))
     ) : null,
     (0, import_react79.createElement)(
       "div",
@@ -46522,7 +46485,7 @@ function browserAddress(input) {
 function createBotBrowsers({ bridge, createSource: createSource2, storage = globalThis.localStorage, document: doc = globalThis.document }) {
   const views = /* @__PURE__ */ new Map();
   const owner = /* @__PURE__ */ new Map();
-  const tabs = createSource2({});
+  const tabs2 = createSource2({});
   const pages = createSource2({});
   const store = sharedMap(STORE_KEY, storage);
   let saved = store.read();
@@ -46542,7 +46505,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     saved = store.update((stored) => setEntry(stored, botId, entry), saved);
   };
   const persist = (botId) => {
-    const state = tabs.getSnapshot()[botId];
+    const state = tabs2.getSnapshot()[botId];
     const snapshot = pages.getSnapshot();
     save(botId, state && {
       tabs: state.ids.map((id) => ({ id, url: snapshot[id]?.url ?? "", title: snapshot[id]?.title ?? "" })),
@@ -46550,12 +46513,12 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     });
   };
   const ensureTabs = (botId) => {
-    if (tabs.getSnapshot()[botId] !== void 0) return;
+    if (tabs2.getSnapshot()[botId] !== void 0) return;
     const entries2 = saved[botId]?.tabs ?? [];
     const ids = entries2.map((entry) => entry.id);
     const active = ids.includes(saved[botId]?.active) ? saved[botId].active : ids.at(-1) ?? null;
     for (const entry of entries2) owner.set(entry.id, botId);
-    tabs.set((state) => ({ ...state, [botId]: { ids, active } }));
+    tabs2.set((state) => ({ ...state, [botId]: { ids, active } }));
     for (const entry of entries2) publish2(entry.id, { url: entry.url ?? "", title: entry.title ?? "", live: false });
   };
   const ensureLayer = () => {
@@ -46706,7 +46669,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     ensureTabs(botId);
     const tabId = `t${Date.now().toString(36)}-${++serial2}`;
     owner.set(tabId, botId);
-    tabs.set((state) => {
+    tabs2.set((state) => {
       const own = state[botId] ?? { ids: [], active: null };
       return { ...state, [botId]: { ids: [...own.ids, tabId], active: tabId } };
     });
@@ -46716,13 +46679,13 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     return tabId;
   }
   async function closeTab(botId, tabId) {
-    const state = tabs.getSnapshot()[botId];
+    const state = tabs2.getSnapshot()[botId];
     if (state === void 0 || !state.ids.includes(tabId)) return;
     await opening.get(tabId)?.catch(() => {
     });
     if (shown === tabId) await show2(null);
     await release(tabId);
-    tabs.set((snapshot) => {
+    tabs2.set((snapshot) => {
       const current = snapshot[botId];
       if (current === void 0 || !current.ids.includes(tabId)) return snapshot;
       const at = current.ids.indexOf(tabId);
@@ -46743,12 +46706,12 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
   }
   function activate(botId, tabId) {
     ensureTabs(botId);
-    const state = tabs.getSnapshot()[botId];
+    const state = tabs2.getSnapshot()[botId];
     if (state === void 0 || !state.ids.includes(tabId) || state.active === tabId) return;
-    tabs.set((snapshot) => ({ ...snapshot, [botId]: { ...state, active: tabId } }));
+    tabs2.set((snapshot) => ({ ...snapshot, [botId]: { ...state, active: tabId } }));
     persist(botId);
   }
-  const activeTab = (botId) => tabs.getSnapshot()[botId]?.active ?? null;
+  const activeTab = (botId) => tabs2.getSnapshot()[botId]?.active ?? null;
   async function show2(tabId, box = null) {
     if (tabId !== null && tabId === shown && visible && box !== null) {
       rect = box;
@@ -46787,7 +46750,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
   }
   async function forget(botId) {
     ensureTabs(botId);
-    for (const tabId of tabs.getSnapshot()[botId]?.ids ?? []) {
+    for (const tabId of tabs2.getSnapshot()[botId]?.ids ?? []) {
       await opening.get(tabId)?.catch(() => {
       });
       if (shown === tabId) await show2(null);
@@ -46799,7 +46762,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
         return rest;
       });
     }
-    tabs.set((snapshot) => {
+    tabs2.set((snapshot) => {
       if (snapshot[botId] === void 0) return snapshot;
       const { [botId]: _, ...rest } = snapshot;
       return rest;
@@ -46807,7 +46770,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     save(botId, void 0);
   }
   return {
-    tabs,
+    tabs: tabs2,
     pages,
     /** Restore a Bot's saved strip (or an empty one) so the panel can render it. */
     ensureTabs,
@@ -46832,7 +46795,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     openPages() {
       const open2 = {};
       const snapshot = pages.getSnapshot();
-      for (const [botId, state] of Object.entries(tabs.getSnapshot())) {
+      for (const [botId, state] of Object.entries(tabs2.getSnapshot())) {
         const tabId = state.active;
         const entry = tabId ? views.get(tabId) : void 0;
         const page = tabId ? snapshot[tabId] : void 0;
@@ -46864,7 +46827,7 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     /** Forget every Bot outside `botIds`, as when Bots were deleted from another window. */
     retain(botIds) {
       const keep = new Set(botIds);
-      const known = /* @__PURE__ */ new Set([...Object.keys(tabs.getSnapshot()), ...Object.keys(saved), ...owner.values()]);
+      const known = /* @__PURE__ */ new Set([...Object.keys(tabs2.getSnapshot()), ...Object.keys(saved), ...owner.values()]);
       for (const entry of views.values()) known.add(entry.botId);
       return Promise.all([...known].filter((botId) => !keep.has(botId)).map(forget));
     },
@@ -48946,9 +48909,9 @@ function apply(ctx) {
   actions.sidebarGuide = sidebarGuide;
   ctx.inject(["sidebarRight", "sidebarRightTabs"], (scope) => {
     scope.effect(() => {
-      const tabs = scope.sidebarRightTabs;
-      const update2 = () => sidebarGuide.set(tabs.guide());
-      const off = tabs.subscribe(update2);
+      const tabs2 = scope.sidebarRightTabs;
+      const update2 = () => sidebarGuide.set(tabs2.guide());
+      const off = tabs2.subscribe(update2);
       update2();
       return () => {
         off();

@@ -83,7 +83,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, retryOf, handoffText, parentExchangeId, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -96,6 +96,8 @@ export function install(rt) {
       kind: SOURCE_KIND,
       form: 'relay',
       ...(projectActorId && { projectActorId }),
+      ...(projectActorId && handoffText && { handoffText }),
+      ...(groupHandoffSeqs?.length && { groupHandoffSeqs }),
       ...scopeFields(key),
       ...(intakeSeq !== undefined ? { intakeSeq } : {}),
       role,
@@ -110,6 +112,7 @@ export function install(rt) {
       ...(deferred ? { deferred: true } : {}),
       ...(resumed ? { resumed: true } : {}),
       ...(retried ? { retried: true } : {}),
+      ...(retryOf && { retryOf }),
       ...(askedBy ? { askedBy } : {}),
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
@@ -126,7 +129,7 @@ export function install(rt) {
     // replaces it with its added text.
     const book = fromId !== undefined && from !== undefined && recordExchange && EXCHANGE_ROLES.has(role) && !deferred && !resumed && !retried ? pairBook(fromId, toId) : undefined
     if (book !== undefined && (merged || !rt.ledger.records(book).some(record => record.event === undefined && record.id === exchangeId))) {
-      rt.ledger.append(book, { id: exchangeId, ...scopeFields(key), from: fromId, to: toId, role, text, time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
+      rt.ledger.append(book, { id: exchangeId, ...scopeFields(key), from: fromId, to: toId, role, text, ...(handoffText !== undefined && { handoffText }), ...(parentExchangeId && { parentExchangeId }), time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
       await rt.ledger.written(book)
     }
     let agent, targetSessionId

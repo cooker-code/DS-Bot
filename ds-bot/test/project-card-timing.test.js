@@ -3,7 +3,6 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
-import { RETRY_PROMISE_TEXT, RETRY_TEXT } from '../src/shared/retry-prompts.js'
 import { projectCardSummary } from '../src/host/project-tasks.js'
 
 const { outputFiles } = await build({
@@ -282,36 +281,18 @@ test('task detail shows results below the criteria and switches to a read-only r
       retries: [{ at: 6, input: 'Retry input', failedAt: 4, previousOutput: 'Service timed out' }], result: 'Final receipt' },
     { ownerId: 'b', startedAt: 5, plan: 'Inspect output', planNode: { inputs: [] } },
   ]
-  const timeline = handoffs.type({ detail: { rounds }, roster: { byId: { a: { name: 'Alice', color: 'red' } } } })
-  const rows = Array.from(timeline.children.at(-1))
-  assert.deepEqual(rows.map(row => row.children[0].children[1]), ['1. Alice', '2. b · Dispatch', '3. Alice · Retry'])
-  assert.deepEqual(rows.map(row => row.children[1].props.text), ['Original input', 'Inspect output', 'Retry input'])
-  assert.deepEqual(rows.map(row => row.children[3].props.text), ['Service timed out', 'No recorded output', 'Final receipt'])
-  assert.equal(rows[0].children[4], false)
-  assert.deepEqual([rows[2].children[4].props.label, rows[2].children[4].props.text].join('|'), 'Retry reason|Service timed out')
-  const flows = handoffs.type({ detail: { title: 'Example task', rounds: [
-    { dispatchId: 'd1', ownerId: 'dev', result: 'First result', submittedAt: 3, planNode: { version: 2, node: 1, acceptedBy: 'manager', acceptedAt: 4 } },
-    { dispatchId: 'd2', ownerId: 'dev', planNode: { version: 2, node: 2 } },
-  ], plans: [{ version: 2, by: 'manager', at: 1, nodes: [{ no: 1, title: 'Initial change' }, { no: 2, title: 'Complete samples' }] }] },
-  history: { messages: [
-    { exchangeId: 'd1', key: 'one', from: 'manager', to: 'dev', at: 2, text: 'First dispatch' },
-    { exchangeId: 'd2', key: 'two', from: 'manager', to: 'dev', at: 5, text: 'Second dispatch' },
+  const flows = handoffs.type({ detail: { title: 'Example task', rounds }, history: { messages: [
+    { key: 'first', exchangeId: 'one', at: 1, from: 'manager', to: 'a', text: 'Original input' },
+    { key: 'second', exchangeId: 'two', replyTo: 'one', at: 7, from: 'a', to: 'b', text: 'Final receipt' },
   ] } })
-  const flowLabels = Array.from(flows.children.at(-1), row => row.children[0].children[1])
-  assert.deepEqual(flowLabels, ['1. manager · Task plan · v2', '2. manager → dev · Dispatch · v2 · Node 1 · Initial change',
-    '3. dev · Submitted result · Initial change', '4. manager · Approved result · Initial change',
-    '5. manager → dev · Dispatch · v2 · Node 2 · Complete samples · Assigned, awaiting start'])
+  const rows = Array.from(flows.children.at(-1), row => row.props.entry)
+  assert.deepEqual(rows.map(r => r.owner), ['manager', 'a', 'a', 'b'])
+  assert.equal(rows[0].outgoing, rows[1].incoming)
+  assert.equal(rows[2].incoming, rows[1].incoming)
+  assert.equal(rows[2].outgoing, rows[3].incoming)
+  assert.equal(rows[2].reason, 'Service timed out')
+  assert.deepEqual(Array.from(flows.children.find(child => child?.props?.className === 'bt-handoff-bar').children[0], segment => segment.props['data-retry']), [false, false, true, false])
   assert.equal(flows.children[0].children[1].props.text, 'Example task')
-  const recovery = handoffs.type({ detail: { rounds: [
-    { planNode: { block: { reason: 'Build interrupted', decisions: [
-      { reason: 'Waiting for restart' }, { nextRound: 2, reason: 'Runner is available again' },
-    ] } } },
-    { planNode: { previousRound: 1 }, retries: [{ restart: true }, {}, { input: RETRY_TEXT }, { input: RETRY_PROMISE_TEXT }] },
-  ] } })
-  const reasons = Array.from(recovery.children.at(-1)).slice(1).map(row => row.children[4].props.text)
-  assert.deepEqual(reasons, ['Build interrupted\nRunner is available again', 'The host restarted during execution.', 'No retry reason was recorded.',
-    'The Bot wrote the tool call as text, so the tool did not run.', 'The Bot ended its turn before calling a tool.'])
-  assert.deepEqual(Array.from(timeline.children.find(child => child?.props?.className === 'bt-handoff-bar').children[0], segment => segment.props['data-retry']), [false, false, true])
   assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
   const results = () => fields[2].type(fields[2].props)
   assert.equal(results().props.placeholder.props.className, 'bt-empty')

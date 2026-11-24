@@ -433,8 +433,8 @@ await step('DS Bot dispatches a project card with the original image', async () 
   if (history.incomplete) return 'could not read the project member session history'
   if (!history.messages.some(row => row.exchangeId === card.rounds[0].dispatchId && row.from === chief().id && row.to === card.rounds[0].ownerId))
     return 'the delivered dispatch must identify both Bots'
-  if (!history.messages.some(row => row.kind === 'Group message' && row.from === undefined && row.sender === 'User'))
-    return 'the scoped group intake must be visible in the timeline'
+  if (history.messages.some(row => !row.from || !row.to || row.from === row.to))
+    return 'the task timeline must contain only deliveries between Bots'
   const original = card.requirements[0]
   const { rows } = await api('group-rows', { roomId: devRoomId, from: original.seq })
   const answers = rows.filter(row => row.botId === chief().id && row.text?.includes('核对派工后能否看到附件'))

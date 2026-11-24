@@ -17,21 +17,22 @@ export function CopyTaskText({ text, label }) {
     } }, status === t('Copied') ? h(CheckIcon) : h(CopyIcon), status && h('span', { role: 'status', className: 'bt-task-copy-feedback' }, status))
 }
 
-export function TaskContent({ label, text }) {
+export function TaskContent({ header, panelId, selectedId, text }) {
   const [raw, setRaw] = useState(false)
   const [search, setSearch] = useState(false)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const active = useRef(null)
+  useEffect(() => { setIndex(0); setQuery(''); setSearch(false) }, [selectedId])
   const parts = search && query ? text.split(query) : [text]
   const matches = parts.length - 1
   useEffect(() => { active.current?.scrollIntoView({ block: 'nearest' }) }, [query, index])
   return h('div', { className: 'bt-task-content' },
-    h('div', { className: 'bt-task-content-head' }, h('strong', null, label),
+    h('div', { className: 'bt-task-content-head' }, header,
       h('small', null, t('{n} lines', { n: text.split('\n').length })),
       h('div', { className: 'bt-task-content-modes' }, [true, false].map(mode => h('button', { key: String(mode), type: 'button',
         'aria-pressed': mode === (raw || search), onClick: () => { setRaw(mode); setSearch(false) } }, mode ? t('Raw text') : 'Markdown'))),
-      h(CopyTaskText, { text, label: t('Copy') }),
+      h(CopyTaskText, { key: selectedId, text, label: t('Copy') }),
       h('button', { type: 'button', className: 'bt-tool', title: t('Search'), 'aria-label': t('Search'), 'aria-expanded': search,
         onClick: () => setSearch(!search) }, h(SearchIcon))),
     search && h('div', { className: 'bt-task-find' }, h('input', { autoFocus: true, value: query, 'aria-label': t('Find in text'),
@@ -40,7 +41,7 @@ export function TaskContent({ label, text }) {
         if (e.key === 'Enter' && matches) setIndex((index + (e.shiftKey ? matches - 1 : 1)) % matches) } }),
       query && h('small', { role: 'status' }, (matches ? index + 1 : 0) + ' / ' + matches),
       matches > 1 && h('button', { type: 'button', onClick: () => setIndex((index + 1) % matches) }, t('Next match'))),
-    h('div', { className: 'bt-task-content-body' }, raw || search
+    h('div', { className: 'bt-task-content-body', role: 'tabpanel', id: panelId, 'aria-labelledby': selectedId }, raw || search
       ? h('pre', null, parts.map((piece, i) => h('span', { key: i }, i ? h('mark', { ref: i === index + 1 ? active : undefined, 'data-current': i === index + 1 }, query) : null, piece)))
       : h(MarkdownText, { text, labels: mdLabels(), variant: 'compact' })))
 }

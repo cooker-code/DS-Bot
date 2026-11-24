@@ -2979,7 +2979,8 @@ test('an in-flight phase-one manager assignment retains its original handoff, at
   const timeline = (await host.call('project-task-detail', { roomId: 'r1', taskId: id, interactionsOnly: true })).value
   const sends = timeline.messages.filter(row => detail.rounds.some(round => round.dispatchId === row.exchangeId))
   assert.deepEqual(sends.map(row => [row.from, row.to]), [['a', 'b'], ['a', 'c']])
-  assert.ok(timeline.messages.some(row => row.kind === 'Group message'))
+  assert.equal(sends[0].text, 'Confirm start only')
+  assert.ok(timeline.messages.every(row => row.from && row.to && row.from !== row.to))
   assert.match(detail.rounds[0].dispatchInput, /Confirm start only/)
   assert.match(detail.rounds[1].dispatchInput, /Verified the source in the record/)
   assert.ok(detail.rounds[0].submittedAt >= detail.rounds[0].startedAt)
