@@ -451,6 +451,10 @@ export const TASK_CSS = `
 .bt-result-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px}
 .bt-result-gallery .bt-task-image-open img{width:100%;max-height:140px;object-fit:contain}
 .bt-result-document{cursor:pointer;color:var(--bt-accent);text-decoration:underline;margin-top:8px}
+.bt-task-execution-status{font-size:13px;line-height:1.5;margin:12px 0 20px}
+.bt-task-execution-status[data-status=blocked]>strong,.bt-task-execution-status[data-status=failed]>strong{color:var(--bt-danger)}
+.bt-task-execution-status p{margin:6px 0;white-space:pre-wrap}
+.bt-task-blocker{margin-top:8px;padding-inline-start:12px;border-inline-start:2px solid var(--bt-danger)}
 .bt-task-image{display:grid;justify-items:start;gap:4px;margin-top:8px}
 .bt-task-image img{display:block;border-radius:8px}
 .bt-task-image-open{display:block;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in}

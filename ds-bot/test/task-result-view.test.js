@@ -33,3 +33,35 @@ test('a historical review displays its acceptance table, named sibling screensho
   await assert.rejects(readReceiptFile(rt, room, card, doc.receiptFile), { code: 'bot/not-found' })
   assert.deepEqual((await taskResultView(rt, room, card, card))[0].items, ['独立报告通过'])
 })
+
+test('a blocked delivery exposes its recorded document without claiming acceptance or completion', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'blocked-result-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const report = join(root, '讨论整理.md')
+  const markdown = '# 讨论整理\n\n## 验收结果\n|项目|结果|\n|---|---|\n|企微发送|尚未发送|\n'
+  await writeFile(report, markdown)
+  const rt = { inData: async () => false, privateClash: async () => false }
+  const room = { workDir: root }
+  const round = { planNode: { block: { reason: 'Delivery unavailable', evidence: '文档：' + report + '；未发送。' } } }
+  const card = { rounds: [round], plans: [{ nodes: [{ round: 1, status: 'blocked' }] }] }
+  const [group] = await taskResultView(rt, room, card, card)
+  assert.equal(group.partial, true)
+  assert.deepEqual(group.items, [])
+  assert.deepEqual(group.files.map(file => file.name), ['讨论整理.md'])
+  assert.equal(await readReceiptFile(rt, room, card, group.files[0].receiptFile), markdown)
+  assert.equal(round.result, undefined)
+  assert.equal(round.submittedAt, undefined)
+  round.planNode.block.evidence = join(root, '..', 'unrelated.md')
+  assert.deepEqual(await taskResultView(rt, room, card, card), [])
+})
+
+test('a checkpoint artifact is available before final submission', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-result-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await writeFile(join(root, 'report.md'), '# Prepared document')
+  const rt = { inData: async () => false, privateClash: async () => false }
+  const card = { rounds: [{ planNode: { checkpointArtifact: 'report.md' } }] }
+  const [group] = await taskResultView(rt, { workDir: root }, card, card)
+  assert.equal(group.partial, true)
+  assert.equal(group.files[0].name, 'report.md')
+})

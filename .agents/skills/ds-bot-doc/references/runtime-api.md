@@ -33,6 +33,8 @@
 
 ## 会话、附件、请求与回复
 
+`project-task-detail` 的 `withResults=true` 也返回当前轮次已在 `checkpoint.artifact` 或阻塞证据中明确登记的 Markdown 和截图。尚无正式回执的分组带 `partial:true`，`items` 为空，仅显示已有文件；这不改变卡片状态、提交时间或验收结论。普通节点的当前阻塞由 `rounds[].planNode.block` 提供原因和 `waitingFor`，详情按当前计划节点绑定的轮次显示。旧轮及已恢复轮的阻塞不覆盖当前节点。
+
 会话由 DSH 服务持有，名册保存会话与 Bot、群的关联。消息正文、对话分段缓存、附件和用量各有专用服务。不要用 SQL 修改会话 ID 或删除记录来模拟归档、取消或实际发送。
 
 | 操作 | 业务与输入 | 服务和成功值 |

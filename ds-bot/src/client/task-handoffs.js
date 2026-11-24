@@ -4,6 +4,7 @@ import { viewBottom } from './motion.js'
 import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
 import { TaskPlans, unsentPlanNotes } from './task-plans.js'
 import { TaskContent, CopyTaskText } from './task-content.js'
+import { TaskExecutionStatus } from './task-execution-status.js'
 import { InfoIcon } from './icons.js'
 import { colorOf } from './characters.js'
 import { paintCss } from './inks.js'
@@ -165,6 +166,7 @@ export function TaskHandoffs({ detail, roster, history, roomId, taskId }) {
   return h('section', { 'aria-label': t('Task handoffs') },
     detail.title && h('div', { className: 'bt-task-detail-name' }, h('h2', null, detail.title),
       h(CopyTaskText, { text: detail.title, label: t('Copy task name') })),
+    h(TaskExecutionStatus, { detail }),
     h('h3', { className: 'bt-section-title' }, t('Task handoffs')),
     h(TaskPlans, { plans: detail.plans, roster, version: planVersion, onSelect: selectPlan }),
     notes.filter(note => !note.after).map(noteIcon),

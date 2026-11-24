@@ -35,5 +35,6 @@ export function TaskResults({ roomId, taskId, detail }) {
     files.filter(file => file.kind === 'markdown').map(file => h(ResultDocument, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId, file })),
     h('div', { className: 'bt-result-gallery' }, files.filter(file => file.kind === 'image').map(file =>
       h(TaskImage, { key: file.receiptFile ?? file.ref.attachmentId + file.name, roomId, taskId,
-        image: file.ref, receiptFile: file.receiptFile, label: file.name }))))
+        image: file.ref, receiptFile: file.receiptFile, label: file.name }))),
+    groups.some(group => group.partial) && h('p', { className: 'bt-note', role: 'status' }, t('Available files · task not completed')))
 }

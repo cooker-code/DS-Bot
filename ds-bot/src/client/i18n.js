@@ -1475,6 +1475,7 @@ const ZH = {
   'Late receipt for this round': '本轮迟到回执',
   'Continued from round {round}': '接续第 {round} 轮',
   'Waiting for': '等待条件',
+  'Available files · task not completed': '已有产物，任务尚未完成',
   'Waiting': '等待中',
   'Original request': '原始需求',
   "Branch and worktree": "分支与工作树",
