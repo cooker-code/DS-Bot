@@ -46,3 +46,21 @@ test('hover creates a real tooltip with the complete dispatch context and preser
   assert.equal(selected, 2)
   assert.equal(find(render(), node => node.props?.role === 'tooltip'), undefined)
 })
+
+test('an unsent-plan info button opens its own plan without requiring a dispatch edge', () => {
+  let selected
+  const react = { createElement: (type, props, ...children) => ({ type, props, children }),
+    useEffect() {}, useId: () => 'note', useRef: () => ({ current: null }), useState: initial => [initial, () => {}] }
+  const module = { exports: {} }
+  runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => react, clearTimeout() {} })
+  const tree = module.exports.TaskHandoffs({ detail: { plans: [{ version: 2, at: 2, nodes: [] }], rounds: [] },
+    history: { messages: [{ key: 'reply', at: 1, from: 'dev', to: 'lead', text: 'Result' }],
+      planDispatchFailures: [{ version: 2, node: 1, at: 3, error: 'Paths still reserved' }] } })
+  const info = find(tree, node => node.props?.note?.version === 2)
+  assert.ok(info)
+  const button = find(info.type({ ...info.props, onPlan: version => { selected = version } }), node => node.type === 'button')
+  assert.equal(button.props['data-plan-note-version'], 2)
+  assert.ok(button.props['aria-label'].includes('Paths still reserved'))
+  button.props.onClick({ preventDefault() {}, stopPropagation() {} })
+  assert.equal(selected, 2)
+})

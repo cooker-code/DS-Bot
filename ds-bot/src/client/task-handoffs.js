@@ -2,7 +2,7 @@ import { createElement as h, Fragment, useEffect, useId, useRef, useState } from
 import { createPortal } from 'react-dom'
 import { viewBottom } from './motion.js'
 import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
-import { TaskPlans } from './task-plans.js'
+import { TaskPlans, unsentPlanNotes } from './task-plans.js'
 import { TaskContent, CopyTaskText } from './task-content.js'
 import { InfoIcon } from './icons.js'
 import { colorOf } from './characters.js'
@@ -58,7 +58,7 @@ function contextLabel(edge) {
     edge.round && t('Round {number}', { number: edge.round })].filter(Boolean).join(' · ')
 }
 
-function HandoffContext({ edge, onPlan }) {
+function HandoffContext({ edge, onPlan, note }) {
   const id = useId()
   const trigger = useRef(null)
   const tooltip = useRef(null)
@@ -93,14 +93,15 @@ function HandoffContext({ edge, onPlan }) {
       window.removeEventListener('keydown', key, true)
     }
   }, [Boolean(place)])
-  if (!edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null
-  const description = [contextLabel(edge), edge.planReason && t('Plan change reason') + ' · ' + edge.planReason,
+  if (!note && !edge?.planVersion && !edge?.requirementVersion && !edge?.node) return null
+  const version = note?.version ?? edge?.planVersion
+  const description = note?.description ?? [contextLabel(edge), edge.planReason && t('Plan change reason') + ' · ' + edge.planReason,
     edge.planVersion && t('View plan v{version}', { version: edge.planVersion })].filter(Boolean).join('\n')
   return h(Fragment, null,
-    h('button', { ref: trigger, type: 'button', className: 'bt-tool', 'aria-label': description,
+    h('button', { ref: trigger, type: 'button', className: 'bt-tool', 'aria-label': description, 'data-plan-note-version': note?.version,
       'aria-describedby': place ? id : undefined, onMouseEnter: show, onMouseLeave: leave,
       onFocus: show, onBlur: close,
-      onClick: event => { event.preventDefault(); event.stopPropagation(); close(); if (edge.planVersion) onPlan(edge.planVersion) } }, h(InfoIcon)),
+      onClick: event => { event.preventDefault(); event.stopPropagation(); close(); if (version) onPlan(version) } }, h(InfoIcon)),
     place && createPortal(h('div', { ref: tooltip, id, role: 'tooltip', className: 'bt-handoff-tooltip', style: place,
       onMouseEnter: cancelClose, onMouseLeave: leave }, description), document.body))
 }
@@ -158,12 +159,14 @@ export function TaskHandoffs({ detail, roster, history }) {
       ['User request', 'Result return', 'Dispatch'].includes(entry.incoming.kind) && t(entry.incoming.kind), entry.reason && t('Retry')].filter(Boolean).join(' · ')
     return { ...entry, id: id + '-' + index, label, background: paintCss(colorOf(bot ?? { id: entry.owner })) }
   })
+  const notes = history ? unsentPlanNotes(detail.plans ?? [], detail.rounds ?? [], entries, history.planDispatchFailures ?? [], roster) : []
+  const noteIcon = note => h(HandoffContext, { key: note.version, note, onPlan: selectPlan })
   return h('section', { 'aria-label': t('Task handoffs') },
     detail.title && h('div', { className: 'bt-task-detail-name' }, h('h2', null, detail.title),
       h(CopyTaskText, { text: detail.title, label: t('Copy task name') })),
     h('h3', { className: 'bt-section-title' }, t('Task handoffs')),
-    h(TaskPlans, { plans: detail.plans, roster, version: planVersion, onSelect: selectPlan,
-      rounds: detail.rounds, entries, history, onReveal: setReveal }),
+    h(TaskPlans, { plans: detail.plans, roster, version: planVersion, onSelect: selectPlan }),
+    notes.filter(note => !note.after).map(noteIcon),
     !history && h('small', { role: 'status' }, t('Loading message history…')),
     history?.incomplete && h('small', { role: 'status' }, t('Some session history is unavailable.')),
     entries.length ? h('div', { className: 'bt-handoff-bar' },
@@ -173,5 +176,6 @@ export function TaskHandoffs({ detail, roster, history }) {
       : history && h('p', { className: 'bt-empty' }, t('No Bot handoffs recorded.')),
     entries.map(entry => h(HandoffRow, { key: entry.key, entry, onPlan: selectPlan, reveal: reveal?.key === entry.key ? reveal : null },
       h('summary', null, h('span', { className: 'bt-handoff-dot', style: { background: entry.background } }), entry.label, h(HandoffContext, { edge: entry.incoming, onPlan: selectPlan }),
+        notes.filter(note => note.after === entry.key).map(noteIcon),
         Number.isFinite(entry.at) && h('time', null, new Date(entry.at).toLocaleString())))))
 }

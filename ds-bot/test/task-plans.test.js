@@ -41,33 +41,32 @@ test('reordered object fields and metadata timestamps do not create content chan
   assert.ok(planDifferenceText(before, same, roster).includes('No plan content changes.'))
 })
 
-test('plan history separates save position, delivery, failed dispatch and the next revision', () => {
-  const plans = [{ version: 1, at: 2 }, { version: 2, at: 5 }, { version: 3, at: 8 }, { version: 4, at: 12 }]
-  const rounds = [{ dispatchId: 'one', sentAt: 3, planNode: { version: 1 } },
-    { dispatchId: 'three', sentAt: 10, planNode: { version: 3 } }, { planNode: { version: 4 } }]
+test('unsent plan notes anchor after the last real handoff with a concise failure explanation', () => {
+  const plans = [{ version: 1, at: 2 }, { version: 2, at: 5, by: 'a', reason: 'Add missing product context' },
+    { version: 3, at: 8, reason: 'User changed the time format' }]
+  const rounds = [{ sentAt: 3, planNode: { version: 1 } }, { sentAt: 10, planNode: { version: 3 } }]
   const entry = (key, at, kind, planVersion) => ({ key, at, incoming: { kind, planVersion } })
   const entries = [entry('user', 1, 'User request'), entry('one', 3, 'Dispatch', 1), entry('reply', 4, 'Bot reply'),
     entry('coordination', 6, 'Bot message'), entry('three', 10, 'Dispatch', 3)]
   const failure = { version: 2, node: 1, at: 5.5, error: 'Paths still reserved' }
-  const history = module.exports.planHistory(plans, rounds, entries, [failure])
-  assert.deepEqual(Array.from(history, h => h.status), ['Dispatched', 'Not dispatched', 'Dispatched', 'Dispatch registered; delivery not recorded'])
-  const unused = history[1]
-  assert.equal(unused.prior.number, 3)
-  assert.equal(unused.next.number, 4)
-  assert.equal(unused.nextPlan.version, 3)
-  assert.equal(unused.failures[0], failure)
-  assert.equal(unused.delivered.length, 0)
-  assert.equal(unused.showReason, true)
-  assert.equal(history[2].showReason, true)
-  assert.deepEqual(Array.from(history[2].delivered, item => item.number), [5])
-  assert.equal(history[3].nextPlan, undefined)
+  const notes = module.exports.unsentPlanNotes(plans, rounds, entries, [failure], roster)
+  assert.equal(notes.length, 1)
+  assert.equal(notes[0].version, 2)
+  assert.equal(notes[0].after, 'reply')
+  for (const value of ['Plan v2', 'Not dispatched', 'Alice', 'Paths still reserved',
+    'Plan v3']) assert.ok(notes[0].description.includes(value), value)
+  assert.ok(!notes[0].description.includes('Add missing product context'))
+  assert.ok(!notes[0].description.includes('User changed the time format'))
 })
 
-test('recorded delivery survives missing history without inventing handoff links', () => {
-  const [record] = module.exports.planHistory([{ version: 1, at: 1 }], [{ sentAt: 2, planNode: { version: 1 } }], [], [])
-  assert.equal(record.status, 'Dispatched')
-  assert.equal(record.delivered.length, 0)
-  assert.equal(record.failures.length, 0)
-  assert.equal(record.prior, undefined)
-  assert.equal(record.next, undefined)
+test('delivered plans never become unsent notes when handoff history is unavailable', () => {
+  assert.equal(module.exports.unsentPlanNotes([{ version: 1, at: 1 }], [{ sentAt: 2, planNode: { version: 1 } }], [], [], roster).length, 0)
+})
+
+test('unknown failure stays explicit and plans before the first handoff have no invented anchor', () => {
+  const [note] = module.exports.unsentPlanNotes([{ version: 1, at: 1 }], [{ planNode: { version: 1 } }],
+    [{ key: 'future', at: 3, incoming: {} }], [], roster)
+  assert.equal(note.after, undefined)
+  assert.ok(note.description.includes('Dispatch registered; delivery not recorded'))
+  assert.ok(note.description.includes('No undispatched reason was recorded.'))
 })

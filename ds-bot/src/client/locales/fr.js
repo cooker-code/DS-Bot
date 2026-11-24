@@ -2,21 +2,12 @@
 
 export const FR = {
   "Saved by {name}": "Enregistré par {name}",
-  "Plan version history": "Historique des versions du plan",
   "Saved {time}": "Enregistré le {time}",
   "Not dispatched": "Non attribué",
   "Dispatch registered; delivery not recorded": "Attribution enregistrée ; remise non enregistrée",
-  "Saved in the flow": "Position lors de l’enregistrement",
-  "After handoff {number}": "Après le transfert {number}",
-  "Before handoff {number}": "Avant le transfert {number}",
-  "No matching handoff recorded.": "Aucun transfert correspondant enregistré.",
-  "Dispatched handoffs": "Transferts correspondants",
-  "Handoff {number}": "Transfert {number}",
   "Dispatch failed": "Échec de l’attribution",
   "No undispatched reason was recorded.": "Le motif de l’absence d’attribution n’a pas été enregistré.",
-  "Loading dispatch history…": "Chargement de l’historique des attributions…",
   "Next version saved {time}": "Version suivante enregistrée le {time}",
-  "Delivery is recorded, but its handoff history is unavailable.": "La remise est enregistrée, mais son historique de transfert est indisponible.",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Un autre nœud attribué occupe des fichiers communs dans cet arbre de travail. Attendez sa livraison, modifiez les chemins ou utilisez un autre arbre de travail.",
 
   "Archive 1 discussion": "Archiver une discussion",

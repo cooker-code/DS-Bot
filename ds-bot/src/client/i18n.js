@@ -12,21 +12,12 @@ export const NAMESPACE = 'ds-bot'
 
 const ZH = {
   "Saved by {name}": "保存者 {name}",
-  "Plan version history": "计划版本记录",
   "Saved {time}": "保存于 {time}",
   "Not dispatched": "未派发",
   "Dispatch registered; delivery not recorded": "已登记派工，尚无送达记录",
-  "Saved in the flow": "保存位置",
-  "After handoff {number}": "交接 {number} 之后",
-  "Before handoff {number}": "交接 {number} 之前",
-  "No matching handoff recorded.": "暂无对应交接记录。",
-  "Dispatched handoffs": "对应交接",
-  "Handoff {number}": "交接 {number}",
   "Dispatch failed": "派工失败",
   "No undispatched reason was recorded.": "未派发原因未记录。",
-  "Loading dispatch history…": "正在读取派工记录…",
   "Next version saved {time}": "后续版本保存于 {time}",
-  "Delivery is recorded, but its handoff history is unavailable.": "已记录送达，暂时无法读取对应交接。",
   "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "同一工作树的文件范围仍被其他已派工节点占用。需要等待其交付、调整文件范围或使用独立工作树。",
 
   "Copy all outputs": "复制全部输出",
