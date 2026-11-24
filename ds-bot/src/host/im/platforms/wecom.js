@@ -8,7 +8,7 @@
 // The gateway takes a WebSocket on its root path only (/wss answers 403) and
 // matches Connection / Upgrade case-sensitively, so the socket comes from `ws`:
 // Node's built-in WebSocket sends those header names in lowercase.
-import { createDecipheriv } from 'node:crypto'
+import { createDecipheriv, createHash } from 'node:crypto'
 import { chunkMarkdown } from '../format.js'
 
 // Loaded on first WeCom check or connect so plugin startup skips `ws` when unused.
@@ -94,7 +94,7 @@ export default {
 
     const nextReqId = () => `r${++reqCounter}`
     const sendFrame = (packet) => { if (socket?.readyState === 1) socket.send(JSON.stringify(packet)) }
-    const sendToChat = (chatid, body) => new Promise((resolve, reject) => {
+    const request = (cmd, body) => new Promise((resolve, reject) => {
       if (socket?.readyState !== 1) { reject(new Error('WeCom socket is not open')); return }
       const req_id = nextReqId()
       const timer = setTimeout(() => {
@@ -104,13 +104,14 @@ export default {
       timer.unref?.()
       pending.set(req_id, { resolve, reject, timer })
       try {
-        socket.send(JSON.stringify({ cmd: 'aibot_send_msg', headers: { req_id }, body: { ...body, chatid } }))
+        socket.send(JSON.stringify({ cmd, headers: { req_id }, body }))
       } catch (error) {
         clearTimeout(timer)
         pending.delete(req_id)
         reject(error)
       }
     })
+    const sendToChat = (chatid, body) => request('aibot_send_msg', { ...body, chatid })
     const rejectPending = reason => {
       for (const held of pending.values()) {
         clearTimeout(held.timer)
@@ -253,6 +254,23 @@ export default {
     void open()
 
     return {
+      sendFile: async (chat, { name, data, validate }) => {
+        if (!Buffer.isBuffer(data) || !data.length || data.length > 25 * 1024 * 1024) throw new Error('Choose a non-empty document up to 25 MB.')
+        const chunkSize = 512 * 1024
+        const total = Math.ceil(data.length / chunkSize)
+        const init = await request('aibot_upload_media_init', { type: 'file', filename: name, total_size: data.length,
+          total_chunks: total, md5: createHash('md5').update(data).digest('hex') })
+        if (!init?.upload_id) throw new Error('WeCom did not return an upload ID.')
+        for (let index = 0; index < total; index++) {
+          await request('aibot_upload_media_chunk', { upload_id: init.upload_id, chunk_index: index,
+            base64_data: data.subarray(index * chunkSize, (index + 1) * chunkSize).toString('base64') })
+        }
+        const uploaded = await request('aibot_upload_media_finish', { upload_id: init.upload_id })
+        if (!uploaded?.media_id) throw new Error('WeCom did not return a media ID.')
+        validate?.()
+        const receipt = await sendToChat(chat.key, { msgtype: 'file', file: { media_id: uploaded.media_id } })
+        return { acknowledged: true, ...(receipt?.msgid && { messageId: String(receipt.msgid) }) }
+      },
       send: async (chat, { text, buttons }) => {
         const chunks = chunkMarkdown(String(text ?? ''), TEXT_LIMIT)
         let messageId

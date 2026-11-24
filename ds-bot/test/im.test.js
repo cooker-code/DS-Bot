@@ -282,6 +282,115 @@ test('a room member reply reaches the originating WeCom DM through the WebSocket
   await waitFor(() => delivered.includes('**Writer**: room workspace'))
 })
 
+test('explicit task document delivery uses the configured WeCom chat, uploads complete bytes and records one acknowledged receipt', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'im-document-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const report = join(dir, 'discussion.md')
+  const document = '# Discussion\n\n' + '完整正文与证据。'.repeat(40000)
+  writeFileSync(report, document)
+  const uploaded = []
+  const sends = []
+  let reject = false
+  let rejectUpload = false
+  let unbind = false
+  const gateway = await fakeWsServer({ onSocket(ws) {
+    ws.on('message', raw => {
+      const packet = JSON.parse(raw)
+      const answer = (body = {}) => ws.send(JSON.stringify({ headers: packet.headers, errcode: 0, body }))
+      if (packet.cmd === 'aibot_subscribe' || packet.cmd === 'ping') return answer()
+      if (packet.cmd === 'aibot_upload_media_init') {
+        if (rejectUpload) return ws.send(JSON.stringify({ headers: packet.headers, errcode: 60001, errmsg: 'media refused' }))
+        assert.equal(packet.body.type, 'file')
+        assert.equal(packet.body.filename, 'discussion.md')
+        assert.equal(packet.body.total_size, Buffer.byteLength(document))
+        uploaded.push({ init: packet.body, chunks: [] })
+        return answer({ upload_id: 'upload-' + uploaded.length })
+      }
+      if (packet.cmd === 'aibot_upload_media_chunk') {
+        const file = uploaded.at(-1)
+        assert.equal(packet.body.chunk_index, file.chunks.length)
+        file.chunks.push(Buffer.from(packet.body.base64_data, 'base64'))
+        return answer()
+      }
+      if (packet.cmd === 'aibot_upload_media_finish') {
+        const file = uploaded.at(-1)
+        assert.equal(file.chunks.length, file.init.total_chunks)
+        assert.equal(Buffer.concat(file.chunks).toString(), document)
+        if (unbind) one.chats.u1.target = null
+        return answer({ media_id: 'media-' + uploaded.length })
+      }
+      assert.equal(packet.cmd, 'aibot_send_msg')
+      assert.equal(packet.body.chatid, 'u1')
+      assert.equal(packet.body.msgtype, 'file')
+      assert.equal(packet.body.file.media_id, 'media-' + uploaded.length)
+      sends.push(packet.body)
+      if (reject) ws.close()
+      else answer({ msgid: 'file-' + sends.length })
+    })
+  } })
+  t.after(() => gateway.close())
+  const s = await start({ platform: 'wecom', adapter: adapters.wecom })
+  t.after(s.stop)
+  s.rt.config.im = { wecom: { gateway: gateway.url } }
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'User', at: 1 })
+  one.chats.u1 = { kind: 'direct', title: 'Configured recipient', target: { roomId: 'r1' }, at: 1 }
+  const room = s.rt.roomOf('r1')
+  room.workDir = dir
+  room.projectCards = { delivery: { id: 'delivery', title: 'Discussion document', intakes: [], rounds: [
+    { ownerId: 'b', assignedAt: 1, startedAt: 2, submittedAt: 3, result: 'Document ready: ' + report },
+  ] } }
+  await s.rt.save()
+  const ready = async () => {
+    for (let i = 0; i < 150 && s.rt.imStatusView()[conn.id]?.state !== 'ready'; i++) await delay(20)
+    assert.equal(s.rt.imStatusView()[conn.id]?.state, 'ready')
+  }
+  await ready()
+  const input = { roomId: 'r1', taskId: 'delivery', fileName: 'discussion.md', requestId: 'deliver-discussion' }
+  const send = extra => s.rt.imEndpoint('im-send-document', { ...input, ...extra })
+  const [first, replay] = await Promise.all([send(), send()])
+  assert.deepEqual(first, replay)
+  assert.equal(first.status, 'sent')
+  assert.equal(first.messageId, 'file-1')
+  assert.equal(first.acknowledged, true)
+  assert.equal(first.chatKey, 'u1')
+  assert.equal(uploaded.length, 1)
+  assert.equal(sends.length, 1)
+  const tool = s.rt.teamTools.find(tool => tool.name === 'send_im_document')
+  assert.ok(tool)
+  room.sessions = { a: 'admin-current' }
+  s.rt.groupOwners.set('admin-current', { roomId: 'r1', botId: 'a' })
+  s.rt.groupOwners.set('admin-old', { roomId: 'r1', botId: 'a' })
+  s.rt.groupOwners.set('unassigned-member', { roomId: 'r1', botId: 'b' })
+  assert.deepEqual(JSON.parse(await tool.execute(input, { agent: { id: 'admin-current' } })), first)
+  await assert.rejects(tool.execute(input, { agent: { id: 'admin-old' } }), /group admin|dispatched document owner/)
+  await assert.rejects(tool.execute(input, { agent: { id: 'unassigned-member' } }), /group admin|dispatched document owner/)
+  await assert.rejects(send({ fileName: 'unrelated.md', requestId: 'other' }), /registered on this task/)
+  one.chats.u2 = { ...one.chats.u1 }
+  one.paired.push({ id: 'u2', name: 'Another user', at: 2 })
+  await assert.rejects(send({ requestId: 'ambiguous' }), /one configured WeCom chat/)
+  delete one.chats.u2
+  one.paired = []
+  await assert.rejects(send({ requestId: 'unpaired' }), /one configured WeCom chat/)
+  one.paired.push({ id: 'u1', name: 'User', at: 1 })
+  reject = true
+  await assert.rejects(send({ requestId: 'lost-ack' }), /acknowledged|socket/)
+  assert.deepEqual(await send(), first, 'a confirmed receipt remains readable while the socket reconnects')
+  reject = false
+  await ready()
+  await assert.rejects(send({ requestId: 'lost-ack' }), /no confirmed result.*uncertain/)
+  assert.equal(sends.length, 2, 'a lost acknowledgement never triggers another file send')
+  unbind = true
+  await assert.rejects(send({ requestId: 'unbound-before-post' }), /one configured WeCom chat/)
+  assert.equal(sends.length, 2, 'a route removed during upload cannot receive the document')
+  unbind = false
+  one.chats.u1.target = { roomId: 'r1' }
+  rejectUpload = true
+  await assert.rejects(send({ requestId: 'refused-upload' }), /WeCom 60001/)
+  assert.equal(sends.length, 2, 'a refused upload never posts a file message')
+})
+
 test('unbound group mention replies unbound and records the chat; binding routes mentions', async (t) => {
   const s = await start()
   t.after(s.stop)

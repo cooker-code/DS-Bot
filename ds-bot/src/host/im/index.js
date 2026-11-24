@@ -12,6 +12,7 @@ import { imPlatform, IM_PLATFORMS } from '../../shared/im-platforms.js'
 import { REPLY_KIND, SOURCE_KIND } from '../constants.js'
 import { adapters } from './platforms/index.js'
 import { boundedFetch } from './platforms/media.js'
+import { documentTargets, deliverDocument, installDocumentTool } from './document-delivery.js'
 
 const RECONCILE_MS = 15_000
 const RUNTIME_SAVE_MS = 400
@@ -1349,6 +1350,7 @@ export function install(rt) {
   })
 
   const endpoints = {
+    async 'im-send-document'(body) { return deliverDocument(rt, body) },
     async 'im-add'(body) {
       const platform = imPlatform(String(body.platform ?? ''))
       if (platform === undefined || adapters[platform.id] === undefined) throw new Error('This platform is not available yet')
@@ -1706,5 +1708,23 @@ export function install(rt) {
     return [id, { state: status.state, ...(status.error !== undefined ? { error: status.error } : {}), at: status.at }]
   }))
 
-  Object.assign(rt, { imView, imStatusView, imViaView, imEndpoint, holdImOrigin, peekImOrigin, dropImOrigin })
+  const imDocumentTarget = (body, requireReady = false) => {
+    const candidates = documentTargets(connections(), body.roomId).filter(target =>
+      (!body.id || target.id === body.id) && (!body.chatKey || target.chatKey === body.chatKey))
+    if (candidates.length !== 1) throw new Error('Choose one configured WeCom chat bound to this group.')
+    const target = candidates[0]
+    if (requireReady && (typeof runners.get(target.id)?.handle?.sendFile !== 'function' || combinedStatus(target.id)?.state !== 'ready'))
+      throw new Error('The configured WeCom connection is not ready for document delivery.')
+    return target
+  }
+  const imSendDocument = async (target, file, roomId) => {
+    const validate = () => {
+      const current = imDocumentTarget({ ...target, roomId }, true)
+      if (current.chatKey !== target.chatKey || rt.readOnly() !== undefined) throw new Error('The IM route or team ownership changed before sending.')
+    }
+    validate()
+    return runners.get(target.id).handle.sendFile({ key: target.chatKey, kind: target.kind, title: target.title }, { ...file, validate })
+  }
+  Object.assign(rt, { imView, imStatusView, imViaView, imEndpoint, holdImOrigin, peekImOrigin, dropImOrigin, imDocumentTarget, imSendDocument })
+  installDocumentTool(rt)
 }

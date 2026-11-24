@@ -1075,6 +1075,7 @@ export function install(rt) {
           return ok(true)
         }
         case 'im-add':
+        case 'im-send-document':
         case 'im-update':
         case 'im-remove':
         case 'im-pair':
