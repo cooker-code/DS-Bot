@@ -12905,6 +12905,7 @@ var ZH = {
   "Loading message history…": "正在读取交互记录…",
   "Some session history is unavailable.": "部分会话历史无法读取，以下展示可核实的记录。",
   "Only part of the message is available.": "仅能读取部分消息正文。",
+  "User": "用户",
   "User request": "用户提出需求",
   "Result return": "结果回传",
   "Requirement v{version}": "需求 v{version}",
@@ -43766,7 +43767,7 @@ function contextLabel(edge) {
     edge.kind === "Dispatch" && !edge.requirementVersion && t("Requirement version not recorded"),
     edge.planVersion && t("Plan v{version}", { version: edge.planVersion }),
     edge.node && t("Node {n}", { n: edge.node }),
-    edge.round && t("Round {n}", { n: edge.round })
+    edge.round && t("Round {number}", { number: edge.round })
   ].filter(Boolean).join(" · ");
 }
 var tabs = ["Input", "Output", "Retry reason"];

@@ -51,7 +51,7 @@ function contextLabel(edge) {
     edge.kind === 'Dispatch' && !edge.requirementVersion && t('Requirement version not recorded'),
     edge.planVersion && t('Plan v{version}', { version: edge.planVersion }),
     edge.node && t('Node {n}', { n: edge.node }),
-    edge.round && t('Round {n}', { n: edge.round })].filter(Boolean).join(' · ')
+    edge.round && t('Round {number}', { number: edge.round })].filter(Boolean).join(' · ')
 }
 
 const tabs = ['Input', 'Output', 'Retry reason']
