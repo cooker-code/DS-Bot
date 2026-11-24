@@ -18,7 +18,7 @@ Chrome 中点击实际 TaskResults 的 Markdown disclosure，真实 useEffect �
 
 隔离真实 WebSocket 适配器测试校验了完整多分片文件字节、上传顺序、media_id 和匹配 msgid。同一请求并发只上传并投递一次；成功回执离线可回放；回执丢失标为 uncertain 且不重发；上传中解绑、上传明确被拒、未配对、多目标、未登记文件、旧管理员会话及未派工成员均拒绝投递。
 
-真实文件尚未发到企微。用户已明确授权现有目标，无需再询问收件人。日用 Desktop 操作者 API 返回 login_http_401，且运行实例尚未加载本次新增入口；未改写团队库、冒充 IM 来源、接管日用长连接或重启 Desktop。已准备可复用的发送请求，保存在本工作树 ignored 的 .playwright-mcp/requested-wecom-document.json。
+真实文件尚未发到企微。用户已明确授权现有目标，无需再询问收件人。日用 Desktop 操作者 API 返回 login_http_401，且尚未核实运行实例已加载本次新增入口；未改写团队库、冒充 IM 来源、接管日用长连接或重启 Desktop。已准备可复用的发送请求，保存在功能分支工作树 ignored 的 .playwright-mcp/requested-wecom-document.json。
 
 ## 检查与清理
 
@@ -27,3 +27,7 @@ Chrome 中点击实际 TaskResults 的 Markdown disclosure，真实 useEffect �
 - agents / scoped-tools 44 项通过。lint 退出 0（仅既有 warning），客户端生成一致性检查通过，183 个操作者 API 均恰好登记一次。
 - 最终候选的隔离宿主 57 步冒烟全部通过。Web 与 mock 进程组 37570 / 37573 已退出，58795 / 58796 无监听。此前失败启动的进程组也已清理。
 - 独立测试者的真实 React 预览服务已停止，41739 无监听，owned build/server 进程已退出；临时依赖移至可恢复的 Trash 目录，临时 node_modules 链接已移除。没有使用日用浏览器或修改 tracked 依赖清单。
+
+## 日用安装
+
+已将固定候选合入 dev，分配版本 0.3.10.25（npm 0.3.10-local.25），从 dev 构建并打包。安装包为 `/Users/blank/wangliang/gitcode/DS-Bot/ds-bot/ds-bot-0.3.10-local.25.tgz`。日用 desktop profile 已由 0.3.10-local.24 更新，包内全部 171 个文件与安装目录逐字节一致，包括客户端构建产物和本次宿主文件。原 DSH 后端仍运行，未重启或中断会话。当前窗口加载状态未核实；用户从 Dock 正常重启后可加载新版。此安装回执不代表已向企微发送文件。
