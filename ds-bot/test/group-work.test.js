@@ -2832,6 +2832,7 @@ test('only the dispatched owner turn exposes its failure on a card with no publi
     { type: 'turn/end', data: { turn: 2, reason: { kind: 'aborted' } } },
   ] })
   delete rt.botOf('b').failures.b
+  const firstStart = (await card()).startedAt
   const target = { taskId, roomId: 'r1', round: 1, failedAt: (await card()).rounds[0].failedAt }
   const retry = target => host.call('resume', { botId: 'b', target })
   for (const wrong of [{ roomId: 'wrong' }, { taskId: 'wrong' }, { round: 2 }, { failedAt: 0 }]) {
@@ -2841,6 +2842,12 @@ test('only the dispatched owner turn exposes its failure on a card with no publi
   assert.ok(receipts.every(r => r.ok))
   assert.equal(host.agentOf('b').calls.length, 2)
   const retried = host.begin('b')
+  const history = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[0].retries
+  assert.equal(history.length, 1)
+  assert.equal(history[0].failedAt, target.failedAt)
+  assert.equal(history[0].previousOutput, failure.message)
+  assert.match(history[0].input, /existing\/change.js/)
+  assert.equal((await card()).startedAt, firstStart)
   assert.equal(retried.source.taskId, taskId)
   assert.equal(retried.source.exchangeId, 'inspect-page')
   assert.match(text(retried), /existing\/change.js/)
@@ -2962,13 +2969,15 @@ test('an in-flight phase-one manager assignment retains its original handoff, at
   assert.equal(view.projectCards[0].ownerId, 'c')
   assert.equal(view.projectCards[0].round, 2)
   assert.equal(view.projectCards[0].rounds, undefined, 'whole assignment histories stay out of the roster payload')
-  assert.equal(view.projectCards[0].startedAt, undefined, 'the next owner has not started yet')
+  assert.equal(view.projectCards[0].startedAt, savedTeam(rt.home).rooms.r1.projectCards[id].rounds[0].startedAt)
   assert.equal(view.projectCards[0].submittedAt, undefined)
   assert.equal(view.projectCards[0].result, undefined)
   const detail = (await host.call('project-task-detail', { roomId: 'r1', taskId: id })).value
   assert.deepEqual(detail.requirements[0].images, [receipt])
   assert.equal(detail.acceptance, assignment.acceptance)
   assert.equal(detail.rounds.length, 2)
+  assert.match(detail.rounds[0].dispatchInput, /Confirm start only/)
+  assert.match(detail.rounds[1].dispatchInput, /Verified the source in the record/)
   assert.ok(detail.rounds[0].submittedAt >= detail.rounds[0].startedAt)
   assert.equal(detail.rounds[0].result, 'Verified the source in the record')
   assert.equal((await host.call('project-task-detail', { roomId: 'missing', taskId: id })).error.code, 'GROUP_CONTEXT_REQUIRED')

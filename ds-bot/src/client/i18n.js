@@ -11,6 +11,15 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Task handoffs": "作业交接情况",
+  "No assignments yet": "尚未派工",
+  "Handoff input": "本次输入",
+  "Handoff output": "本次输出",
+  "No recorded input": "暂无输入记录",
+  "No recorded output": "暂无输出记录",
+  "Restart recovery": "重启恢复",
+  "Attempt failed": "本次执行失败",
+  "Assigned, awaiting start": "已派工，等待开工",
   "Member": "成员",
   "Archive 1 discussion": "归档所选 1 轮",
   "Archived discussions": "已归档的讨论",

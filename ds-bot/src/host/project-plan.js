@@ -244,7 +244,7 @@ export function plannedSummary(card) {
   const started = current.filter(r => Number.isFinite(r.startedAt))
   const submissions = current.map(r => r.submittedAt).filter(Number.isFinite)
   const stops = (started.length ? started : current).map(r => r.planNode?.block?.at ?? r.failedAt).filter(Number.isFinite)
-  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.planNode?.acceptedAt ?? 0, r.mergeReceipt?.at ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
+  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.retries?.at(-1)?.at ?? 0, r.planNode?.acceptedAt ?? 0, r.mergeReceipt?.at ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
   const awaitingCode = status === 'review' && views.some(node => {
     const run = card.rounds[node.round - 1]
     return codeDelivery(card, run, node) && !run?.mainReview
@@ -257,7 +257,6 @@ export function plannedSummary(card) {
     return [{ round: n.round, checking: n.status === 'active' ? checking : undefined, checksComplete: run.validation.checksComplete, cleaned: Boolean(run.validation.cleanup), lastPassed: passed.at(-1)?.name, passedCount: passed.length, submitted: Boolean(run.submittedAt) }]
   })
   return { ...(validationProgress.length && { validationProgress }), ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
-    startedAt: started.length ? Math.min(...started.map(r => r.startedAt)) : undefined,
     submittedAt: submissions.length && submissions.length === current.length ? Math.max(...submissions) : undefined,
     stoppedAt: stops.length ? Math.max(...stops) : undefined, updatedAt }
 }

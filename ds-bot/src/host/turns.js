@@ -202,7 +202,7 @@ export function install(rt) {
 
   // The retry goes where the turn's trigger came from: a group round's waiter or a
   // Bot's request keeps its exchange; anything else is a nudge in the Bot's own chat.
-  const retryTurn = (id, info, note, text) => {
+  const retryTurn = (id, info, note, text, previousOutput) => {
     const keeps = info !== undefined && (info.role === 'room' || expectsReply(info))
     return rt.deliver({
       ...(keeps && info.senderSessionId ? { fromId: info.senderSessionId } : {}),
@@ -219,11 +219,11 @@ export function install(rt) {
       ...(keeps && info.senderRoomId ? { fromRoomId: info.senderRoomId } : {}),
       ...(keeps && info.senderPart ? { fromPart: info.senderPart } : {}),
       note,
-      retried: true,
+      previousOutput, retried: true,
       text,
     })
   }
-  const retryWrittenCall = (id, info) => retryTurn(id, info, 'your tool call did not run', RETRY_TEXT)
+  const retryWrittenCall = (id, info, output) => retryTurn(id, info, 'your tool call did not run', RETRY_TEXT, output)
   const retryPromisedWork = (id, info) => retryTurn(id, info, 'you stopped before calling any tool', RETRY_PROMISE_TEXT)
 
   /** @type {Map<string, {turn?:number, pending?:any, pendingText?:string, info?:any, texts:string[], opened?:boolean, joined?:{info:any, from:number}[]}>} */
@@ -818,7 +818,8 @@ export function install(rt) {
         const request = rt.requestIdentity({ caller: bot.id, context: 'project-retry:' + sessionId, name: String(end?.turn ?? failure.turn), payload: { exchangeId: source.exchangeId } })
         const outcome = await rt.admitRequest(request, () => rt.deliver({
           taskId: source.taskId, roomId: dispatch.room.id, fromId: source.senderSessionId, fromPart: source.senderPart,
-          toId: bot.id, sessionId, role: 'request', audience: source.audience, exchangeId: source.exchangeId, recordExchange: false,
+          toId: bot.id, sessionId, role: 'request', audience: source.audience, exchangeId: source.exchangeId, retryFailedAt: dispatch.round.failedAt ?? failure?.at, recordExchange: false,
+          previousOutput: end?.reason?.error?.message && rt.redactSecrets(end.reason.error.message),
           text: input.content.filter(p => p.type === 'text').map(p => p.text).join('\n'),
           images: input.content.filter(p => p.type === 'image').map(p => p.attachment),
           files: input.content.filter(p => p.type === 'file').map(p => p.attachment),
@@ -1319,7 +1320,7 @@ export function install(rt) {
             roomWaiters.get(info.exchangeId)?.touch()
             void retryPromisedWork(id, info).catch(error => rt.warn('ds-bot: asking %s to run its promised work failed: %s', id, error))
           } else {
-            void retryWrittenCall(id, info).catch(error => rt.warn('ds-bot: asking %s to run its written tool call failed: %s', id, error))
+            void retryWrittenCall(id, info, lastText).catch(error => rt.warn('ds-bot: asking %s to run its written tool call failed: %s', id, error))
           }
         }
         const replyText = () => {

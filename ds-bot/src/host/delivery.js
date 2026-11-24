@@ -1,5 +1,6 @@
 // Delivery: how one Bot, the user, or DS Bot itself puts a message into a Bot Session.
 import { scopeFields, scopeOf, tagged } from './task-routing.js'
+import { projectRoomForCard } from './project-tasks.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
@@ -82,7 +83,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, cardRound, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ taskId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -143,6 +144,10 @@ export function install(rt) {
       ],
       source,
     })
+    const retryRoom = taskId && (retried || resumed || retryFailedAt !== undefined)
+      ? room ?? (!roomId && projectRoomForCard(rt, taskId)) : undefined
+    const retryRound = retryRoom?.projectCards?.[taskId]?.rounds.find(r => r.dispatchId === exchangeId && r.ownerId === toId)
+    const previousFailure = retryRound?.failedAt ?? retryFailedAt
     const live = rt.live?.get(targetSessionId)
     if (steer && scopeOf(live?.info) === key) agent.steer(message)
     else agent.followup(message)
@@ -171,7 +176,18 @@ export function install(rt) {
       if (round?.dispatchId !== exchangeId || round.ownerId !== toId) throw new Error('The dispatched round is no longer available.')
       round.executionSession = targetSessionId
       round.sentAt ??= Date.now()
+      round.dispatchInput ??= dispatchInput ?? text
+      const names = [...images, ...files].map(file => file.name).filter(Boolean)
+      if (names.length) round.inputFiles ??= names
       await rt.save({ required: true })
+    }
+    if (retryRound) {
+      const run = rt.roomOf(retryRoom.id)?.projectCards?.[taskId]?.rounds.find(r => r.dispatchId === exchangeId && r.ownerId === toId)
+      if (run) {
+        ;(run.retries ??= []).push({ at: Date.now(), input: text, ...(previousFailure && { failedAt: previousFailure }),
+          ...(previousOutput && { previousOutput }), ...(resumed && { restart: true }) })
+        await rt.save({ required: true })
+      }
     }
     return exchangeId
   }
