@@ -1,6 +1,6 @@
 import { createElement as h, useEffect, useId, useRef, useState } from 'react'
 import { TaskContent } from './task-content.js'
-import { t } from './i18n.js'
+import { hostText, t } from './i18n.js'
 
 const labels = {
   at: 'Plan created', by: 'Planner', reason: 'Plan change reason', ownerId: 'Node owner', title: 'Title',
@@ -67,7 +67,58 @@ export function planDifferenceText(before, after, roster) {
   return sections.length === 1 ? sections[0] + '\n\n' + t('No plan content changes.') : sections.join('\n\n')
 }
 
-export function TaskPlans({ plans = [], roster, version, onSelect }) {
+export function planHistory(plans, rounds, entries, failures) {
+  const ordered = [...plans].sort((a, b) => a.version - b.version)
+  return ordered.map((plan, i) => {
+    const bound = rounds.filter(round => round.planNode?.version === plan.version)
+    const delivered = entries.flatMap((entry, index) => entry.incoming.kind === 'Dispatch' && entry.incoming.planVersion === plan.version
+      ? [{ entry, number: index + 1 }] : [])
+    const prior = entries.map((entry, index) => ({ entry, number: index + 1 })).filter(item => item.entry.at <= plan.at).at(-1)
+    const next = entries.map((entry, index) => ({ entry, number: index + 1 })).find(item => item.entry.at > plan.at)
+    return { plan, nextPlan: ordered[i + 1], prior, next, delivered,
+      status: delivered.length || bound.some(round => round.sentAt) ? 'Dispatched' : bound.length ? 'Dispatch registered; delivery not recorded' : 'Not dispatched',
+      failures: failures.filter(failure => failure.version === plan.version),
+      showReason: !bound.length || (i > 0 && !rounds.some(round => round.planNode?.version === ordered[i - 1].version)) }
+  })
+}
+
+function PlanHistory({ plans, rounds, entries, history, roster, onSelect, onReveal }) {
+  const records = planHistory(plans, rounds, entries, history?.planDispatchFailures ?? [])
+  const link = (item, label) => h('button', { type: 'button', className: 'bt-mini', 'aria-controls': item.entry.id,
+    onClick: () => onReveal({ key: item.entry.key }) }, t(label, { number: item.number }))
+  const time = at => Number.isFinite(at) ? new Date(at).toLocaleString() : t('Not recorded')
+  return h('details', { className: 'bt-plan-history', open: true },
+    h('summary', null, t('Plan version history')),
+    h('ol', null, records.map(({ plan, nextPlan, prior, next, delivered, status, failures, showReason }) =>
+      h('li', { key: plan.version, 'data-plan-version': plan.version },
+        h('div', { className: 'bt-plan-history-meta' }, h('strong', null, t('Plan v{version}', { version: plan.version })),
+          h('span', null, t('Saved {time}', { time: time(plan.at) })),
+          h('span', null, t('Saved by {name}', { name: roster?.byId?.[plan.by]?.name ?? plan.by ?? t('Not recorded') })),
+          h('strong', null, t(status)),
+          h('button', { type: 'button', className: 'bt-mini', 'aria-label': t('View plan v{version}', { version: plan.version }),
+            onClick: () => onSelect(plan.version) }, t('Full plan'))),
+        history && h('div', { className: 'bt-plan-history-meta' }, t('Saved in the flow'),
+          prior && link(prior, 'After handoff {number}'), next && link(next, 'Before handoff {number}'),
+          !prior && !next && t('No matching handoff recorded.')),
+        delivered.length > 0 && h('div', { className: 'bt-plan-history-meta' }, t('Dispatched handoffs'),
+          delivered.map(item => h('button', { key: item.entry.key, type: 'button', className: 'bt-mini',
+            'aria-controls': item.entry.id, onClick: () => onReveal({ key: item.entry.key }) },
+          t('Handoff {number}', { number: item.number }) + ' · ' + item.entry.label.replace(/^\d+\.\s*/, '')))),
+        status === 'Dispatched' && !delivered.length && history && h('p', null, t('Delivery is recorded, but its handoff history is unavailable.')),
+        failures.map(failure => h('p', { key: failure.sessionId + '/' + failure.seq, className: 'bt-plan-dispatch-failure' },
+          t('Dispatch failed') + ' · ' + time(failure.at) + ' · ' + t('Node {n}', { n: failure.node }) + ' · ' +
+          hostText(failure.error.replace(/^Error:\s*/, '')))),
+        status === 'Not dispatched' && !failures.length && h('p', null,
+          t(history ? 'No undispatched reason was recorded.' : 'Loading dispatch history…')),
+        plan.reason && h('details', { open: showReason, className: 'bt-plan-change-reason' },
+          h('summary', null, t('Plan change reason')), h('p', null, plan.reason)),
+        nextPlan && h('div', { className: 'bt-plan-history-meta' },
+          t('Next version saved {time}', { time: time(nextPlan.at) }),
+          h('button', { type: 'button', className: 'bt-mini', onClick: () => onSelect(nextPlan.version) },
+            t('View plan v{version}', { version: nextPlan.version })))))))
+}
+
+export function TaskPlans({ plans = [], roster, version, onSelect, rounds = [], entries = [], history, onReveal }) {
   const [mode, setMode] = useState('full')
   const id = useId()
   const panel = useRef(null)
@@ -96,5 +147,6 @@ export function TaskPlans({ plans = [], roster, version, onSelect }) {
             setMode(next ? 'diff' : 'full')
           } }, item === 'full' ? t('Full plan') :
             previous ? t('Compare with v{version}', { version: previous.version }) : t('First plan version')))),
-      text: activeMode === 'diff' ? planDifferenceText(previous, current, roster) : fullPlanText(current, roster) }))
+      text: activeMode === 'diff' ? planDifferenceText(previous, current, roster) : fullPlanText(current, roster) }),
+    h(PlanHistory, { plans, rounds, entries, history, roster, onSelect, onReveal }))
 }

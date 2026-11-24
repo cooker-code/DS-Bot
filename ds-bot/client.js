@@ -138,6 +138,23 @@ function convertHostErrors(pairs) {
 
 // src/client/locales/ja.js
 var JA = {
+  "Saved by {name}": "保存者 {name}",
+  "Plan version history": "計画の版履歴",
+  "Saved {time}": "保存日時 {time}",
+  "Not dispatched": "未割り当て",
+  "Dispatch registered; delivery not recorded": "割り当て登録済み、送達記録なし",
+  "Saved in the flow": "保存時の位置",
+  "After handoff {number}": "引き継ぎ {number} の後",
+  "Before handoff {number}": "引き継ぎ {number} の前",
+  "No matching handoff recorded.": "対応する引き継ぎ記録はありません。",
+  "Dispatched handoffs": "対応する引き継ぎ",
+  "Handoff {number}": "引き継ぎ {number}",
+  "Dispatch failed": "割り当て失敗",
+  "No undispatched reason was recorded.": "未割り当ての理由は記録されていません。",
+  "Loading dispatch history…": "割り当て履歴を読み込み中…",
+  "Next version saved {time}": "次の版の保存日時 {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "送達は記録されていますが、対応する引き継ぎ履歴を取得できません。",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "この作業ツリーのファイル範囲は別の割り当て済みノードが使用中です。その成果物を待つか、対象パスを変更するか、別の作業ツリーを使用してください。",
   "Archive 1 discussion": "議論を1件アーカイブ",
   "Archived discussions": "アーカイブ済みの議論",
   "Archive earlier discussions": "以前の議論をアーカイブ",
@@ -2660,6 +2677,23 @@ var DSH_JA = {
 
 // src/client/locales/ko.js
 var KO = {
+  "Saved by {name}": "저장한 사람 {name}",
+  "Plan version history": "계획 버전 기록",
+  "Saved {time}": "저장 시간 {time}",
+  "Not dispatched": "미배정",
+  "Dispatch registered; delivery not recorded": "배정 등록됨, 전달 기록 없음",
+  "Saved in the flow": "저장 시점의 위치",
+  "After handoff {number}": "인계 {number} 이후",
+  "Before handoff {number}": "인계 {number} 이전",
+  "No matching handoff recorded.": "일치하는 인계 기록이 없습니다.",
+  "Dispatched handoffs": "관련 인계",
+  "Handoff {number}": "인계 {number}",
+  "Dispatch failed": "배정 실패",
+  "No undispatched reason was recorded.": "미배정 사유가 기록되지 않았습니다.",
+  "Loading dispatch history…": "배정 기록을 불러오는 중…",
+  "Next version saved {time}": "다음 버전 저장 시간 {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "전달은 기록되었지만 해당 인계 기록을 확인할 수 없습니다.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "이 작업 트리의 파일 범위를 이미 배정된 다른 노드가 사용 중입니다. 해당 결과물을 기다리거나, 파일 경로를 수정하거나, 별도 작업 트리를 사용하세요.",
   "Archive 1 discussion": "토론 1개 보관",
   "Archived discussions": "보관된 토론",
   "Archive earlier discussions": "이전 토론 보관",
@@ -5227,6 +5261,23 @@ var DSH_KO = {
 
 // src/client/locales/es.js
 var ES = {
+  "Saved by {name}": "Guardado por {name}",
+  "Plan version history": "Historial de versiones del plan",
+  "Saved {time}": "Guardado el {time}",
+  "Not dispatched": "Sin asignar",
+  "Dispatch registered; delivery not recorded": "Asignación registrada; entrega sin registrar",
+  "Saved in the flow": "Posición al guardar",
+  "After handoff {number}": "Después del traspaso {number}",
+  "Before handoff {number}": "Antes del traspaso {number}",
+  "No matching handoff recorded.": "No hay ningún traspaso correspondiente registrado.",
+  "Dispatched handoffs": "Traspasos correspondientes",
+  "Handoff {number}": "Traspaso {number}",
+  "Dispatch failed": "Error de asignación",
+  "No undispatched reason was recorded.": "No se registró el motivo de la falta de asignación.",
+  "Loading dispatch history…": "Cargando el historial de asignaciones…",
+  "Next version saved {time}": "Siguiente versión guardada el {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "La entrega está registrada, pero su historial de traspaso no está disponible.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Otro nodo asignado ocupa archivos coincidentes en este árbol de trabajo. Espera su entrega, modifica las rutas o utiliza otro árbol de trabajo.",
   "Archive 1 discussion": "Archivar una discusión",
   "Archived discussions": "Discusiones archivadas",
   "Archive earlier discussions": "Archivar discusiones anteriores",
@@ -7794,6 +7845,23 @@ var DSH_ES = {
 
 // src/client/locales/fr.js
 var FR = {
+  "Saved by {name}": "Enregistré par {name}",
+  "Plan version history": "Historique des versions du plan",
+  "Saved {time}": "Enregistré le {time}",
+  "Not dispatched": "Non attribué",
+  "Dispatch registered; delivery not recorded": "Attribution enregistrée ; remise non enregistrée",
+  "Saved in the flow": "Position lors de l’enregistrement",
+  "After handoff {number}": "Après le transfert {number}",
+  "Before handoff {number}": "Avant le transfert {number}",
+  "No matching handoff recorded.": "Aucun transfert correspondant enregistré.",
+  "Dispatched handoffs": "Transferts correspondants",
+  "Handoff {number}": "Transfert {number}",
+  "Dispatch failed": "Échec de l’attribution",
+  "No undispatched reason was recorded.": "Le motif de l’absence d’attribution n’a pas été enregistré.",
+  "Loading dispatch history…": "Chargement de l’historique des attributions…",
+  "Next version saved {time}": "Version suivante enregistrée le {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "La remise est enregistrée, mais son historique de transfert est indisponible.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Un autre nœud attribué occupe des fichiers communs dans cet arbre de travail. Attendez sa livraison, modifiez les chemins ou utilisez un autre arbre de travail.",
   "Archive 1 discussion": "Archiver une discussion",
   "Archived discussions": "Discussions archivées",
   "Archive earlier discussions": "Archiver les discussions précédentes",
@@ -10316,6 +10384,23 @@ var DSH_FR = {
 
 // src/client/locales/de.js
 var DE = {
+  "Saved by {name}": "Gespeichert von {name}",
+  "Plan version history": "Versionsverlauf des Plans",
+  "Saved {time}": "Gespeichert am {time}",
+  "Not dispatched": "Nicht zugewiesen",
+  "Dispatch registered; delivery not recorded": "Zuweisung erfasst; Zustellung nicht erfasst",
+  "Saved in the flow": "Position beim Speichern",
+  "After handoff {number}": "Nach Übergabe {number}",
+  "Before handoff {number}": "Vor Übergabe {number}",
+  "No matching handoff recorded.": "Keine passende Übergabe erfasst.",
+  "Dispatched handoffs": "Zugehörige Übergaben",
+  "Handoff {number}": "Übergabe {number}",
+  "Dispatch failed": "Zuweisung fehlgeschlagen",
+  "No undispatched reason was recorded.": "Der Grund für die fehlende Zuweisung wurde nicht erfasst.",
+  "Loading dispatch history…": "Zuweisungsverlauf wird geladen…",
+  "Next version saved {time}": "Nächste Version gespeichert am {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "Die Zustellung ist erfasst, aber ihr Übergabeverlauf ist nicht verfügbar.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Ein anderer zugewiesener Knoten belegt überlappende Dateien in diesem Arbeitsbaum. Warten Sie auf dessen Lieferung, ändern Sie die Pfade oder verwenden Sie einen separaten Arbeitsbaum.",
   "Archive 1 discussion": "Eine Diskussion archivieren",
   "Archived discussions": "Archivierte Diskussionen",
   "Archive earlier discussions": "Frühere Diskussionen archivieren",
@@ -12884,6 +12969,23 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
+  "Saved by {name}": "保存者 {name}",
+  "Plan version history": "计划版本记录",
+  "Saved {time}": "保存于 {time}",
+  "Not dispatched": "未派发",
+  "Dispatch registered; delivery not recorded": "已登记派工，尚无送达记录",
+  "Saved in the flow": "保存位置",
+  "After handoff {number}": "交接 {number} 之后",
+  "Before handoff {number}": "交接 {number} 之前",
+  "No matching handoff recorded.": "暂无对应交接记录。",
+  "Dispatched handoffs": "对应交接",
+  "Handoff {number}": "交接 {number}",
+  "Dispatch failed": "派工失败",
+  "No undispatched reason was recorded.": "未派发原因未记录。",
+  "Loading dispatch history…": "正在读取派工记录…",
+  "Next version saved {time}": "后续版本保存于 {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "已记录送达，暂时无法读取对应交接。",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "同一工作树的文件范围仍被其他已派工节点占用。需要等待其交付、调整文件范围或使用独立工作树。",
   "Copy all outputs": "复制全部输出",
   "Copy this output": "复制这份输出",
   "Plan created": "计划创建时间",
@@ -40462,7 +40564,7 @@ var TASK_CSS = `
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
 .bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
-.bt-handoff-tooltip{position:fixed;z-index:80;box-sizing:border-box;padding:10px 12px;border:1px solid var(--bt-line);border-radius:8px;background:var(--bt-main);color:var(--bt-ink);box-shadow:var(--bt-glass-shadow);font-family:var(--bt-font);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-handoff-tooltip{position:fixed;z-index:80;box-sizing:border-box;padding:10px 12px;border:1px solid var(--bt-line);border-radius:8px;background:var(--bt-main);color:var(--bt-ink);box-shadow:var(--bt-glass-shadow);font-family:var(--bt-font);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-plan-history{margin:8px 0;font-size:12px}.bt-plan-history>summary,.bt-plan-change-reason>summary{cursor:pointer;color:var(--bt-ink-2)}.bt-plan-history>ol{list-style:none;padding:0;margin:4px 0}.bt-plan-history li{padding:8px 0;border-bottom:1px solid var(--bt-line);overflow-wrap:anywhere}.bt-plan-history-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.bt-plan-history-meta>span{color:var(--bt-ink-2)}.bt-plan-history p{white-space:pre-wrap;margin:4px 0}.bt-plan-dispatch-failure{color:var(--bt-warn)}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
 .bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
 .bt-task-content-modes [aria-pressed=true],.bt-task-content-modes [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
@@ -43854,7 +43956,110 @@ function planDifferenceText(before, after, roster) {
   }
   return sections.length === 1 ? sections[0] + "\n\n" + t("No plan content changes.") : sections.join("\n\n");
 }
-function TaskPlans({ plans = [], roster, version, onSelect }) {
+function planHistory(plans, rounds, entries2, failures) {
+  const ordered = [...plans].sort((a, b) => a.version - b.version);
+  return ordered.map((plan, i) => {
+    const bound2 = rounds.filter((round) => round.planNode?.version === plan.version);
+    const delivered = entries2.flatMap((entry, index) => entry.incoming.kind === "Dispatch" && entry.incoming.planVersion === plan.version ? [{ entry, number: index + 1 }] : []);
+    const prior = entries2.map((entry, index) => ({ entry, number: index + 1 })).filter((item) => item.entry.at <= plan.at).at(-1);
+    const next = entries2.map((entry, index) => ({ entry, number: index + 1 })).find((item) => item.entry.at > plan.at);
+    return {
+      plan,
+      nextPlan: ordered[i + 1],
+      prior,
+      next,
+      delivered,
+      status: delivered.length || bound2.some((round) => round.sentAt) ? "Dispatched" : bound2.length ? "Dispatch registered; delivery not recorded" : "Not dispatched",
+      failures: failures.filter((failure) => failure.version === plan.version),
+      showReason: !bound2.length || i > 0 && !rounds.some((round) => round.planNode?.version === ordered[i - 1].version)
+    };
+  });
+}
+function PlanHistory({ plans, rounds, entries: entries2, history, roster, onSelect, onReveal }) {
+  const records = planHistory(plans, rounds, entries2, history?.planDispatchFailures ?? []);
+  const link = (item, label) => (0, import_react74.createElement)("button", {
+    type: "button",
+    className: "bt-mini",
+    "aria-controls": item.entry.id,
+    onClick: () => onReveal({ key: item.entry.key })
+  }, t(label, { number: item.number }));
+  const time = (at) => Number.isFinite(at) ? new Date(at).toLocaleString() : t("Not recorded");
+  return (0, import_react74.createElement)(
+    "details",
+    { className: "bt-plan-history", open: true },
+    (0, import_react74.createElement)("summary", null, t("Plan version history")),
+    (0, import_react74.createElement)("ol", null, records.map(({ plan, nextPlan, prior, next, delivered, status, failures, showReason }) => (0, import_react74.createElement)(
+      "li",
+      { key: plan.version, "data-plan-version": plan.version },
+      (0, import_react74.createElement)(
+        "div",
+        { className: "bt-plan-history-meta" },
+        (0, import_react74.createElement)("strong", null, t("Plan v{version}", { version: plan.version })),
+        (0, import_react74.createElement)("span", null, t("Saved {time}", { time: time(plan.at) })),
+        (0, import_react74.createElement)("span", null, t("Saved by {name}", { name: roster?.byId?.[plan.by]?.name ?? plan.by ?? t("Not recorded") })),
+        (0, import_react74.createElement)("strong", null, t(status)),
+        (0, import_react74.createElement)("button", {
+          type: "button",
+          className: "bt-mini",
+          "aria-label": t("View plan v{version}", { version: plan.version }),
+          onClick: () => onSelect(plan.version)
+        }, t("Full plan"))
+      ),
+      history && (0, import_react74.createElement)(
+        "div",
+        { className: "bt-plan-history-meta" },
+        t("Saved in the flow"),
+        prior && link(prior, "After handoff {number}"),
+        next && link(next, "Before handoff {number}"),
+        !prior && !next && t("No matching handoff recorded.")
+      ),
+      delivered.length > 0 && (0, import_react74.createElement)(
+        "div",
+        { className: "bt-plan-history-meta" },
+        t("Dispatched handoffs"),
+        delivered.map((item) => (0, import_react74.createElement)(
+          "button",
+          {
+            key: item.entry.key,
+            type: "button",
+            className: "bt-mini",
+            "aria-controls": item.entry.id,
+            onClick: () => onReveal({ key: item.entry.key })
+          },
+          t("Handoff {number}", { number: item.number }) + " · " + item.entry.label.replace(/^\d+\.\s*/, "")
+        ))
+      ),
+      status === "Dispatched" && !delivered.length && history && (0, import_react74.createElement)("p", null, t("Delivery is recorded, but its handoff history is unavailable.")),
+      failures.map((failure) => (0, import_react74.createElement)(
+        "p",
+        { key: failure.sessionId + "/" + failure.seq, className: "bt-plan-dispatch-failure" },
+        t("Dispatch failed") + " · " + time(failure.at) + " · " + t("Node {n}", { n: failure.node }) + " · " + hostText(failure.error.replace(/^Error:\s*/, ""))
+      )),
+      status === "Not dispatched" && !failures.length && (0, import_react74.createElement)(
+        "p",
+        null,
+        t(history ? "No undispatched reason was recorded." : "Loading dispatch history…")
+      ),
+      plan.reason && (0, import_react74.createElement)(
+        "details",
+        { open: showReason, className: "bt-plan-change-reason" },
+        (0, import_react74.createElement)("summary", null, t("Plan change reason")),
+        (0, import_react74.createElement)("p", null, plan.reason)
+      ),
+      nextPlan && (0, import_react74.createElement)(
+        "div",
+        { className: "bt-plan-history-meta" },
+        t("Next version saved {time}", { time: time(nextPlan.at) }),
+        (0, import_react74.createElement)(
+          "button",
+          { type: "button", className: "bt-mini", onClick: () => onSelect(nextPlan.version) },
+          t("View plan v{version}", { version: nextPlan.version })
+        )
+      )
+    )))
+  );
+}
+function TaskPlans({ plans = [], roster, version, onSelect, rounds = [], entries: entries2 = [], history, onReveal }) {
   const [mode, setMode] = (0, import_react74.useState)("full");
   const id = (0, import_react74.useId)();
   const panel = (0, import_react74.useRef)(null);
@@ -43913,7 +44118,8 @@ function TaskPlans({ plans = [], roster, version, onSelect }) {
         }, item === "full" ? t("Full plan") : previous ? t("Compare with v{version}", { version: previous.version }) : t("First plan version")))
       ),
       text: activeMode === "diff" ? planDifferenceText(previous, current, roster) : fullPlanText(current, roster)
-    })
+    }),
+    (0, import_react74.createElement)(PlanHistory, { plans, rounds, entries: entries2, history, roster, onSelect, onReveal })
   );
 }
 
@@ -44144,7 +44350,16 @@ function TaskHandoffs({ detail, roster, history }) {
       (0, import_react75.createElement)(CopyTaskText, { text: detail.title, label: t("Copy task name") })
     ),
     (0, import_react75.createElement)("h3", { className: "bt-section-title" }, t("Task handoffs")),
-    (0, import_react75.createElement)(TaskPlans, { plans: detail.plans, roster, version: planVersion, onSelect: selectPlan }),
+    (0, import_react75.createElement)(TaskPlans, {
+      plans: detail.plans,
+      roster,
+      version: planVersion,
+      onSelect: selectPlan,
+      rounds: detail.rounds,
+      entries: entries2,
+      history,
+      onReveal: setReveal
+    }),
     !history && (0, import_react75.createElement)("small", { role: "status" }, t("Loading message history…")),
     history?.incomplete && (0, import_react75.createElement)("small", { role: "status" }, t("Some session history is unavailable.")),
     entries2.length ? (0, import_react75.createElement)(

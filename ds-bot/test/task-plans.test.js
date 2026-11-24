@@ -40,3 +40,34 @@ test('reordered object fields and metadata timestamps do not create content chan
   const same = { by: 'b', at: 9999, version: 2, nodes: before.nodes.map(node => Object.fromEntries(Object.entries(node).reverse())) }
   assert.ok(planDifferenceText(before, same, roster).includes('No plan content changes.'))
 })
+
+test('plan history separates save position, delivery, failed dispatch and the next revision', () => {
+  const plans = [{ version: 1, at: 2 }, { version: 2, at: 5 }, { version: 3, at: 8 }, { version: 4, at: 12 }]
+  const rounds = [{ dispatchId: 'one', sentAt: 3, planNode: { version: 1 } },
+    { dispatchId: 'three', sentAt: 10, planNode: { version: 3 } }, { planNode: { version: 4 } }]
+  const entry = (key, at, kind, planVersion) => ({ key, at, incoming: { kind, planVersion } })
+  const entries = [entry('user', 1, 'User request'), entry('one', 3, 'Dispatch', 1), entry('reply', 4, 'Bot reply'),
+    entry('coordination', 6, 'Bot message'), entry('three', 10, 'Dispatch', 3)]
+  const failure = { version: 2, node: 1, at: 5.5, error: 'Paths still reserved' }
+  const history = module.exports.planHistory(plans, rounds, entries, [failure])
+  assert.deepEqual(Array.from(history, h => h.status), ['Dispatched', 'Not dispatched', 'Dispatched', 'Dispatch registered; delivery not recorded'])
+  const unused = history[1]
+  assert.equal(unused.prior.number, 3)
+  assert.equal(unused.next.number, 4)
+  assert.equal(unused.nextPlan.version, 3)
+  assert.equal(unused.failures[0], failure)
+  assert.equal(unused.delivered.length, 0)
+  assert.equal(unused.showReason, true)
+  assert.equal(history[2].showReason, true)
+  assert.deepEqual(Array.from(history[2].delivered, item => item.number), [5])
+  assert.equal(history[3].nextPlan, undefined)
+})
+
+test('recorded delivery survives missing history without inventing handoff links', () => {
+  const [record] = module.exports.planHistory([{ version: 1, at: 1 }], [{ sentAt: 2, planNode: { version: 1 } }], [], [])
+  assert.equal(record.status, 'Dispatched')
+  assert.equal(record.delivered.length, 0)
+  assert.equal(record.failures.length, 0)
+  assert.equal(record.prior, undefined)
+  assert.equal(record.next, undefined)
+})

@@ -114,3 +114,33 @@ test('only the bound user intake delivered to the admin becomes the start of the
   assert.equal(result.messages[0].to, 'lead')
   assert.equal(result.messages[0].text, posts[0].text)
 })
+
+test('saved plan dispatch failures retain their exact scoped receipt without becoming handoffs', async () => {
+  const room = { id: 'group', members: ['manager'], sessions: { manager: 'thread' } }
+  const card = { id: 'work', plans: [{ version: 1, at: 1 }, { version: 2, at: 2 }] }
+  const call = (seq, args, name = 'project_task') => ({ seq, time: seq, type: 'tool/call', data: {
+    callId: String(seq), name, arguments: typeof args === 'string' ? args : JSON.stringify(args),
+  } })
+  const result = (seq, callId, failed = true) => ({ seq, time: seq, type: 'tool/result', data: { message: {
+    toolCallId: String(callId), isError: failed, content: [{ type: 'text', text: 'Error: Worktree paths still reserved.' }],
+  } } })
+  let events = [call(3, { action: 'dispatch', taskId: 'work', version: 2, node: 1 }), result(4, 3),
+    call(5, { action: 'dispatch', taskId: 'other', version: 2, node: 1 }), result(6, 5),
+    call(7, { action: 'dispatch', taskId: 'work', version: 99, node: 1 }), result(8, 7),
+    call(9, { action: 'plan', taskId: 'work', version: 2, node: 1 }), result(10, 9),
+    call(11, 'null'), result(12, 11), call(13, '{'), result(14, 13),
+    call(15, { action: 'dispatch', taskId: 'work', version: 1, node: 1 }), result(16, 15, false)]
+  const rt = { ledger: { records: () => [] }, taskPairMessages: () => [], ctx: { sessionController: {
+    page: async () => ({ records: events.map(event => ({ event })) }),
+  } } }
+  const expected = [{ version: 2, node: 1, by: 'manager', at: 4, sessionId: 'thread', seq: 4,
+    error: 'Error: Worktree paths still reserved.' }]
+  for (let refresh = 0; refresh < 2; refresh++) {
+    const history = await taskInteractions(rt, room, card)
+    assert.deepEqual(history.planDispatchFailures, expected)
+    assert.deepEqual(history.messages, [])
+    assert.equal(history.incomplete, false)
+  }
+  events = [...events, call(17, { action: 'dispatch', taskId: 'work', version: 2, node: 2 }), result(18, 17)]
+  assert.equal((await taskInteractions(rt, room, card)).planDispatchFailures.length, 2)
+})

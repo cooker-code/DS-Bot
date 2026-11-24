@@ -59,6 +59,30 @@ function linkHistory(rows, parts, belongs, room, roster) {
   }
 }
 
+// Failed dispatches have no execution round. Keep their exact tool receipt so a
+// saved but unused plan can explain why it never produced a handoff.
+function dispatchFailures(parts, taskId, plans) {
+  const failures = []
+  for (const part of parts) {
+    const calls = new Map()
+    for (const event of part.events) {
+      if (event.type === 'tool/call' && event.name === 'project_task') {
+        let args
+        try { args = JSON.parse(event.arguments) } catch { continue }
+        if (args?.action === 'dispatch' && args.taskId === taskId &&
+            plans.some(plan => plan.version === args.version) && Number.isSafeInteger(args.node))
+          calls.set(event.callId, { version: args.version, node: args.node })
+      }
+      const call = event.type === 'tool/result' && calls.get(event.callId)
+      if (!call) continue
+      calls.delete(event.callId)
+      if (event.failed) failures.push({ ...call, by: part.bot, at: event.time,
+        sessionId: part.sessionId, seq: event.seq, error: event.error || 'No error message was recorded.' })
+    }
+  }
+  return failures.sort((a, b) => a.at - b.at)
+}
+
 export async function taskInteractions(rt, room, card, signal, taskId = card.id) {
   const scopes = new Set([taskId, ...(card.intakes ?? [])].filter(id => typeof id === 'string' && id))
   const belongs = r => scopes.has(scopeOf(r)) && (!r.roomId || r.roomId === room.id)
@@ -116,10 +140,11 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
         }
         if (event.type === 'turn/start') events.push({ seq: event.seq, type: event.type })
         if (event.type === 'user/message') events.push({ seq: event.seq, type: event.type, source: source ?? {} })
-        if (event.type === 'tool/call' && ['message_bot', 'post_to_group'].includes(event.data?.name))
+        if (event.type === 'tool/call' && ['message_bot', 'post_to_group', 'project_task'].includes(event.data?.name))
           events.push({ seq: event.seq, type: event.type, time: event.time, ...event.data })
         if (event.type === 'tool/result') events.push({ seq: event.seq, type: event.type, time: event.time,
-          callId: event.data.message?.toolCallId, failed: event.data.message?.isError === true })
+          callId: event.data.message?.toolCallId, failed: event.data.message?.isError === true,
+          ...(event.data.message?.isError === true && { error: textOf(event.data.message.content) }) })
         if (event.type !== 'user/message' || source?.kind !== SOURCE_KIND || !belongs(source)) continue
         if (source.retried || source.resumed) {
           found.push({ key: session + '/' + event.seq, retryOf: source.retryOf ?? source.exchangeId, to, at: event.time,
@@ -162,7 +187,7 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
             from: source.projectActorId, to, kind: 'Bot message', text })
         }
       }
-      if (seq >= (cache.parts.get(session)?.seq ?? -1)) cache.parts.set(session, { seq, bot: to, events: [...(old?.events ?? []), ...events.reverse()], rows: [...(old?.rows ?? []), ...found.reverse()] })
+      if (seq >= (cache.parts.get(session)?.seq ?? -1)) cache.parts.set(session, { seq, bot: to, sessionId: session, events: [...(old?.events ?? []), ...events.reverse()], rows: [...(old?.rows ?? []), ...found.reverse()] })
     } catch (error) {
       if (signal?.aborted) throw error
       found.forEach(add)
@@ -187,5 +212,6 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
       node: round.planNode?.node, planReason: plan?.reason,
       requirementVersion: round.requirementVersion ?? (!card.requirementHistory?.length && !card.fieldEditTimes?.requirement ? 1 : undefined) })
   }
-  return { messages: rows.sort((a, b) => a.at - b.at), incomplete }
+  return { messages: rows.sort((a, b) => a.at - b.at), incomplete,
+    planDispatchFailures: dispatchFailures(cache.parts.values(), taskId, card.plans ?? []) }
 }

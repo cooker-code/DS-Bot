@@ -1,6 +1,24 @@
 // Spanish (es) localization for DS Bot client and DSH settings namespaces.
 
 export const ES = {
+  "Saved by {name}": "Guardado por {name}",
+  "Plan version history": "Historial de versiones del plan",
+  "Saved {time}": "Guardado el {time}",
+  "Not dispatched": "Sin asignar",
+  "Dispatch registered; delivery not recorded": "Asignación registrada; entrega sin registrar",
+  "Saved in the flow": "Posición al guardar",
+  "After handoff {number}": "Después del traspaso {number}",
+  "Before handoff {number}": "Antes del traspaso {number}",
+  "No matching handoff recorded.": "No hay ningún traspaso correspondiente registrado.",
+  "Dispatched handoffs": "Traspasos correspondientes",
+  "Handoff {number}": "Traspaso {number}",
+  "Dispatch failed": "Error de asignación",
+  "No undispatched reason was recorded.": "No se registró el motivo de la falta de asignación.",
+  "Loading dispatch history…": "Cargando el historial de asignaciones…",
+  "Next version saved {time}": "Siguiente versión guardada el {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "La entrega está registrada, pero su historial de traspaso no está disponible.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Otro nodo asignado ocupa archivos coincidentes en este árbol de trabajo. Espera su entrega, modifica las rutas o utiliza otro árbol de trabajo.",
+
   "Archive 1 discussion": "Archivar una discusión",
   "Archived discussions": "Discusiones archivadas",
   "Archive earlier discussions": "Archivar discusiones anteriores",

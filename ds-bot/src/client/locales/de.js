@@ -1,6 +1,24 @@
 // German (de) localization for DS Bot client and DSH settings namespaces.
 
 export const DE = {
+  "Saved by {name}": "Gespeichert von {name}",
+  "Plan version history": "Versionsverlauf des Plans",
+  "Saved {time}": "Gespeichert am {time}",
+  "Not dispatched": "Nicht zugewiesen",
+  "Dispatch registered; delivery not recorded": "Zuweisung erfasst; Zustellung nicht erfasst",
+  "Saved in the flow": "Position beim Speichern",
+  "After handoff {number}": "Nach Übergabe {number}",
+  "Before handoff {number}": "Vor Übergabe {number}",
+  "No matching handoff recorded.": "Keine passende Übergabe erfasst.",
+  "Dispatched handoffs": "Zugehörige Übergaben",
+  "Handoff {number}": "Übergabe {number}",
+  "Dispatch failed": "Zuweisung fehlgeschlagen",
+  "No undispatched reason was recorded.": "Der Grund für die fehlende Zuweisung wurde nicht erfasst.",
+  "Loading dispatch history…": "Zuweisungsverlauf wird geladen…",
+  "Next version saved {time}": "Nächste Version gespeichert am {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "Die Zustellung ist erfasst, aber ihr Übergabeverlauf ist nicht verfügbar.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "Ein anderer zugewiesener Knoten belegt überlappende Dateien in diesem Arbeitsbaum. Warten Sie auf dessen Lieferung, ändern Sie die Pfade oder verwenden Sie einen separaten Arbeitsbaum.",
+
   "Archive 1 discussion": "Eine Diskussion archivieren",
   "Archived discussions": "Archivierte Diskussionen",
   "Archive earlier discussions": "Frühere Diskussionen archivieren",

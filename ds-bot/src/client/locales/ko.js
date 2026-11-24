@@ -1,6 +1,24 @@
 // Korean (ko) localization for DS Bot client and DSH settings namespaces.
 
 export const KO = {
+  "Saved by {name}": "저장한 사람 {name}",
+  "Plan version history": "계획 버전 기록",
+  "Saved {time}": "저장 시간 {time}",
+  "Not dispatched": "미배정",
+  "Dispatch registered; delivery not recorded": "배정 등록됨, 전달 기록 없음",
+  "Saved in the flow": "저장 시점의 위치",
+  "After handoff {number}": "인계 {number} 이후",
+  "Before handoff {number}": "인계 {number} 이전",
+  "No matching handoff recorded.": "일치하는 인계 기록이 없습니다.",
+  "Dispatched handoffs": "관련 인계",
+  "Handoff {number}": "인계 {number}",
+  "Dispatch failed": "배정 실패",
+  "No undispatched reason was recorded.": "미배정 사유가 기록되지 않았습니다.",
+  "Loading dispatch history…": "배정 기록을 불러오는 중…",
+  "Next version saved {time}": "다음 버전 저장 시간 {time}",
+  "Delivery is recorded, but its handoff history is unavailable.": "전달은 기록되었지만 해당 인계 기록을 확인할 수 없습니다.",
+  "Another dispatched node owns overlapping files in this working tree. Wait for its delivery, revise the paths, or use a separate worktree.": "이 작업 트리의 파일 범위를 이미 배정된 다른 노드가 사용 중입니다. 해당 결과물을 기다리거나, 파일 경로를 수정하거나, 별도 작업 트리를 사용하세요.",
+
   "Archive 1 discussion": "토론 1개 보관",
   "Archived discussions": "보관된 토론",
   "Archive earlier discussions": "이전 토론 보관",
