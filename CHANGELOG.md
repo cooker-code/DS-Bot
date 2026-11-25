@@ -6,6 +6,16 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### v0.3.10.26-upstream — isolated local adaptation (2026-11-25)
+
+- Consecutive working notices fold within the same task and dispatch scope. Compressed legacy group replies can be recovered from unambiguous ledger evidence while preserving task boundaries.
+- Context checks lower overestimated post-compaction baselines, check hard-limit crossings, and budget checkpoints for smaller models. Missing token estimation services retain the existing fallback.
+- Local CLI sign-in detection, bounded probes, refresh ordering, activity reporting and stalled ACP turns are more reliable on macOS. Maintenance resumes existing ACP/Codex conversations without silently starting a new one. Shared line splitting handles chunked output in linear time.
+- Side conversations remain isolated from the live CLI session. Stable prompt sections, cold history reads, indexed recent/nearby history and short/CJK queries reduce repeated work. Feature-pack catalog changes remain deferred until the feature-pack runtime is adapted.
+- Capability status, group search, memory recall and journal-tail recovery reuse bounded work. WeChat quote eviction retains lookup behavior. Full-access directory selection and exact missing-session cleanup preserve local permission and storage rules.
+
+This version is maintained on `dev-upsteam`; `dev` is unchanged. See the [per-PR adoption and verification record](upstream-changelog.md#2026-11-25--dev-upsteam-独立适配与部署) for the 25 requested PRs, the additional index dependency, excluded scopes and existing baseline failures.
+
 ### Upstream changes adopted on 2026-11-25
 
 - Gemini's specific malformed tool-call stops can retry within the configured budget. Telegram headings and tables render as readable formatted messages with length limits and plain-text fallback.
