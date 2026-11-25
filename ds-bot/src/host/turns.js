@@ -59,7 +59,7 @@ export const failureLine = failure => `${failure.code}${failure.status ? ` ${fai
 // for closes, and the answer goes up to the Bot that asked. `id` is the Session the
 // answer comes from; `source` is the trigger the turn answered.
 export function answerSender(rt, id, source, text, long) {
-  if (rt.protocolClosed?.(source.exchangeId)) return
+  if (rt.protocolClosed?.(source.exchangeId, source)) return
   const back = rt.roomOf(source.senderRoomId)?.sessions?.[source.senderSessionId]
   // The asking Bot may have written from a background part of its own chat: its reply
   // goes back to that part's thread, not to the part the user is reading. When the part
@@ -1398,6 +1398,7 @@ export function install(rt) {
         // anything handed on for it is still out, the answer waits; then it goes up with
         // what came back. A failed or stopped turn answers at once.
         const finish = (source, reply) => {
+          if (rt.protocolClosed?.(rt.workOf?.(source), source)) return
           if (rt.protocolCancelled?.(source?.exchangeId) || rt.protocolCancelled?.(source?.work)) return
           const work = rt.workOf?.(source)
           if (!rt.ownsWork?.(rt.selfOf(id), work)) return answer(source, reply)

@@ -30,7 +30,9 @@ export function install(rt) {
       id, status, from: work.from, to: work.to, callerSession: work.callerSession,
       ...(work.taskId ? { taskId: work.taskId } : {}), ...(work.dispatchId ? { dispatchId: work.dispatchId } : {}), at: Date.now(),
     } }
-
+    const done = Object.entries(records()).filter(([, entry]) => entry.protocolReceipt)
+      .sort((a, b) => a[1].protocolReceipt.at - b[1].protocolReceipt.at)
+    for (const [key] of done.slice(0, Math.max(0, done.length - 100))) delete records()[key]
   }
   const workFor = (exec, id, side) => {
     const self = caller(exec)
@@ -267,7 +269,7 @@ export function install(rt) {
   })
 
   Object.assign(rt, {
-    protocolClosed: id => receipt(id) !== undefined,
+    protocolClosed: (id, source) => receipt(id) !== undefined || Boolean(id && source?.workProtocol && !records()[id]),
     protocolCancelled: id => receipt(id)?.status === 'cancelled',
     protocolOnClose: closed,
     workProtocolTarget(exec) {

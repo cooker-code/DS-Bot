@@ -111,7 +111,7 @@ export function install(rt) {
   // back to when that is a background part.
   function openWork(id, { from, to, parent, fromRoom, room, name, child, fromPart, taskId, intakeId }) {
     const above = parent === undefined ? undefined : works()[parent]
-    works()[id] = { ...scopeFields(taskId ?? intakeId), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(fromPart ? { fromPart } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), open: [], results: [], at: Date.now() }
+    works()[id] = { ...(above?.protocol || above?.protocolInherited ? { protocolInherited: true } : {}), ...scopeFields(taskId ?? intakeId), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(fromPart ? { fromPart } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), open: [], results: [], at: Date.now() }
     if (above !== undefined) above.open.push(id)
     save()
   }
@@ -247,7 +247,7 @@ export function install(rt) {
   // Who asked for the work, as the turn that answers a request sees its trigger.
   const askedBy = workId => {
     const work = works()[workId]
-    return work === undefined ? undefined : { ...scopeFields(scopeOf(work)), kind: 'bot', role: 'request', exchangeId: workId, ...(work.dispatchId ? { parentExchangeId: work.dispatchId } : {}), senderSessionId: work.from, ...(work.fromPart ? { senderPart: work.fromPart } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
+    return work === undefined ? undefined : { ...scopeFields(scopeOf(work)), kind: 'bot', role: 'request', exchangeId: workId, ...(work.protocol || work.protocolInherited ? { workProtocol: true } : {}), ...(work.dispatchId ? { parentExchangeId: work.dispatchId } : {}), senderSessionId: work.from, ...(work.fromPart ? { senderPart: work.fromPart } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
   }
   // The answer that goes up: what the Bot said last for this work, then what came back.
   function answerText(workId, reply, botName) {

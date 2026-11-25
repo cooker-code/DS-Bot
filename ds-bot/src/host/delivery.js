@@ -102,6 +102,7 @@ export function install(rt) {
       ...(intakeSeq !== undefined ? { intakeSeq } : {}),
       role,
       exchangeId,
+      ...(state.works?.[exchangeId]?.protocol || state.works?.[exchangeId]?.protocolInherited ? { workProtocol: true } : {}),
       senderName: fromName,
       ...(work ? { work } : {}),
       ...(fromId ? { senderSessionId: fromId } : {}),
