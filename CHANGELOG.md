@@ -6,6 +6,16 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### Upstream changes adopted on 2026-11-25
+
+- Gemini's specific malformed tool-call stops can retry within the configured budget. Telegram headings and tables render as readable formatted messages with length limits and plain-text fallback.
+- Codex conversations use separate live processes so an idle resume reconnects team tools without disturbing another conversation. Qoder CN aliases use their own sign-in command and login marker.
+- Closing a connector gateway cancels active upstream requests. Scheduled-task polling pauses in hidden pages, skin color probes reuse their canvas, and failed recording startup releases its microphone resources.
+- Model and usage caches release stale data and reduce repeated ownership scans. Usage diagnostics keep real errors visible while omitting explicitly unsupported subagent descriptors.
+- Package metadata and the diagnostics issue link point to the renamed Fei-Craft upstream repository.
+
+See the [per-PR sync record](upstream-changelog.md#2026-11-25--macos-插件同步) for adoption boundaries and verification.
+
 ### Upstream changes adopted on 2026-11-24
 
 - Secret fields accept multiline values, grow with the input, and submit with Cmd/Ctrl+Enter. Secret redaction covers normalized line endings, encoded values and folded multiline output.

@@ -1,6 +1,62 @@
 # 上游更新记录
 
-来源仓库为 [Fei2411/DS-Bot](https://github.com/Fei2411/DS-Bot)。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
+来源仓库为 [Fei-Craft/DS-Bot](https://github.com/Fei-Craft/DS-Bot)，原名 Fei2411/DS-Bot，GitHub 仓库 ID 为 `1409013846`（2026-11-25 核实）。迁名前后沿用同一来源键。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
+
+## 2026-11-25 · macOS 插件同步
+
+登记时间 2026-11-25 09:58 +0800（Asia/Taipei）。upstream/dev 第一父链 [fb0d3c03 → bb1b1592](https://github.com/Fei-Craft/DS-Bot/compare/fb0d3c033a952033c66daf737eb99835f98a25cb...bb1b1592472084c32278c12287944ee40b8087c5)，起点 `fb0d3c033a952033c66daf737eb99835f98a25cb`，终点 `bb1b1592472084c32278c12287944ee40b8087c5`。共 34 个 PR，采用 10，暂缓 16，跳过 8，需讨论 0。采用中有 4 项部分采用。比较基线 `44f81fe0`。本批上游根目录 CHANGELOG.md 无变更，包版本仍为 0.3.10。本地功能说明见 CHANGELOG.md。
+
+### 新功能和设计变更
+
+| 设计 | 上游的实际行为、限制与变化 | 本地判断 |
+| --- | --- | --- |
+| 额外工作文件夹 | Bot 和群可另列最多 8 个真实目录。文件工具提权时按所有目标路径检查并批准当前一次，shell 仍走人工审批。群有主工作目录时使用群的列表，未设主目录时合并群与成员列表。列表变更无需换段；本地 CLI 和隐私 Bot 不提供此列表。 | #1298 暂缓，需兼容本地群成员目录和项目工作树。见 [2026-11-10-extra-folders](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/2026-11-10-extra-folders.md)。 |
+| 对外统一 API | 默认关闭的本机网关，默认 127.0.0.1:17830。可撤销 Token 按能力和 Bot/群范围授权，REST、SSE、MCP、CLI 及可选 OpenAI 兼容层共用 Run 完成态。支持幂等和重启后查询，敏感管理能力另行确认。 | #2016 暂缓。上游 Run 的群完成态及后台任务需与本地项目节点对应，不能仅用“已发送”表示任务已完成。见 [2026-11-21-external-api](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/2026-11-21-external-api.md)。 |
+| MCP 入口收口 | 原独立 MCP 网关由统一 API 同端口的 /mcp 承接，并迁移旧配置。 | 旧 #1919 的重审入口更新为 #2016。见 [2026-11-20-mcp-access](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/2026-11-20-mcp-access.md)。 |
+| 显式转后台 | 普通私聊的新消息恢复为插入当前轮或顺序排队。用户显式点击“将当前工作转到后台”，IM 可发 /background 或 /bg。存在交互卡、排队输入或本地 CLI 时限制移交。隐藏同伴轮继续自动隔离；失败交接要求输入持久可恢复。 | #2180、#2216 暂缓。上游已调整旧 #1892 的自动切换方案，需按新设计重新对照卡片所有权。见 [2026-11-16-async-work](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/2026-11-16-async-work.md)。 |
+| 工作目录与隐私 | 运行配置增加额外目录入口；隐私 Bot 的目录隔离也检查其他 Bot 和群的额外目录，隐私 Bot 自己不设额外目录。 | 跟随 #1298 一起适配。见 [2026-10-10-bot-runtime](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/2026-10-10-bot-runtime.md)、[2026-10-27-private-bots](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/2026-10-27-private-bots.md)。 |
+| 设计索引 | 新增额外目录、统一 API 条目，并标记旧 MCP 设计已由新方案承接；远程浏览器条目补充部署与存储边界。 | 索引用于追踪适用设计，远程浏览器产品仍跳过。见 [README](https://github.com/Fei-Craft/DS-Bot/blob/bb1b1592472084c32278c12287944ee40b8087c5/docs/plans/README.md)。 |
+
+审批代审的三阶段代码在上游已通过 #1302、#1934、#1935 补齐，新增权限模式、设置和浏览器/目录/隐私/外部 CLI 的动作证据。本批 docs/plans 未修改该设计正文，本地仍须适配项目卡审批上下文。
+
+### 本批 34 个 PR 的处理状态
+
+| 上游 PR | 状态 | 权重（1–10） | 功能或修复 | 本地处理、差异和重审条件 |
+| --- | --- | ---: | --- | --- |
+| [#2177](https://github.com/Fei-Craft/DS-Bot/pull/2177) | 采用 | 9 | 宿主子系统泄漏、僵尸进程和死循环修复 | 部分采用连接器网关的关闭清理、活动请求中止、失败响应释放和刷新异常处理。浏览器、邮件、IM、CLI、预览等余项涉及本地改写的生命周期或尚未采用的模块，继续暂缓。 |
+| [#2174](https://github.com/Fei-Craft/DS-Bot/pull/2174) | 跳过 | 1 | 独立桌面应用和中继降低 CPU 与内存 | app、link 及手机中继接线属于已排除产品。 |
+| [#2175](https://github.com/Fei-Craft/DS-Bot/pull/2175) | 采用 | 7 | 减少客户端轮询、重复绘制与资源泄漏 | 部分采用隐藏页面停止定时任务轮询、恢复可见时刷新、阻止重叠请求；复用皮肤探色画布，录音启动失败释放设备。其余聊天、侧栏、头像引用、动画和后台任务改动需适配本地界面。 |
+| [#2176](https://github.com/Fei-Craft/DS-Bot/pull/2176) | 采用 | 8 | 限制宿主缓存并减少统计开销 | 部分采用模型推理档位缓存过期清理、Agent 释放时清理会话选择，以及用量缓存上限、归属缓存和关闭清理。已按本地实际缓存结构适配；账本、群派工、记忆、后台任务和团队存储余项暂缓。 |
+| [#1934](https://github.com/Fei-Craft/DS-Bot/pull/1934) | 暂缓 | 8 | 把模型代审做成权限模式并增加设置 | 上游补齐 #1302 的权限入口。本地权限、群成员设置、SQLite 与项目卡审批上下文均有扩展，需整体适配模式迁移和运行中取消。 对照 `ds-bot/src/host/local-agents/index.js`。 |
+| [#1935](https://github.com/Fei-Craft/DS-Bot/pull/1935) | 暂缓 | 9 | 为浏览器、目录、隐私和 CLI 审批提供动作证据 | 依赖 #1302、#1934，需验证本地群与卡片中的原始用户要求、目标路径、单次批准、迟到结果失效和人工回退。 对照 `ds-bot/src/host/browser-plugins.js`。 |
+| [#1654](https://github.com/Fei-Craft/DS-Bot/pull/1654) | 暂缓 | 6 | Bot 内置维护与插件开发技能 | 上游指南包含自己的部署、设置和插件体系；本地仅维护 macOS 插件，已有 ds-bot-doc 与项目卡操作，需要改写入口和路径后再注入 Bot。 对照 `ds-bot/src/host/prompt.js`。 |
+| [#1298](https://github.com/Fei-Craft/DS-Bot/pull/1298) | 暂缓 | 8 | Bot 和群可配置额外工作文件夹 | 上游保存 extraDirs 并在文件工具提权时按目标自动批准。本地群成员目录、项目工作树、SQLite 和审批归属不同。需验证额外目录不跨隐私边界，shell 仍交原审批流程。 对照 `ds-bot/src/host/channel.js`。 |
+| [#2160](https://github.com/Fei-Craft/DS-Bot/pull/2160) | 暂缓 | 8 | CLI 探测离线、超时强杀及过期结果保护 | 本地探测实现与上游 #2052、#2057、#2177 不同，需一并验证超时后进程退出、刷新结果不会倒退及主会话不中断。 对照 `ds-bot/src/host/local-agents/acp.js`。 |
+| [#2180](https://github.com/Fei-Craft/DS-Bot/pull/2180) | 暂缓 | 9 | 显式转后台并恢复插话和排队语义 | 上游普通私聊改由用户点击或 IM 命令转后台；隐藏同伴轮仍自动隔离。本地未采用 #1887 后台任务，且项目卡有执行所有权，需验证原卡执行与新消息的归属。 对照 `ds-bot/src/host/channel.js`。 |
+| [#2194](https://github.com/Fei-Craft/DS-Bot/pull/2194) | 跳过 | 2 | 修正上游已知问题文档中的旧仓库死链 | 本地该处已使用 Fei2411 链接，未含上游此次修复的 unionsup 死链；源仓库迁移另记本批。 |
+| [#2193](https://github.com/Fei-Craft/DS-Bot/pull/2193) | 跳过 | 1 | 从新仓库发布 GHCR 镜像 | Docker 发布与镜像构建范围。 |
+| [#2205](https://github.com/Fei-Craft/DS-Bot/pull/2205) | 跳过 | 1 | 修复复制 .. 前缀目录被误判为越界 | 独立应用导入的 copy-tree 实现。 |
+| [#2198](https://github.com/Fei-Craft/DS-Bot/pull/2198) | 采用 | 3 | npm 包的源码、首页和缺陷链接迁到新上游 | 只采用插件元数据和对应测试，指向 Fei-Craft/DS-Bot。独立应用包清单跳过。 |
+| [#2208](https://github.com/Fei-Craft/DS-Bot/pull/2208) | 采用 | 9 | Codex 空闲恢复后重新连接团队工具 | 每个活动会话独立持有 Codex 进程，关闭旧桥后恢复不会沿用旧 MCP 地址。保留本地 managedSkills 及已有的启动失败清理，测试覆盖另一个会话不受中断。 |
+| [#2200](https://github.com/Fei-Craft/DS-Bot/pull/2200) | 跳过 | 1 | 仅读取独立桌面应用日志尾部 | 独立应用日志后端及基准。 |
+| [#2209](https://github.com/Fei-Craft/DS-Bot/pull/2209) | 暂缓 | 8 | QQ 回复支持发送图片 | 依赖之前暂缓的 IM 图片外发路径 #1868；本地新增企微文档发送与工作目录边界，需按真实会话校验 QQ 图片路径及部分发送失败。 对照 `ds-bot/src/host/im/index.js`。 |
+| [#2207](https://github.com/Fei-Craft/DS-Bot/pull/2207) | 暂缓 | 10 | 失败轮结束后唤醒排队消息 | 上游移动收件箱消息后恢复派活记录。本地换段与恢复绑定任务卡，需验证失败后保留顺序、只唤醒一次并回到同一节点。 对照 `ds-bot/src/host/parts.js`。 |
+| [#2196](https://github.com/Fei-Craft/DS-Bot/pull/2196) | 跳过 | 1 | 独立应用导入时并行复制会话 | 独立应用导入流程。 |
+| [#2199](https://github.com/Fei-Craft/DS-Bot/pull/2199) | 采用 | 3 | 更新订阅源和源码仓库链接 | 部分采用插件诊断页的缺陷入口。其他发布订阅源、独立应用、手机、上游维护技能和与本地不同的公开文档余项跳过。 |
+| [#2202](https://github.com/Fei-Craft/DS-Bot/pull/2202) | 采用 | 4 | 用量扫描忽略宿主明确不支持的子代理描述 | 仅压掉 unsupported 诊断，保留真实损坏或不可读记录的提示。 |
+| [#2195](https://github.com/Fei-Craft/DS-Bot/pull/2195) | 跳过 | 1 | 并行重建导入文件的符号链接 | 独立应用 copy-tree 导入逻辑。 |
+| [#2215](https://github.com/Fei-Craft/DS-Bot/pull/2215) | 跳过 | 1 | 检查通过后才发布 Docker 镜像 | Docker CI 发布作业。 |
+| [#2203](https://github.com/Fei-Craft/DS-Bot/pull/2203) | 暂缓 | 8 | 归档被清理的后台任务会话 | 依赖 #1887；本地保留群成员当前段、历史段和任务结果引用，需区别归档与删除，并保证验收文档仍能定位。 对照 `ds-bot/src/host/parts.js`。 |
+| [#2223](https://github.com/Fei-Craft/DS-Bot/pull/2223) | 采用 | 7 | 识别 Qoder CN 登录状态 | 增加 CN 三种命令别名和专用登录标记，设置中的登录指引跟随实际命令。保留本地登录缓存与探测结构；关联 #1864 的错误消息指引余项。 |
+| [#2221](https://github.com/Fei-Craft/DS-Bot/pull/2221) | 暂缓 | 6 | 隐藏的 Bot 往返不再显示未读点 | 上游隐藏回合及完成状态依赖 #2130；本地侧栏和项目回执未读定义有改动，需保留用户可见任务完成提醒。 对照 `ds-bot/src/client/index.js`。 |
+| [#2227](https://github.com/Fei-Craft/DS-Bot/pull/2227) | 暂缓 | 9 | 限制任务继承的前台历史序号范围 | 依赖后台任务与较新聊天索引；本地群历史按任务过滤，需验证后续前台消息不会被后台任务读取，关联 #1841。 对照 `ds-bot/src/host/chat-index.js`。 |
+| [#2222](https://github.com/Fei-Craft/DS-Bot/pull/2222) | 暂缓 | 10 | 将无进展的本地 ACP 轮次判为失败 | 上游增加进展心跳、看门狗和重试策略，依赖较新的 CLI 生命周期与用量处理。本地维护技能选择和任务恢复，需要验证审批等待不被误杀、真卡死能释放原节点。 对照 `ds-bot/src/host/local-agents/acp.js`。 |
+| [#2225](https://github.com/Fei-Craft/DS-Bot/pull/2225) | 暂缓 | 8 | 前一次调用结束后可再次提及同一群成员 | 上游允许无待处理批次后再次叫人，仍使用成环守卫。本地批次还携带任务归属，需验证二次调用不会重复派工或绕过返工暂停。 对照 `ds-bot/src/host/groups.js`。 |
+| [#2220](https://github.com/Fei-Craft/DS-Bot/pull/2220) | 采用 | 9 | 重试 Gemini 特定异常工具响应 | 将三种精确的 PI_AI_ERROR 停止原因按 MALFORMED_RESPONSE 处理，保留原重试预算；其他错误文字不会误触发重试。 |
+| [#2206](https://github.com/Fei-Craft/DS-Bot/pull/2206) | 暂缓 | 3 | 修复全量并发下的测试抖动 | 涉及未采用的工作树、后台任务和宿主性能夹具，并含 IM 回复等待。需跟随相应模块适配，保留本地正在使用的测试结构。 对照 `ds-bot/src/host/im/index.js`。 |
+| [#2016](https://github.com/Fei-Craft/DS-Bot/pull/2016) | 暂缓 | 8 | 对外统一 API、MCP、CLI 和 OpenAI 兼容接口 | 本机网关默认关闭，独立 Token 按能力与目标授权，支持 Run、流式事件和幂等。本地缺少上游后台任务与群回报状态机，需将 Run 完成态与项目卡节点对齐，关联 #1919 的接入范围讨论。 对照 `ds-bot/src/host/approvals.js`。 |
+| [#2224](https://github.com/Fei-Craft/DS-Bot/pull/2224) | 采用 | 8 | Telegram 标题和表格便于阅读 | 将支持的 Markdown 标题与表格转换为 Telegram HTML/条目，保留文本回退、平台长度限制与安全转义。 |
+| [#2216](https://github.com/Fei-Craft/DS-Bot/pull/2216) | 暂缓 | 10 | 前台交接失败时持久保留用户输入 | 依赖 #2180 和后台任务持久化；本地项目卡另有输入和恢复记录，需验证交接落盘失败后输入可恢复且 IM 重投不重复建卡。 |
 
 ## 2026-11-24 · macOS 插件同步
 
@@ -66,7 +122,7 @@
 | [#1993](https://github.com/Fei2411/DS-Bot/pull/1993) | 采用 | 6 | 升级 DSH 兼容目标并补充内容拒绝提示 | 部分采用 CONTENT_REFUSED 的错误说明和翻译。运行隔离冒烟使用已安装的 DSH 0.2.2-rc.5；测试依赖版本、其他夹具、独立应用和 Docker 的升级接线未采用。 |
 | [#2165](https://github.com/Fei2411/DS-Bot/pull/2165) | 暂缓 | 8 | 修复换段视图闪烁并折叠空分隔线 | 本地保留成员历史和手动会话入口，上游已在 #2042 删除这些入口。直接采用会改变本地打开历史会话的行为，需适配打开、页头、侧栏及视图切换的同一目标。 对照 `ds-bot/src/host/parts.js`。 |
 | [#2166](https://github.com/Fei2411/DS-Bot/pull/2166) | 采用 | 9 | 支持多行密钥输入和多种形式的脱敏 | 密钥输入支持换行、自动增高及 Cmd/Ctrl+Enter 提交，后台规范行尾并拒绝 NUL。脱敏覆盖多行、JSON、URL 编码及空格折叠形式，复用本地按消息缓存的失效机制。 |
-| [#1302](https://github.com/Fei2411/DS-Bot/pull/1302) | 暂缓 | 8 | 用独立模型预审待批准的操作 | 新增审核管线与动作取证，仍依赖后续权限选择器和设置工作。本地审批携带项目卡、群和子会话来源，需完整接入取证、取消、迟到结果和人工回退后再开放。 对照 `ds-bot/src/host/approvals.js`。 |
+| [#1302](https://github.com/Fei2411/DS-Bot/pull/1302) | 暂缓 | 8 | 用独立模型预审待批准的操作 | 新增审核管线与动作取证，仍依赖后续权限选择器和设置工作。本地审批携带项目卡、群和子会话来源，需完整接入取证、取消、迟到结果和人工回退后再开放。 对照 `ds-bot/src/host/approvals.js`。 2026-11-25 09:58 +0800 重审依据更新。上游 #1934、#1935 已补齐权限设置与取证接线，原“等待后续入口”的依据已更新；本地项目卡和子会话适配仍待完成。 |
 
 ## 2026-11-23 · macOS 插件同步
 
@@ -120,7 +176,7 @@
 | [#1942](https://github.com/Fei2411/DS-Bot/pull/1942) | 需讨论 | 5 | Bot 经用户审核后公开提交缺陷报告 | 上游目标固定为上游仓库。需确定二开问题应发本地仓库、上游仓库，还是只生成草稿。 对照文件 `ds-bot/index.js`。 |
 | [#1947](https://github.com/Fei2411/DS-Bot/pull/1947) | 暂缓 | 6 | 为最新消息和附近消息查询加索引 | 本地群及任务过滤改变了读路径，需覆盖分页边界和已归档卡片。 本地差异见 `ds-bot/src/host/chat-index.js`。 |
 | [#1945](https://github.com/Fei2411/DS-Bot/pull/1945) | 跳过 | 1 | 修复 Windows 插件文字渲染 | 仅处理 Windows ClearType。 |
-| [#1919](https://github.com/Fei2411/DS-Bot/pull/1919) | 需讨论 | 7 | 外部智能体通过本机 MCP 调用团队 | 默认仅 Main Bot，可逐群授权。需决定项目群授权是否包含卡内消息和派工能力。 对照文件 `ds-bot/index.js`。 |
+| [#1919](https://github.com/Fei2411/DS-Bot/pull/1919) | 需讨论 | 7 | 外部智能体通过本机 MCP 调用团队 | 默认仅 Main Bot，可逐群授权。需决定项目群授权是否包含卡内消息和派工能力。 对照文件 `ds-bot/index.js`。 2026-11-25 09:58 +0800 重审依据更新。上游 #2016 已用对外统一 API 的 /mcp 承接独立入口，后续参看新 Token 能力域、目标范围和 Run 完成态。 |
 | [#1949](https://github.com/Fei2411/DS-Bot/pull/1949) | 暂缓 | 3 | 自动召回时复用当天日期 | 本地记忆测试已分化，复核日期边界及群记忆用例。 本地差异见 `ds-bot/test/memory.test.js`。 |
 | [#1948](https://github.com/Fei2411/DS-Bot/pull/1948) | 跳过 | 1 | 缺陷报告中的 Windows 路径脱敏 | Windows 专用。 |
 | [#1950](https://github.com/Fei2411/DS-Bot/pull/1950) | 跳过 | 1 | 首次导入前即开始计算耗时预算 | 独立应用的导入流程。 |
@@ -201,7 +257,7 @@
 
 ## 2026-11-21 · macOS 插件同步
 
-登记时间 2026-11-21 09:26 +0800（Asia/Taipei）。upstream/dev 第一父链 [f8577350 → 6905f3fb](https://github.com/Fei2411/DS-Bot/compare/f8577350...6905f3fbdd296282742f7ceee546816b2489b215)，终点 `6905f3fbdd296282742f7ceee546816b2489b215`。共 43 个 PR，17 项采用、15 项暂缓、9 项跳过、2 项需讨论。上游根目录 CHANGELOG.md 本批无改动。采用结果见本地 CHANGELOG.md。
+登记时间 2026-11-21 09:26 +0800（Asia/Taipei）。upstream/dev 第一父链 [f8577350 → 6905f3fb](https://github.com/Fei2411/DS-Bot/compare/f8577350...6905f3fbdd296282742f7ceee546816b2489b215)，终点 `6905f3fbdd296282742f7ceee546816b2489b215`。共 43 个 PR，18 项采用、14 项暂缓、9 项跳过、2 项需讨论。上游根目录 CHANGELOG.md 本批无改动。采用结果见本地 CHANGELOG.md。
 
 交付核验（2026-11-21 09:31 +0800）：实现提交 `11c3f88d` 已合入本地 dev。529 项针对性测试与 57 步模拟 Web 冒烟全部通过，客户端生成文件一致，179 个业务操作名覆盖检查通过。本地版本 0.3.8.17，Web 和 Desktop 两个 profile 各 163 个包内文件与发布包一致。Desktop 运行实例读回 0.3.8.16，需重启加载新版；日用 Web 进程加载状态未核实。
 
@@ -220,8 +276,8 @@
 
 | 上游 PR | 状态 | 权重 | 功能 | 本地处理及重审线索 |
 | --- | --- | ---: | --- | --- |
-| [#1892](https://github.com/Fei2411/DS-Bot/pull/1892) | 需讨论 | 9 | 忙碌时转后台和派生同级任务 | 依赖上一批暂缓的 #1887，前台结果需对应本地项目节点及回报目的地。 |
-| [#1902](https://github.com/Fei2411/DS-Bot/pull/1902) | 需讨论 | 9 | 群里的后台任务 | 依赖暂缓的 #1887；本地群项目卡、节点会话、重启恢复均自行维护，需先明确所有权。 |
+| [#1892](https://github.com/Fei2411/DS-Bot/pull/1892) | 需讨论 | 9 | 忙碌时转后台和派生同级任务 | 依赖上一批暂缓的 #1887，前台结果需对应本地项目节点及回报目的地。 2026-11-25 09:58 +0800 重审依据更新。上游 #2180 已将普通私聊改为显式转后台，原自动切换方案需按新交互重审；本地卡片执行所有权仍待讨论。 |
+| [#1902](https://github.com/Fei2411/DS-Bot/pull/1902) | 需讨论 | 9 | 群里的后台任务 | 依赖暂缓的 #1887；本地群项目卡、节点会话、重启恢复均自行维护，需先明确所有权。 2026-11-25 09:58 +0800 重审依据更新。关联本批 #2180、#2216 的交接持久化，群后台任务仍需按本地卡片和节点对应执行者与结果。 |
 | [#1841](https://github.com/Fei2411/DS-Bot/pull/1841) | 暂缓 | 9 | 群历史中恢复压缩回复 | 与上一批 #1757 同属历史读取；本地账本按任务和群过滤，不能直接替换历史查询及消息展示。 优先适配；以同群两张任务卡为用例，验收压缩后能找回本卡回复且不会读到另一张卡。 |
 | [#1433](https://github.com/Fei2411/DS-Bot/pull/1433) | 暂缓 | 8 | 会话分叉归属 | 上游在客户端记录派生会话和来源 Agent；本地的会话选择、成员历史和私聊入口已改写，index.js 接入位置冲突。 |
 | [#1863](https://github.com/Fei2411/DS-Bot/pull/1863) | 暂缓 | 8 | 切换到小窗口模型 | 上游按被替换节点的实际大小生成检查点；本地分段及上下文测试已分化，需与此前 #1736、#1766 一起验证。 |
@@ -232,7 +288,7 @@
 | [#1854](https://github.com/Fei2411/DS-Bot/pull/1854) | 暂缓 | 7 | Bot 创建的终端标签页 | 上游监听终端事件并接入页头；本地客户端入口已重构，需验证群任务会话与终端归属。 |
 | [#1861](https://github.com/Fei2411/DS-Bot/pull/1861) | 暂缓 | 6 | CodeBuddy 登录状态 | 探测 CLI 会话文件；本地 discover.js 对引擎和平台的处理已改动，补丁上下文冲突。 |
 | [#1852](https://github.com/Fei2411/DS-Bot/pull/1852) | 暂缓 | 6 | 自动回忆缓存 | 上游按文件版本缓存解析结果；本地分库后的记忆测试夹具不同。调整记忆生命周期时复核跨请求失效。 |
-| [#1864](https://github.com/Fei2411/DS-Bot/pull/1864) | 暂缓 | 6 | Qoder CN CLI 探测 | 上游区分可执行文件别名；本地 ACP 启动与路由选择已有调整，acp.js 补丁冲突。 |
+| [#1864](https://github.com/Fei2411/DS-Bot/pull/1864) | 采用 | 6 | Qoder CN CLI 探测 | 上游区分可执行文件别名；本地 ACP 启动与路由选择已有调整，acp.js 补丁冲突。 2026-11-25 09:58 +0800 暂缓→部分采用。部分内容已随 #2223 采用：CN 命令别名、设置登录指引和登录状态。ACP 运行时错误中的命令指引余项仍待适配。 |
 | [#1882](https://github.com/Fei2411/DS-Bot/pull/1882) | 暂缓 | 6 | 布局、动效与无障碍修整 | 多模块混合修改，消息单元、浏览器面板和本地项目详情均有接入冲突，按具体问题拆取。 |
 | [#1881](https://github.com/Fei2411/DS-Bot/pull/1881) | 暂缓 | 6 | DeepSeek 听写和朗读 | 依赖 #1880 的公共服务、凭据状态与设置面板；语音选择不能随配置密钥自动打开。 |
 | [#1834](https://github.com/Fei2411/DS-Bot/pull/1834) | 暂缓 | 6 | 长对话跳到待批准的学习建议 | 上游在页头与卡片间导航；本地详情和页头入口已调整，需要验证跳转到正确会话。 |
