@@ -1,3 +1,4 @@
+import { installSettingsShortcut, SETTINGS_SEARCH_EVENT } from './settings-discovery.js'
 import { call } from './api.js'
 import { isHex, inkText, paintCss } from './inks.js'
 import { DEFAULT_MASK, SHAPES, markupCache, maskOf } from './characters.js'
@@ -800,6 +801,11 @@ export function apply(ctx) {
   actions.openPlugins = () => ctx.get('pluginNavigation')?.openList()
   // The Voice Input plugin's speech Remote; absent while that plugin is off.
   actions.speech = () => ctx.get('remote.speech') ?? undefined
+  ctx.effect(() => installSettingsShortcut(window, () => surface.getSnapshot().mode === 'bot', () => {
+    if (ui.getSnapshot().settings) window.dispatchEvent(new Event(SETTINGS_SEARCH_EVENT))
+    else actions.openSettings('search')
+  }), 'ds-bot: settings search shortcut')
+
   // One of DSH's onboarding editors, such as the DeepSeek API key form, opened by id
   // through the settings shell's coordinator.
   actions.openHarnessOnboarding = id => settingsShell?.openOnboarding(id)

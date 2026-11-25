@@ -1,3 +1,4 @@
+import { PUBLISH_ISSUE } from './issue-report.js'
 import { taskInteractions } from './task-interactions.js'
 import { explainTaskMessage } from './task-explanations.js'
 import { TASK_EXPLANATION_PROMPT_LIMIT } from '../shared/task-explanation-prompt.js'
@@ -929,17 +930,25 @@ export function install(rt) {
           if (reply === undefined) return fail('Nothing to send', 'bot/invalid')
           // Claim the view before queueing so a second answer is refused.
           delete state.views[sessionId]
+          let consumed = false
+          let issueReportResult
           try {
             await rt.ensureCapabilities(sessionId)
             const agent = await rt.resolveAgent(sessionId)
+            if (pending.issueDraft !== undefined && body.action === PUBLISH_ISSUE && checked.confirmed === true) {
+              await rt.save({ required: true })
+              consumed = true
+              issueReportResult = await rt.settleIssueReport(sessionId, pending.issueDraft)
+              reply.text = JSON.stringify({ ...JSON.parse(reply.text), issueReportResult })
+            }
             agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: reply.source }))
             await ctx.sessions.flush(agent.session)
           } catch (error) {
-            state.views[sessionId] ??= pending
+            if (!consumed) state.views[sessionId] ??= pending
             throw error
           }
           await rt.save()
-          return ok(true)
+          return ok(issueReportResult === undefined ? true : { issueReportResult })
         }
         // Upload each photo separately. The message references its staged images in order.
         case 'stage-image': {

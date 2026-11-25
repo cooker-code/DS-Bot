@@ -11,6 +11,21 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Overview": "概览",
+  "Search settings": "搜索设置",
+  "Settings results": "设置搜索结果",
+  "No matching settings": "没有匹配的设置",
+  "Needs your attention": "待处理",
+  "Pending questions and views": "待答复的提问与视图",
+  "Create your first Bot": "创建第一个 Bot",
+  "Appearance preview": "外观预览",
+  "Preview": "预览",
+  "Summarize the next steps.": "概括下一步安排。",
+  "Thought for a moment": "思考了片刻",
+  "Review the result, run the checks, and share the evidence.": "审查结果，执行检查，并提供证据。",
+  "Delegated": "已派活",
+  "Noted": "已留便条",
+
   "Prompts": "提示词",
   "Task message explanations": "任务人话解释",
   "Plain-language prompt": "人话提示词",

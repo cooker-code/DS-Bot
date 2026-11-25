@@ -59,6 +59,7 @@ export const failureLine = failure => `${failure.code}${failure.status ? ` ${fai
 // for closes, and the answer goes up to the Bot that asked. `id` is the Session the
 // answer comes from; `source` is the trigger the turn answered.
 export function answerSender(rt, id, source, text, long) {
+  if (rt.protocolClosed?.(source.exchangeId)) return
   const back = rt.roomOf(source.senderRoomId)?.sessions?.[source.senderSessionId]
   // The asking Bot may have written from a background part of its own chat: its reply
   // goes back to that part's thread, not to the part the user is reading. When the part
@@ -70,7 +71,7 @@ export function answerSender(rt, id, source, text, long) {
   const work = rt.closeWork?.(source.exchangeId, name, text)
   const scope = scopeOf(source)
   if (scope && source.senderRoomId && !back) return
-  const routing = { ...(target ? { sessionId: target } : {}), ...(scope && back ? { roomId: source.senderRoomId } : {}), ...scopeFields(scope) }
+  const routing = { ...(source.parentExchangeId ? { parentExchangeId: source.parentExchangeId } : {}), ...(target ? { sessionId: target } : {}), ...(scope && back ? { roomId: source.senderRoomId } : {}), ...scopeFields(scope) }
   // A reply that arrives after the user gave up the wait is a late answer: it closes
   // nothing, opens nothing, and says on it that the wait was already over.
   const late = work === undefined ? rt.abandonedWork?.(source.exchangeId) : undefined
@@ -1397,6 +1398,7 @@ export function install(rt) {
         // anything handed on for it is still out, the answer waits; then it goes up with
         // what came back. A failed or stopped turn answers at once.
         const finish = (source, reply) => {
+          if (rt.protocolCancelled?.(source?.exchangeId) || rt.protocolCancelled?.(source?.work)) return
           const work = rt.workOf?.(source)
           if (!rt.ownsWork?.(rt.selfOf(id), work)) return answer(source, reply)
           const asker = rt.workAsker(work)

@@ -46,7 +46,7 @@
 | `earlier` / `chat` / `session-times` / `thinking` / `run-stats` / `usage` | 历史分页用 `sessionId,cursor?`；私聊用 `botId,cursor?,steps?`；会话时间用 `botId,ids`；思考时间用 `sessionId,turn`；执行统计用 `botId`；用量可传 `timeZone`。 | `earlierPage/chatPage` 返回分页；`session-times` 返回本 Bot 会话映射；`thinking` 返回 `{ms}`、空对象或 null；其余返回会话投影或按区间的用量视图。 |
 | `exchange` / `exchange-text` | 双方 ID `a,b` 列出协作往来，`id,a?,b?` 取指定交接。 | `exchangesOf/exchangeText` 返回往来概要或记录正文。 |
 | `stage-image` / `file-text` / `file-download` | 暂存 `mediaType,data,name?`；提取纯文本传含 `attachmentId` 的 `file`；下载用 `sessionId` 与 `attachmentId` 或 `seq,index?`，可用 `version` 锁定。 | 暂存返回短期 `{id}`；`fileText/fileDownload` 从附件服务按会话及格式读取。下载按返回元数据和编码取文件。[file-download.js](../../../../ds-bot/src/host/file-download.js) |
-| `send` / `answer-question` / `dismiss-question` / `view-reply` / `dismiss-view` / `approval-answer` | 发送用 `sessionId,text,images?`；答问题用 `sessionId,questionId,answer`；答交互视图用 `sessionId,viewId,action,values`；关闭待答用 `sessionId`；批准用 `id,choice`。 | `sendUser/answerQuestion/viewReply/answerApproval` 触发对应用户动作，成功通常为 true。重复答复要检查原请求是否仍有效。 |
+| `send` / `answer-question` / `dismiss-question` / `view-reply` / `dismiss-view` / `approval-answer` | 发送用 `sessionId,text,images?`；答问题用 `sessionId,questionId,answer`；答交互视图用 `sessionId,viewId,action,values`（普通视图返回 true，缺陷报告确认返回 `{issueReportResult}`，并将同一结果写入模型答复）；关闭待答用 `sessionId`；批准用 `id,choice`。 | `sendUser/answerQuestion/viewReply/answerApproval` 触发对应用户动作，成功通常为 true。重复答复要检查原请求是否仍有效。缺陷报告仅精确匹配由 `prepare_ds_bot_issue` 生成的 `report_issue` 草稿及确认视图才可发布，正文与目标向用户完整展示；确认先持久消费，发布失败或结果不明也不重新打开草稿。 |
 | `btw-delete` / `side-new` / `side-ask` / `side-cancel` / `side-close` | 删除旁问用 `sessionId,cardId`；新建旁聊用 `sessionId`；提问用 `sessionId,chatId?,recent?,text`；取消一条用 `chatId,entryId`；关闭用 `chatId`。 | `btwDelete/sideNew/sideAsk/sideCancel/sideClose` 返回对应旁问或旁聊操作结果，回读 `state.btwCards,sideChats`。[side.js](../../../../ds-bot/src/host/side.js) |
 
 ## 浏览器运行、诊断与更新
@@ -75,3 +75,10 @@
 - `project-task-list` 的 `validationProgress` 给出当前轮次的进行项、最近通过项和回执状态；`project-task-detail` 的 `rounds[].validation` 含逐项证据。旧轮继续按已有 completed、remaining 和 result 回读。结果随原轮保存在群库。验证方法、环境和样本数量按本卡需要选取。
 
 当前计划的所有有效节点交付后，普通任务自动完成。要求人工终验的卡自动生成绑定最终轮次的验收请求；用户通过后完成。中间节点按依赖复核。
+
+
+## 显式协作与缺陷报告工具
+
+`work-protocol.js` 在既有团队工具中注册五项：`delegate_work(to,goal,request_id?,taskId?,card_round?)`、`ask_back(work_id?,question)`、`answer_work(work_id,answer)`、`cancel_work(work_id,reason?)`、`note_bot(to,message)`。它们不是新增 HTTP endpoint，使用当前 Bot 的工具身份、隐私保护与团队写锁。正式 card_round 派发转交现有 message_bot；其他委托存入团队基础 SQLite 的 works_json，带原调用/收件线程、taskId 和 dispatchId。追问保持 open，答复续原线程，最终回复自动返回；已取消回执禁止迟到回传。确定投递失败回滚等待，已入队后保存结果不明保留身份且不自动重发。note_bot 只注入消息和写账本，不启动模型。项目卡提交/复核/批准不变。
+
+`issue-report.js` 的 `prepare_ds_bot_issue(title,what,steps,diagnostics?)` 只准备脱敏草稿，需配合 show_view 的 report_issue 和用户确认；目标固定 cooker-code/DS-Bot。GitHub 连接器有写权限时才发布，没有时生成该仓库人工草稿链接。公开请求不允许调用者覆盖 API 目标。图片由用户在 GitHub 页面手动附加，接口不接收二进制上传。相关设计与验证见根目录 upstream-changelog.md。

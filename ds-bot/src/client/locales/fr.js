@@ -1,6 +1,21 @@
 // French (fr) localization for DS Bot client and DSH settings namespaces.
 
 export const FR = {
+  "Overview": "Vue d’ensemble",
+  "Search settings": "Rechercher dans les réglages",
+  "Settings results": "Résultats des réglages",
+  "No matching settings": "Aucun réglage correspondant",
+  "Needs your attention": "Votre attention est requise",
+  "Pending questions and views": "Questions et vues en attente",
+  "Create your first Bot": "Créez votre premier Bot",
+  "Appearance preview": "Aperçu de l’apparence",
+  "Preview": "Aperçu",
+  "Summarize the next steps.": "Résumez les prochaines étapes.",
+  "Thought for a moment": "A réfléchi un instant",
+  "Review the result, run the checks, and share the evidence.": "Examinez le résultat, effectuez les vérifications et partagez les preuves.",
+  "Delegated": "Délégué",
+  "Noted": "Note laissée",
+
   "Saved by {name}": "Enregistré par {name}",
   "Saved {time}": "Enregistré le {time}",
   "Not dispatched": "Non attribué",

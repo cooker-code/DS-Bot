@@ -109,6 +109,8 @@ dsh plugin --profile desktop --config.registry=https://registry.npmjs.org/ add "
 
 修复问题或调整设计前，按相关功能、症状或模块查这份记录。若命中暂缓项或部分采用的余项，先提醒用户对应的上游 PR、处理逻辑和当时的本地差异。暂缓项保持现状，后续采用时再更新原条目。
 
+用户已确认保留同一 Bot 的多个并行会话，以及手动新建、切换入口。上游 [PR #2039](https://github.com/Fei-Craft/DS-Bot/pull/2039) 和 [PR #2042](https://github.com/Fei-Craft/DS-Bot/pull/2042) 的删除方案在本地跳过；新增后台或派活能力不能以删除这些功能为前置条件。协作 work 的完成不等于项目卡提交或验收，仍由原 `project_task` 流程决定。
+
 本仓库只维护 macOS 上的插件。上游同步时跳过 Windows 和 Linux 专用代码、测试、夹具和 CI 作业。以下已删除模块不再跟随上游更新：
 
 - DS Bot 独立桌面应用（`app/`、`start.ps1`）及其安装包。

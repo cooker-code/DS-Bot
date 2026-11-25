@@ -6,6 +6,14 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### v0.3.10.27-upstream — local collaboration and settings (2026-11-25)
+
+- Add `delegate_work`, `ask_back`, `answer_work`, `cancel_work` and `note_bot` over the existing collaboration state. Questions and answers return to their recorded thread and project dispatch; cancellation suppresses late results. Existing `message_bot`, parallel conversations, project cards and approval rules remain available. Full upstream background-task and worktree UI integration remains deferred ([PR #2130](https://github.com/Fei-Craft/DS-Bot/pull/2130)).
+- Add an overview, Cmd/Ctrl+K search and live appearance preview within the current settings navigation. Search includes local prompt settings, Bots, groups and registered DSH pages. The full upstream dashboard and field anchors remain deferred ([PR #2028](https://github.com/Fei-Craft/DS-Bot/pull/2028)).
+- Prepare redacted bug reports for `cooker-code/DS-Bot`, show the complete report for confirmation, and publish once through an authorized GitHub connector or offer a manual draft link. Screenshots can be attached manually on GitHub. Feedback links use the same fork ([PR #1942](https://github.com/Fei-Craft/DS-Bot/pull/1942), [PR #2199](https://github.com/Fei-Craft/DS-Bot/pull/2199)).
+
+Adoption boundaries and verification are recorded in [upstream-changelog.md](upstream-changelog.md#2026-11-25--本地产品选择与协作设置适配). This candidate is maintained on `dev-upsteam`; local `dev` remains unchanged.
+
 ### v0.3.10.26-upstream — isolated local adaptation (2026-11-25)
 
 - Consecutive working notices fold within the same task and dispatch scope. Compressed legacy group replies can be recovered from unambiguous ledger evidence while preserving task boundaries.

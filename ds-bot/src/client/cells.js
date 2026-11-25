@@ -935,6 +935,8 @@ function toolActivity(name, arg, findBot, self) {
     case 'list_secrets': return { label: t('Checking the keys'), state: 'searching' }
     case 'ask_user_question': return { label: t('Waiting for your answer'), state: 'alert' }
     case 'group_relay': return { relay: true, state: 'orbit' }
+    case 'delegate_work':
+    case 'note_bot':
     case 'message_bot': {
       const target = findBot(arg('to'))
       return { label: target ? t('Asking {name}', { name: target.name }) : t('Asking another Bot'), state: 'sending' }
@@ -1170,7 +1172,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
 // The calls ToolCell draws. A PTC program (`run_code`) dispatches the real tools as
 // its sub-calls, so a call draws by its own name wherever it sits in the tree.
 const isComputerCall = name => name === 'cua'
-const DRAWN = new Set(['message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
+const DRAWN = new Set(['delegate_work', 'note_bot', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
 // Calls whose card a dock above the composer carries when the call is not drawn.
 const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'browser_handoff', 'computer_handoff'])
 
@@ -1207,10 +1209,12 @@ function renderCall(call, { turn, sessionId, roster, actions, useUi, findBot, he
   const { text: arg, value: argValue } = toolArgs(call)
   const self = roster.byId[sessionId]
   switch (tool) {
+    case 'delegate_work':
+    case 'note_bot':
     case 'message_bot': {
       const target = findBot(arg('to')) ?? { name: arg('to') ?? '…', color: 'gray' }
       if (done && call.isError) return h('div', { className: 'bt-event' }, t("Couldn't message {name}", { name: target.name }))
-      return h(EventLine, { prefix: t('Messaged'), bots: [target], onOpen: bot => bot.id && actions.openExchange(self?.id ?? sessionId, bot.id), whole: true })
+      return h(EventLine, { prefix: t(tool === 'delegate_work' ? 'Delegated' : tool === 'note_bot' ? 'Noted' : 'Messaged'), bots: [target], onOpen: bot => bot.id && actions.openExchange(self?.id ?? sessionId, bot.id), whole: true })
     }
     case 'stop_bot': {
       const target = findBot(arg('bot')) ?? { name: arg('bot') ?? '…', color: 'gray' }

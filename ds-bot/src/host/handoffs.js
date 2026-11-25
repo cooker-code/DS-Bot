@@ -121,6 +121,7 @@ export function install(rt) {
   function closeWork(id, name, text, extra = {}) {
     const work = works()[id]
     if (work === undefined) return undefined
+    rt.protocolOnClose?.(id, work)
     delete works()[id]
     // What it still waits for comes back to it alone.
     for (const child of Object.values(works())) if (child.parent === id) delete child.parent
@@ -236,7 +237,7 @@ export function install(rt) {
   }
 
   const owns = (botId, workId) => workId !== undefined && works()[workId]?.to === botId
-  const waits = workId => (works()[workId]?.open.length ?? 0) > 0
+  const waits = workId => Boolean(works()[workId]?.question) || (works()[workId]?.open.length ?? 0) > 0
   function hold(workId, text) {
     const work = works()[workId]
     if (work === undefined || text === '') return
@@ -246,7 +247,7 @@ export function install(rt) {
   // Who asked for the work, as the turn that answers a request sees its trigger.
   const askedBy = workId => {
     const work = works()[workId]
-    return work === undefined ? undefined : { ...scopeFields(scopeOf(work)), kind: 'bot', role: 'request', exchangeId: workId, senderSessionId: work.from, ...(work.fromPart ? { senderPart: work.fromPart } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
+    return work === undefined ? undefined : { ...scopeFields(scopeOf(work)), kind: 'bot', role: 'request', exchangeId: workId, ...(work.dispatchId ? { parentExchangeId: work.dispatchId } : {}), senderSessionId: work.from, ...(work.fromPart ? { senderPart: work.fromPart } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
   }
   // The answer that goes up: what the Bot said last for this work, then what came back.
   function answerText(workId, reply, botName) {
@@ -450,5 +451,8 @@ export function install(rt) {
     return lines.join('; ')
   }
 
-  Object.assign(rt, { workOf, openWork, closeWork, dropWork, takenWork: taken, lateWork, answerMissed, ownsWork: owns, waitsWork: waits, holdWork: hold, workAsker: askedBy, answerText, upstreamOf, sameWork, forgetBotWork: forgetBot, statusOf, waitingView, settleSubWork, subWorkRun, nameSubWork, abandonWork, abandonedWork: takeAbandoned })
+  const releaseWorkResults = work => {
+    for (const result of work.results ?? []) { whole.delete(result.id); dropResult(result.file) }
+  }
+  Object.assign(rt, { releaseWorkResults, workOf, openWork, closeWork, dropWork, takenWork: taken, lateWork, answerMissed, ownsWork: owns, waitsWork: waits, holdWork: hold, workAsker: askedBy, answerText, upstreamOf, sameWork, forgetBotWork: forgetBot, statusOf, waitingView, settleSubWork, subWorkRun, nameSubWork, abandonWork, abandonedWork: takeAbandoned })
 }

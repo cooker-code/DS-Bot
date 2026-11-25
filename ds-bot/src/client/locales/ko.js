@@ -1,6 +1,21 @@
 // Korean (ko) localization for DS Bot client and DSH settings namespaces.
 
 export const KO = {
+  "Overview": "개요",
+  "Search settings": "설정 검색",
+  "Settings results": "설정 검색 결과",
+  "No matching settings": "일치하는 설정 없음",
+  "Needs your attention": "확인 필요",
+  "Pending questions and views": "대기 중인 질문 및 뷰",
+  "Create your first Bot": "첫 Bot 만들기",
+  "Appearance preview": "외관 미리보기",
+  "Preview": "미리보기",
+  "Summarize the next steps.": "다음 단계를 요약해 주세요.",
+  "Thought for a moment": "잠시 생각함",
+  "Review the result, run the checks, and share the evidence.": "결과를 검토하고 검사를 실행한 뒤 증거를 공유하세요.",
+  "Delegated": "위임됨",
+  "Noted": "메모 남김",
+
   "Saved by {name}": "저장한 사람 {name}",
   "Saved {time}": "저장 시간 {time}",
   "Not dispatched": "미배정",

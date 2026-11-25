@@ -113,6 +113,7 @@ export function install(rt) {
       ...(resumed ? { resumed: true } : {}),
       ...(retried ? { retried: true } : {}),
       ...(retryOf && { retryOf }),
+      ...(parentExchangeId && { parentExchangeId }),
       ...(askedBy ? { askedBy } : {}),
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
@@ -155,7 +156,11 @@ export function install(rt) {
     const live = rt.live?.get(targetSessionId)
     if (steer && scopeOf(live?.info) === key) agent.steer(message)
     else agent.followup(message)
-    await ctx.sessions.flush(agent.session)
+    try { await ctx.sessions.flush(agent.session) } catch (error) {
+      // followup/steer already accepted the message: callers must not create a
+      // second work item when persistence of the receiving Session is uncertain.
+      throw Object.assign(error, { deliveryUncertain: true })
+    }
     if (book !== undefined) {
       rt.ledger.append(book, { event: 'delivered', id: exchangeId, sessionId: targetSessionId, time: Date.now() })
       // The message went out either way; a mark that is lost only hides it from the dialog.

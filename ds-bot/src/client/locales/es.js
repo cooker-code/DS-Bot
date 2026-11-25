@@ -1,6 +1,21 @@
 // Spanish (es) localization for DS Bot client and DSH settings namespaces.
 
 export const ES = {
+  "Overview": "Resumen",
+  "Search settings": "Buscar ajustes",
+  "Settings results": "Resultados de ajustes",
+  "No matching settings": "No hay ajustes coincidentes",
+  "Needs your attention": "Requiere tu atención",
+  "Pending questions and views": "Preguntas y vistas pendientes",
+  "Create your first Bot": "Crea tu primer Bot",
+  "Appearance preview": "Vista previa de apariencia",
+  "Preview": "Vista previa",
+  "Summarize the next steps.": "Resume los próximos pasos.",
+  "Thought for a moment": "Pensó un momento",
+  "Review the result, run the checks, and share the evidence.": "Revisa el resultado, ejecuta las comprobaciones y comparte las pruebas.",
+  "Delegated": "Delegado",
+  "Noted": "Nota enviada",
+
   "Saved by {name}": "Guardado por {name}",
   "Saved {time}": "Guardado el {time}",
   "Not dispatched": "Sin asignar",

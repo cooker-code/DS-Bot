@@ -1,8 +1,9 @@
+import { AppearancePreview, SettingsOverview, SettingsSearch, settingsSearchRows, SETTINGS_SEARCH_EVENT } from './settings-discovery.js'
 import { Component, createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import { ACCENT_INKS, INKS } from './inks.js'
 import { isMainOf } from './sources.js'
 import { MESSAGE_WIDTH, allThemes, effectsOf, flatWidthOf, layoutOf, thinkingShown, widthOf } from './themes.js'
-import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChatsIcon, ClockIcon, ConnectorIcon, GlobeIcon, InfoIcon, MonitorIcon, PlugIcon, PlusIcon, SlidersIcon, TerminalIcon, SETTINGS_ICONS } from './icons.js'
+import { SearchIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChatsIcon, ClockIcon, ConnectorIcon, GlobeIcon, InfoIcon, MonitorIcon, PlugIcon, PlusIcon, SlidersIcon, TerminalIcon, SETTINGS_ICONS } from './icons.js'
 import { IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconPersonalizationOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AdminStar, BotAvatar, RoomAvatar } from './mark.js'
 import { useEscape } from './overlay-hooks.js'
@@ -37,7 +38,7 @@ const capitalize = word => word[0].toUpperCase() + word.slice(1)
 // DS Bot's pages come first; below a rule, the pages DSH and other plugins register
 // (`settings.section`), then Feedback and About. DSH's General rows join General, and
 // its Models page opens from DS Bot's Models page as the advanced settings.
-const SETTINGS_PAGES = [['general', 'General'], ['models', 'Models'], ['local-agents', 'Local agents'], ['bots', 'Bots'], ['bot-models', 'Bot models'], ['prompts', 'Prompts'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['im', 'IM'], ['capabilities', 'Capabilities'], ['browser', 'Browser'], ['computer', 'Computer use'], ['schedules', 'Scheduled tasks'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About DS Bot']]
+const SETTINGS_PAGES = [['overview', 'Overview'], ['general', 'General'], ['models', 'Models'], ['local-agents', 'Local agents'], ['bots', 'Bots'], ['bot-models', 'Bot models'], ['prompts', 'Prompts'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['im', 'IM'], ['capabilities', 'Capabilities'], ['browser', 'Browser'], ['computer', 'Computer use'], ['schedules', 'Scheduled tasks'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About DS Bot']]
 const LAST_PAGES = new Set(['feedback', 'about'])
 // DSH sections DS Bot's own pages already hold.
 const MERGED_SECTIONS = new Set(['general', 'models'])
@@ -47,7 +48,7 @@ const DSH_ICONS = { account: IconUserOutlineMedium, 'agent-presets': IconAgentPr
 export const dshPages = dsh => (dsh?.sections ?? []).filter(row => row.id !== '' && !MERGED_SECTIONS.has(row.id))
 const hasSection = (dsh, id) => (dsh?.sections ?? []).some(row => row.id === id)
 const dshItem = (dsh, id) => h('div', { key: id, className: 'bt-dsh-item', 'data-item': id }, dsh.renderSlot('settings.general.item', {}, { only: id }))
-const PAGE_ICONS = { ...SETTINGS_ICONS, prompts: SlidersIcon, models: SlidersIcon, 'bot-models': IconPersonalizationOutlineMedium, 'local-agents': TerminalIcon, connectors: ConnectorIcon, im: ChatsIcon, capabilities: PlugIcon, browser: GlobeIcon, computer: MonitorIcon, schedules: ClockIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
+const PAGE_ICONS = { ...SETTINGS_ICONS, overview: SlidersIcon, prompts: SlidersIcon, models: SlidersIcon, 'bot-models': IconPersonalizationOutlineMedium, 'local-agents': TerminalIcon, connectors: ConnectorIcon, im: ChatsIcon, capabilities: PlugIcon, browser: GlobeIcon, computer: MonitorIcon, schedules: ClockIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
 
 // What each MEMORY.md holds by default, in characters of entry text.
 const MEMORY_SIZES = [
@@ -130,6 +131,7 @@ function GeneralPage({ roster, actions, run, dsh }) {
     timer.current = setTimeout(() => run(actions.setPrefs({ accent: value })), 350)
   }
   return [
+    h(AppearancePreview, { key: 'preview', roster }),
     h(SetSection, { key: 'look', title: t('Appearance') },
       h(SetRow, { label: t('Theme'), hint: t('Colors for the whole team, on every device.') },
         h('select', { className: 'bt-select', 'aria-label': t('Theme'), value: current, onChange: event => run(actions.setPrefs({ theme: event.target.value })) },
@@ -292,7 +294,14 @@ class PageBoundary extends Component {
 // While `leaving`, the dialog plays its exit and takes no input.
 export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false, dsh }) {
   const [error, setError] = useState('')
-  const close = useCallback(() => actions.closeSettings(), [])
+  const [searchOpen, setSearchOpen] = useState(page === 'search')
+  useEffect(() => {
+    const open = () => setSearchOpen(true)
+    window.addEventListener(SETTINGS_SEARCH_EVENT, open)
+    return () => window.removeEventListener(SETTINGS_SEARCH_EVENT, open)
+  }, [])
+  useEffect(() => { if (page === 'search') setSearchOpen(true) }, [page])
+  const close = useCallback(() => { if (searchOpen) setSearchOpen(false); else actions.closeSettings() }, [searchOpen])
   useEscape(close)
   const run = promise => Promise.resolve(promise)
     .then(() => { setError(''); return true })
@@ -334,6 +343,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
     h('div', { className: 'bt-settings', role: 'dialog', 'aria-modal': true, 'aria-label': t('Settings'), 'data-shortcut-modal': 'settings' },
       h('nav', { ref: nav.box, className: 'bt-settings-nav', 'aria-label': t('Settings pages') },
         h('span', { ref: nav.thumb, className: 'bt-thumb', 'aria-hidden': true }),
+        h('button', { type: 'button', className: 'bt-settings-item', onClick: () => setSearchOpen(true), 'aria-label': t('Search settings') }, h(SearchIcon), t('Search settings'), ' ⌘K'),
         pages.filter(([key]) => !LAST_PAGES.has(key)).map(([key, text]) => pageButton(key, text)),
         extra.length > 0 ? h('span', { className: 'bt-settings-rule', 'aria-hidden': true }) : null,
         extra.map(row => h('button', {
@@ -352,6 +362,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
         shown === 'usage' ? null : h('div', { key: pageKey, className: 'bt-settings-scroll bt-settings-page', 'data-move': last.current.move },
           errorLine,
           h(PageBoundary, null,
+          shown === 'overview' ? h(SettingsOverview, { roster, actions, pages, Section: SetSection, Row: SetRow }) : null,
           shown === 'computer' ? h(ComputerPage, { roster, actions, run, Section: SetSection, Row: SetRow, Switch }) : null,
           shown === 'general' ? h(GeneralPage, { roster, actions, run, dsh }) : null,
           shown === 'models' && !advanced ? h(ProvidersPage, { actions, run, roster, Section: SetSection, advanced: hasSection(dsh, 'models') ? () => actions.openSettings('models', 'advanced') : null }) : null,
@@ -375,5 +386,6 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
         usageOpened ? h('div', { key: 'usage', className: 'bt-settings-scroll bt-settings-usage', 'data-off': shown === 'usage' ? undefined : '', 'aria-hidden': shown === 'usage' ? undefined : true },
           shown === 'usage' ? errorLine : null,
           h(PageBoundary, { reset: shown }, h(UsagePage, { roster, actions, focusId: usageFocus }))) : null),
+      searchOpen ? h(SettingsSearch, { rows: settingsSearchRows(pages, extra, roster), close: () => setSearchOpen(false), onPick: item => { setSearchOpen(false); actions.openSettings(item.page, item.id) } }) : null,
       h('button', { type: 'button', className: 'bt-settings-close', 'aria-label': t('Close settings'), onClick: close }, h(CloseIcon))))
 }

@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { cleanText, install as installDiagnostics, reportMarkdown } from '../src/host/diagnostics.js'
+import { cleanText, install as installDiagnostics, reportMarkdown, ISSUES_URL } from '../src/host/diagnostics.js'
 import { BLOCKING_CODES, failureLine, install as installTurns, turnFailure } from '../src/host/turns.js'
 import { errorCode } from '../src/host/channel.js'
 import { SOURCE_KIND } from '../src/host/constants.js'
@@ -474,4 +474,11 @@ test('a browser error is noted once, repeats are counted, and clear empties the 
   assert.deepEqual(clientErrors().map(entry => entry.text), ['state: HTTP 502 (×2)'])
   clearClientErrors()
   assert.equal(clientErrors().length, 0)
+})
+
+test('local feedback and confirmed reports point to the same fork', async () => {
+  const { REPORT_ISSUES_URL, REPORT_REPOSITORY } = await import('../src/host/issue-report.js')
+  assert.equal(ISSUES_URL, 'https://github.com/cooker-code/DS-Bot/issues/new')
+  assert.equal(REPORT_ISSUES_URL, ISSUES_URL)
+  assert.equal(REPORT_REPOSITORY, 'cooker-code/DS-Bot')
 })

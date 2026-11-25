@@ -1,6 +1,21 @@
 // Japanese (ja) localization for DS Bot client and DSH settings namespaces.
 
 export const JA = {
+  "Overview": "概要",
+  "Search settings": "設定を検索",
+  "Settings results": "設定の検索結果",
+  "No matching settings": "一致する設定がありません",
+  "Needs your attention": "対応が必要",
+  "Pending questions and views": "未回答の質問とビュー",
+  "Create your first Bot": "最初のBotを作成",
+  "Appearance preview": "外観のプレビュー",
+  "Preview": "プレビュー",
+  "Summarize the next steps.": "次の手順をまとめてください。",
+  "Thought for a moment": "少し考えました",
+  "Review the result, run the checks, and share the evidence.": "結果を確認し、検証を実行して、証拠を共有します。",
+  "Delegated": "委任済み",
+  "Noted": "メモ済み",
+
   "Saved by {name}": "保存者 {name}",
   "Saved {time}": "保存日時 {time}",
   "Not dispatched": "未割り当て",
