@@ -654,8 +654,8 @@ export function install(rt) {
     const checkpoint = (summary, kept, more) => checkpointText({ number: checkpointCount(input.messages) + 1, summary, kept, more })
     let summary = written?.summary ?? NO_SUMMARY
     let text = checkpoint(summary, kept, more)
-    if (switchRanges.has(session.id)) {
-      const meter = ctx.get('tokenMeter')
+    const meter = ctx.get?.('tokenMeter')
+    if (switchRanges.has(session.id) && typeof meter?.estimateMessage === 'function') {
       // DSH prepends the system prompt to the summarizer input, but does not replace
       // it. Reserve 112 tokens for its three-block checkpoint framing and headroom.
       const replacedTokens = rangeTokens ?? input.messages.filter(message => message.role !== 'system')

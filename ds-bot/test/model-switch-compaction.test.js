@@ -96,6 +96,19 @@ test('a model switch compacts a Bot conversation instead of refusing the range',
   assert.deepEqual(bench.regions, [[3, 9, 'b2']])
 })
 
+for (const unavailableMeter of [undefined, {}]) {
+  test(`a switch keeps its checkpoint fallback with ${unavailableMeter === undefined ? 'no meter' : 'no estimator'}`, async (t) => {
+    const { ctx, bench, compaction, adoptFor, agentOf, stop } = start({ outlet: true })
+    t.after(stop)
+    const get = ctx.get
+    ctx.get = name => name === 'tokenMeter' ? unavailableMeter : get(name)
+    adoptFor('b2')
+    await compaction.compactRegion(3, 9, agentOf('b2'), new AbortController().signal)
+    assert.deepEqual(bench.regions, [[3, 9, 'b2']])
+    assert.match(bench.checkpoints[0].summary[0].text, /\[Checkpoint 1\]/)
+  })
+}
+
 for (const size of [3000, 600, 480]) {
   test(`a switch checkpoint fits a ${size}-character range even without a summary model`, async (t) => {
     const messages = [
