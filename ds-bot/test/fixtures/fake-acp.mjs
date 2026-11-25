@@ -22,8 +22,13 @@
 // `--cursor-modes` lists the modes cursor-agent 2026.11.05 does (agent, plan, ask)
 // and refuses any other, as it does.
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+
+const failLoad = process.argv.includes('--fail-load')
+const recordAt = process.argv.indexOf('--record')
+const recordPath = recordAt === -1 ? undefined : process.argv[recordAt + 1]
+const record = (method, params) => { if (recordPath) appendFileSync(recordPath, `${JSON.stringify({ method, params })}\n`) }
 
 const exitAfterTurn = process.argv.includes('--exit-after-turn')
 const noCancelAck = process.argv.includes('--no-cancel-ack')
@@ -196,6 +201,13 @@ async function runPrompt(session, prompt, requestId) {
       ],
     })
     const outcome = answer?.result?.outcome
+    if (process.argv.includes('--stall-after-permission')) {
+      session.pendingPrompt = requestId
+      return
+    }
+    if (process.argv.includes('--compact-after-permission')) {
+      send({ jsonrpc: '2.0', method: '_cognition.ai/compaction', params: { status: 'completed', sessionId } })
+    }
     finish(outcome?.outcome === 'selected' && !outcome.optionId.startsWith('reject') ? `allowed via ${outcome.optionId}` : 'denied')
     return
   }
@@ -323,6 +335,7 @@ process.stdin.on('data', (chunk) => {
         break
       }
       case 'session/new': {
+        record('session/new', params)
         if (authRequired) { send({ jsonrpc: '2.0', id, error: { code: -32000, message: 'Authentication required' } }); break }
         const servers = params.mcpServers ?? []
         if (rejectMcp && servers.length > 0) { fail(id, 'Invalid params: mcpServers unsupported'); break }
@@ -365,6 +378,8 @@ process.stdin.on('data', (chunk) => {
         break
       }
       case 'session/load': {
+        record('session/load', params)
+        if (failLoad) { fail(id, 'session not found'); break }
         const servers = params.mcpServers ?? []
         if (rejectMcp && servers.length > 0) { fail(id, 'Invalid params: mcpServers unsupported'); break }
         if (rejectHttpMcp && servers.some(entry => entry.type === 'http')) { fail(id, 'Invalid params: http mcp unsupported'); break }
@@ -419,6 +434,7 @@ process.stdin.on('data', (chunk) => {
         else { sessions.get(params.sessionId).model = params.modelId; saveSaved(); reply(id, {}) }
         break
       case 'session/prompt':
+        record('session/prompt', params)
         if (lateCancelReply) {
           const session = sessions.get(params.sessionId)
           if (session?.pendingPrompt !== undefined) {

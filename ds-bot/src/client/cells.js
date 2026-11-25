@@ -18,7 +18,7 @@ import { call } from './api.js'
 import { modelFailureLine } from './diagnostics.js'
 import { turnReasoning, thinkingStep, opensReply, stepActivity } from './turn-reasoning.js'
 import { taskCaption, taskMessage } from '../shared/task-message.js'
-import { parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
+import { compressedRelayPreview, parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
 import { ReplyGuide } from './reading.js'
 import { noHover, useViewport, viewBottom } from './motion.js'
@@ -1086,6 +1086,16 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
   // the ledger carries them in its result.
   const resultText = done ? contentText(content) : ''
   const range = done ? relayRange(resultText) : undefined
+  const preview = compressedRelayPreview(resultText)
+  const [recovered, setRecovered] = useState(null)
+  useEffect(() => {
+    if (preview === undefined) return undefined
+    let stop = false
+    void actions.groupRelayReplies(sessionId, preview).then(replies => {
+      if (!stop) setRecovered({ sessionId, preview, replies })
+    })
+    return () => { stop = true }
+  }, [sessionId, preview])
   const rowsKey = range === undefined ? undefined : `${sessionId}:${range.from}:${range.to ?? ''}:${range.anchor ?? ''}`
   const [view, setView] = useState(() => (rowsKey === undefined ? null : settledRows.get(rowsKey) ?? null))
   // An open cell that is quiet is read again when the team changes, not on a clock.
@@ -1118,9 +1128,13 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
   if (range !== undefined) {
     replies = view?.rows ?? live
   } else if (done) {
-    const parsed = parseReplies(resultText)
-    replies = parsed.replies.length ? parsed.replies : live
-    broken = parsed.broken
+    const restored = recovered?.sessionId === sessionId && recovered.preview === preview ? recovered.replies : null
+    if (Array.isArray(restored)) replies = restored
+    else {
+      const parsed = parseReplies(resultText)
+      replies = parsed.replies.length ? parsed.replies : live
+      broken = parsed.broken
+    }
   }
   const feedback = range?.errors?.map(message => h('div', { key: message, className: 'bt-event', role: 'alert' }, t(message)))
   const called = view?.calledIds?.map(id => roster.byId[id]?.name ?? t('Deleted Bot')).join(t(', '))

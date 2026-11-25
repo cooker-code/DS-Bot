@@ -69,6 +69,7 @@ function start(team, { models = [], reasoning = {}, archiveError, keys, selectio
       },
     },
     sessionController: {
+      page: async () => ({ records: [], hasMore: false }),
       create: async () => ({ sessionId: `s${++sessions}` }),
       resolveAgent: async sessionId => ({ agent: { session: { id: sessionId }, followup: message => sent.push({ sessionId, message }) } }),
       selectModel: async (request) => { selected.push(request) },

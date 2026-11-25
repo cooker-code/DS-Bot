@@ -7,7 +7,6 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { output } from './tools.js'
 import { reviewBaseline, verifyReviewCommit } from './project-branches.js'
 
-export const TASK_STATUSES = ['active', 'review', 'blocked', 'clarify', 'failed', 'done', 'cancelled']
 const OPEN_STATUSES = ['active', 'review', 'blocked', 'clarify', 'failed']
 const GOAL_MAX = 200
 const PROGRESS_MAX = 300
