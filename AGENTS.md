@@ -107,6 +107,8 @@ dsh plugin --profile desktop --config.registry=https://registry.npmjs.org/ add "
 
 盘点或移植 upstream 更新时，使用 [sync-upstream](.agents/skills/sync-upstream/SKILL.md)。逐项维护根目录的 [upstream-changelog.md](upstream-changelog.md)，按来源去重并记时间。每批都核对上游 `docs/plans/` 正文和索引，说明新增功能、设计变更及尚在计划中的行为。
 
+**上游同步必须为每个新批次新建专用分支和独立工作树，禁止在本地 `dev`、`main`、`master` 上移植、合并、提交或写入同步记录。** 本地 `dev` 只读作比较基线；同一未完成批次可续用已登记的专用分支，新批次不得复用已完成分支。验证通过默认仍留在同步分支，只有用户当次明确要求才将指定候选合回 `dev`；“同步上游”“验收通过”或“更新本机插件”均不包含该合并授权。已授权的同步版本可直接从已验证分支打包安装，本节优先于常规功能发版“先合 `dev`”的流程。
+
 修复问题或调整设计前，按相关功能、症状或模块查这份记录。若命中暂缓项或部分采用的余项，先提醒用户对应的上游 PR、处理逻辑和当时的本地差异。暂缓项保持现状，后续采用时再更新原条目。
 
 用户已确认保留同一 Bot 的多个并行会话，以及手动新建、切换入口。上游 [PR #2039](https://github.com/Fei-Craft/DS-Bot/pull/2039) 和 [PR #2042](https://github.com/Fei-Craft/DS-Bot/pull/2042) 的删除方案在本地跳过；新增后台或派活能力不能以删除这些功能为前置条件。协作 work 的完成不等于项目卡提交或验收，仍由原 `project_task` 流程决定。
