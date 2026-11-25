@@ -177,7 +177,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     // Resuming a Codex thread replays its old skill catalog into the model context.
     // Keep the DS Bot conversation and replay its messages into a fresh native thread.
     const history = spec.kind === 'codex' && record?.skillKey !== skillKey ? undefined : record
-    const engine = skillKey ? this.deps.spawnEngine(spec.kind, route, { ...spec, managedSkills: skills }) : this.engine(route)
+    const engine = skillKey || spec.kind === 'codex' ? this.deps.spawnEngine(spec.kind, route, { ...spec, managedSkills: skills }) : this.engine(route)
     live = {
       sessionId, route, spec, engine, skillKey, dead: false,
       record,

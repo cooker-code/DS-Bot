@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { base64Of, closingReplyText, preparationStep, requestPreparation, speechCatalog, transcribeWave, turnDetector, waveBytes } from '../src/client/speech.js'
+import { openCapture, base64Of, closingReplyText, preparationStep, requestPreparation, speechCatalog, transcribeWave, turnDetector, waveBytes } from '../src/client/speech.js'
 
 const catalog = (phase, extra = {}) => ({
   providers: [{ id: 'sensevoice', preparation: { phase } }],
@@ -100,4 +100,40 @@ test('turnDetector ends a turn after a pause that follows speech', () => {
   assert.equal(detect(0.3, 1150), 'speech')
   assert.equal(detect(0.01, 1200), 'speech')
   assert.equal(detect(0.01, 2200), 'done')
+})
+
+
+test('speech.js openCapture stops MediaStream tracks and closes AudioContext when recorder.start throws', async () => {
+  const prevNav = globalThis.navigator
+  const prevAC = globalThis.AudioContext
+  const prevMR = globalThis.MediaRecorder
+  let trackStopped = 0
+  let audioClosed = 0
+  try {
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: {
+        mediaDevices: {
+          getUserMedia: async () => ({
+            getTracks: () => [{ stop: () => { trackStopped += 1 } }],
+          }),
+        },
+      },
+    })
+    globalThis.AudioContext = class {
+      createAnalyser() { return { fftSize: 512 } }
+      createMediaStreamSource() { return { connect() {} } }
+      close() { audioClosed += 1; return Promise.resolve() }
+    }
+    globalThis.MediaRecorder = class {
+      start() { throw new Error('recorder-boom') }
+    }
+    await assert.rejects(openCapture(), /recorder-boom/)
+    assert.equal(trackStopped, 1)
+    assert.equal(audioClosed, 1)
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: prevNav })
+    globalThis.AudioContext = prevAC
+    globalThis.MediaRecorder = prevMR
+  }
 })

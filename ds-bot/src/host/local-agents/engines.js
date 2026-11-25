@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 // The engines a local agent can run on. Each entry names its route, its display
 // name, how it starts, and which driver speaks its protocol: 'acp' (Agent
 // Client Protocol over stdio), 'codex' (the Codex app-server JSON-RPC), or
@@ -38,7 +39,11 @@ const CLIS = {
   'kimi-cli': { name: 'Kimi CLI', kind: 'acp', command: 'kimi', args: ['acp'], version: ['--version'], signIn: 'kimi login' },
   'qwen-code': { name: 'Qwen Code', kind: 'acp', command: 'qwen', args: ['--acp'], version: ['--version'], signIn: 'qwen', signedIn: { file: ['.qwen', 'oauth_creds.json'] } },
   'codebuddy': { name: 'CodeBuddy Code', kind: 'acp', command: 'codebuddy', commands: ['codebuddy', 'codebuddy-code'], args: ['--acp'], version: ['--version'], signIn: 'codebuddy login' },
-  'qoder': { name: 'Qoder CLI', kind: 'acp', command: 'qodercli', commands: ['qodercli', 'qoder'], args: ['--acp'], version: ['--version'], signIn: 'qodercli' },
+  'qoder': {
+    name: 'Qoder CLI', kind: 'acp', command: 'qodercli', commands: ['qodercli', 'qoder', 'qoderclicn', 'qodercn', 'qoder-cn'], args: ['--acp'], version: ['--version'], signIn: 'qodercli',
+    signInBy: Object.fromEntries(['qoderclicn', 'qodercn', 'qoder-cn'].map(command => [command, 'qoderclicn'])),
+    signedInBy: Object.fromEntries(['qoderclicn', 'qodercn', 'qoder-cn'].map(command => [command, { file: ['.qoder-cn', '.auth', 'user'] }])),
+  },
   'minimax-code': { name: 'MiniMax Code', kind: 'acp', command: 'mcode', args: ['acp'], version: ['--version'], signIn: 'mcode' },
   'glm-cli': { name: 'GLM Agent', kind: 'acp', command: 'glm-acp-agent', args: [], version: ['--version'], signIn: 'glm-acp-agent --setup' },
   'kiro-cli': { name: 'Kiro CLI', kind: 'acp', command: 'kiro-cli', args: ['acp'], version: ['--version'], signIn: 'kiro-cli login' },
@@ -51,6 +56,10 @@ const CLIS = {
 
 // route -> engine, e.g. 'local-codex-cli'. `id` is the CLI's name without the prefix.
 export const ENGINES = Object.fromEntries(Object.entries(CLIS).map(([id, spec]) => [`${ROUTE_PREFIX}${id}`, { ...spec, id }]))
+
+const executableCommand = path => typeof path === 'string' ? basename(path).replace(/\.(cmd|exe|bat|com)$/i, '') : undefined
+export const signInFor = (spec, path) => spec?.signInBy?.[executableCommand(path)] ?? spec?.signIn
+export const signedInFor = (spec, path) => spec?.signedInBy?.[executableCommand(path)] ?? spec?.signedIn
 
 export const CUSTOM_PREFIX = `${ROUTE_PREFIX}acp-`
 

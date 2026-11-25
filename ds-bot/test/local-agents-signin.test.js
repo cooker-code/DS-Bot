@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
-import { ENGINES } from '../src/host/local-agents/engines.js'
+import { ENGINES, signInFor, signedInFor } from '../src/host/local-agents/engines.js'
 import { probeSignIn } from '../src/host/local-agents/discover.js'
 
 // jsdom comes from the harness that test/harness-resolve.mjs found, like the dsh packages.
@@ -287,4 +287,22 @@ test('probeSignIn parses JSON status, auth error phrases, and credential file fa
   const check = { args: [], fallback: { file: ['.claude', '.credentials.json'] } }
   assert.equal(await probeSignIn(silent, check, { home }), true)
   assert.equal(await probeSignIn(silent, check, { home: join(root, 'empty-home') }), null)
+})
+
+
+test('Qoder CN aliases use their own login command and auth marker (#2223)', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'dsb-qoder-cn-'))
+  t.after(() => rmSync(home, { recursive: true, force: true }))
+  const spec = ENGINES['local-qoder']
+  for (const name of ['qoderclicn', 'qodercn', 'qoder-cn']) {
+    assert.ok(spec.commands.includes(name))
+    assert.equal(signInFor(spec, '/usr/local/bin/' + name), 'qoderclicn')
+    const check = signedInFor(spec, '/usr/local/bin/' + name)
+    assert.equal(await probeSignIn(name, check, { home }), null)
+  }
+  mkdirSync(join(home, '.qoder-cn', '.auth'), { recursive: true })
+  writeFileSync(join(home, '.qoder-cn', '.auth', 'user'), 'fixture')
+  assert.equal(await probeSignIn('qoderclicn', signedInFor(spec, 'qoderclicn'), { home }), true)
+  assert.equal(signInFor(spec, '/usr/local/bin/qodercli'), 'qodercli')
+  assert.equal(signedInFor(spec, '/usr/local/bin/qodercli'), undefined)
 })

@@ -2345,3 +2345,25 @@ test('ACP persists team instructions only after sending the first prompt (#2113)
   assert.equal(persistedBeforePrompt, undefined)
   assert.equal(typeof records.s1.promptHash, 'string')
 })
+
+
+test('Codex conversations own separate processes through idle resume (#2208)', async (t) => {
+  const records = {}
+  const adapter = makeAdapter({ records })
+  t.after(() => adapter.dispose())
+  const request = id => options(id, [user('m1', 'hello')], { provider: 'local-codex-cli' })
+  await collect(adapter.stream(request('a')))
+  await collect(adapter.stream(request('b')))
+  const a = adapter.live.get('a')
+  const b = adapter.live.get('b')
+  const bProcess = b.engine.child
+  const aProcess = a.engine.child
+  const threadId = records.a.cliSessionId
+  assert.notEqual(a.engine, b.engine)
+  await adapter.closeLive(a, { idle: true })
+  assert.ok(aProcess.exitCode !== null || aProcess.signalCode !== null)
+  await collect(adapter.stream(options('a', [user('m1', 'hello'), user('m2', 'again')], { provider: 'local-codex-cli' })))
+  assert.equal(records.a.cliSessionId, threadId)
+  assert.equal(b.engine.child, bProcess)
+  assert.equal(bProcess.exitCode, null)
+})

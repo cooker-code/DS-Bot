@@ -16113,6 +16113,23 @@ var contrastRatio = (foreground, background) => {
   const b = luminance2(background);
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 };
+var probeCanvas = /* @__PURE__ */ new WeakMap();
+function resolveCanvasColor(doc, value) {
+  let paint = probeCanvas.get(doc);
+  if (paint === void 0) {
+    const canvas = doc.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    paint = canvas.getContext("2d", { willReadFrequently: true }) ?? null;
+    probeCanvas.set(doc, paint);
+  }
+  if (!paint) return "";
+  paint.clearRect(0, 0, 1, 1);
+  paint.fillStyle = "black";
+  paint.fillStyle = value;
+  paint.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
+  return withAlpha({ r, g, b }, a / 255);
+}
 function readSkinSurfaceVars(doc, theme, { minAlpha = MIN_SKIN_ALPHA } = {}) {
   const body = doc?.body;
   if (body === void 0) return {};
@@ -16123,13 +16140,7 @@ function readSkinSurfaceVars(doc, theme, { minAlpha = MIN_SKIN_ALPHA } = {}) {
   const token = (name) => {
     const value = style?.getPropertyValue?.(name)?.trim() ?? "";
     if (value === "" || parseColor(value) !== void 0) return value;
-    const canvas = doc.createElement("canvas");
-    canvas.width = canvas.height = 1;
-    const paint = canvas.getContext("2d");
-    paint.fillStyle = value;
-    paint.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
-    return withAlpha({ r, g, b }, a / 255);
+    return resolveCanvasColor(doc, value);
   };
   return skinSurfaceVars({ main: token("--dsw-alias-bg-base"), sidebar: token("--dsw-specific-sidebar-fill"), colors }, { minAlpha });
 }
@@ -16139,15 +16150,18 @@ function writeSkinSurfaceVars(doc, read) {
     if (body === void 0) return;
     const vars = read() ?? {};
     for (const name of SKIN_VARIABLES) {
-      if (vars[name] === void 0) body.style.removeProperty(name);
-      else if (body.style.getPropertyValue?.(name) !== vars[name]) body.style.setProperty(name, vars[name]);
+      if (vars[name] === void 0) {
+        if (body.style.getPropertyValue?.(name) !== "") body.style.removeProperty(name);
+      } else if (body.style.getPropertyValue?.(name) !== vars[name]) body.style.setProperty(name, vars[name]);
     }
   };
   return {
     apply: apply2,
     clear() {
       if (body === void 0) return;
-      for (const name of SKIN_VARIABLES) body.style.removeProperty(name);
+      for (const name of SKIN_VARIABLES) {
+        if (body.style.getPropertyValue?.(name) !== "") body.style.removeProperty(name);
+      }
     }
   };
 }
@@ -25115,17 +25129,35 @@ function useSchedules(actions) {
   (0, import_react23.useEffect)(() => {
     listeners.add(setView);
     let stopped = false;
+    let inFlight = false;
     let timer;
-    const load = () => actions.schedules?.().then((next) => {
-      if (!stopped) publish(next);
-    }).catch(() => {
-    }).finally(() => {
-      if (!stopped) timer = setTimeout(load, POLL_MS);
-    });
+    const schedule = () => {
+      clearTimeout(timer);
+      if (stopped || typeof document !== "undefined" && document.hidden) return;
+      timer = setTimeout(load, POLL_MS);
+    };
+    const load = () => {
+      if (stopped || inFlight) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      inFlight = true;
+      Promise.resolve(actions.schedules?.()).then((next) => {
+        if (!stopped && next !== void 0) publish(next);
+      }).catch(() => {
+      }).finally(() => {
+        inFlight = false;
+        schedule();
+      });
+    };
+    const onVisibility = () => {
+      if (document.hidden) clearTimeout(timer);
+      else if (!stopped) load();
+    };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
     load();
     return () => {
       stopped = true;
       clearTimeout(timer);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
       listeners.delete(setView);
     };
   }, []);
@@ -25532,17 +25564,28 @@ async function openCapture() {
   } catch (error) {
     throw captureError(error?.name === "NotAllowedError" ? "blocked" : "failed", error);
   }
-  const audio = new AudioContext();
-  const analyser = audio.createAnalyser();
-  analyser.fftSize = 512;
-  audio.createMediaStreamSource(stream).connect(analyser);
-  const frame2 = new Float32Array(analyser.fftSize);
-  const recorder = new MediaRecorder(stream);
+  let audio = null;
+  let analyser;
+  let frame2;
+  let recorder;
   const chunks = [];
-  recorder.ondataavailable = (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
-  };
-  recorder.start();
+  try {
+    audio = new AudioContext();
+    analyser = audio.createAnalyser();
+    analyser.fftSize = 512;
+    audio.createMediaStreamSource(stream).connect(analyser);
+    frame2 = new Float32Array(analyser.fftSize);
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.start();
+  } catch (error) {
+    stream.getTracks().forEach((track) => track.stop());
+    void audio?.close().catch(() => {
+    });
+    throw error;
+  }
   let closed = false;
   const close = () => {
     if (closed) return;
