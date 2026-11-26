@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 // The engines a local agent can run on. Each entry names its route, its display
 // name, how it starts, and which driver speaks its protocol: 'acp' (Agent
 // Client Protocol over stdio), 'codex' (the Codex app-server JSON-RPC), or
@@ -5,8 +6,8 @@
 export const KINDS = ['acp', 'codex', 'claude']
 
 // `args` run verbatim (no shell). `env` merges over the sanitized environment.
-// `signedIn` checks a CLI status command, a credential file, or a Keychain item
-// (see probeSignIn).
+// `signedIn` checks a CLI status command, a credential file (in the home
+// directory or the per-user app data folder), or a Keychain item (see probeSignIn).
 // Local-agent routes live under their own prefix. Before it they shared the
 // provider namespace, so a CLI named like a provider DSH or another plugin
 // ships (`opencode`) took that provider's name and the LLM service failed to
@@ -14,10 +15,44 @@ export const KINDS = ['acp', 'codex', 'claude']
 export const ROUTE_PREFIX = 'local-'
 
 const CLIS = {
-  'devin-cli': { name: 'Devin CLI', kind: 'acp', command: 'devin', args: ['acp'], version: ['--version'], signIn: 'devin auth login', signedIn: { args: ['auth', 'status'] } },
+  'devin-cli': {
+    name: 'Devin CLI', kind: 'acp', command: 'devin', args: ['acp'], version: ['--version'], signIn: 'devin auth login',
+    // `devin auth status` fetches remote team settings and can time out offline;
+    // `devin auth logout` deletes credentials.toml, which requires top-level `windsurf_api_key`.
+    signedIn: {
+      args: ['auth', 'status'],
+      fallback: {
+        platformFile: {
+          default: { env: 'XDG_DATA_HOME', base: ['.local', 'share'], path: ['devin', 'credentials.toml'] },
+          tomlStrings: ['windsurf_api_key'],
+        },
+      },
+    },
+  },
   'claude-code': { name: 'Claude Code', kind: 'claude', command: 'claude', args: [], version: ['--version'], signIn: 'claude', signedIn: { args: ['auth', 'status'], fallback: { file: ['.claude', '.credentials.json'] } } },
   'codex-cli': { name: 'Codex CLI', kind: 'codex', command: 'codex', args: ['app-server', '--listen', 'stdio://'], version: ['--version'], signIn: 'codex login', signedIn: { args: ['login', 'status'] } },
-  'cursor-cli': { name: 'Cursor CLI', kind: 'acp', command: 'cursor-agent', args: ['acp'], version: ['--version'], signIn: 'cursor-agent login', signedIn: { args: ['status'] } },
+  'cursor-cli': {
+    name: 'Cursor CLI', kind: 'acp', command: 'cursor-agent', args: ['acp'], version: ['--version'], signIn: 'cursor-agent login',
+    // `cursor-agent status` validates over the network and requires either both OAuth
+    // tokens (access + refresh) or an API key; fall back to macOS Keychain metadata
+    // or auth.json with the same contract if the status call is inconclusive.
+    signedIn: {
+      args: ['status'],
+      fallback: {
+        macKeychain: { services: ['cursor-access-token', 'cursor-refresh-token'], account: 'cursor-user' },
+        fallback: {
+          macKeychain: { service: 'cursor-api-key', account: 'cursor-user' },
+          fallback: {
+            platformFile: {
+              darwin: { path: ['.cursor', 'auth.json'] },
+              default: { env: 'XDG_CONFIG_HOME', base: ['.config'], path: ['cursor', 'auth.json'] },
+              stringGroups: [[['accessToken'], ['refreshToken']], [['apiKey']]],
+            },
+          },
+        },
+      },
+    },
+  },
   'copilot-cli': { name: 'GitHub Copilot', kind: 'acp', command: 'copilot', args: ['--acp'], version: ['--version'], signIn: 'copilot' },
   'gemini-cli': { name: 'Gemini CLI', kind: 'acp', command: 'gemini', args: ['--acp'], version: ['--version'], signIn: 'gemini', signedIn: { file: ['.gemini', 'oauth_creds.json'] } },
   'antigravity': {
@@ -37,8 +72,18 @@ const CLIS = {
   'grok-cli': { name: 'Grok CLI', kind: 'acp', command: 'grok', args: ['agent', 'stdio'], version: ['--version'], signIn: 'grok' },
   'kimi-cli': { name: 'Kimi CLI', kind: 'acp', command: 'kimi', args: ['acp'], version: ['--version'], signIn: 'kimi login' },
   'qwen-code': { name: 'Qwen Code', kind: 'acp', command: 'qwen', args: ['--acp'], version: ['--version'], signIn: 'qwen', signedIn: { file: ['.qwen', 'oauth_creds.json'] } },
-  'codebuddy': { name: 'CodeBuddy Code', kind: 'acp', command: 'codebuddy', commands: ['codebuddy', 'codebuddy-code'], args: ['--acp'], version: ['--version'], signIn: 'codebuddy login' },
-  'qoder': { name: 'Qoder CLI', kind: 'acp', command: 'qodercli', commands: ['qodercli', 'qoder'], args: ['--acp'], version: ['--version'], signIn: 'qodercli' },
+  'codebuddy': {
+    name: 'CodeBuddy Code', kind: 'acp', command: 'codebuddy', commands: ['codebuddy', 'codebuddy-code'], args: ['--acp'], version: ['--version'], signIn: 'codebuddy',
+    // CodeBuddy has no status command. Its OAuth session file stays in place
+    // until logout renames it and leaves a `.logged-out` marker beside it; it
+    // only accepts a file with a token and an account (the values may be encrypted).
+    signedIn: { appDataFile: { path: ['CodeBuddyExtension', 'Data', 'Public', 'auth', 'Tencent-Cloud.coding-copilot.info'], loggedOut: '.logged-out', has: [['auth', 'accessToken'], ['account']] } },
+  },
+  'qoder': {
+    name: 'Qoder CLI', kind: 'acp', command: 'qodercli', commands: ['qodercli', 'qoder', 'qoderclicn', 'qodercn', 'qoder-cn'], args: ['--acp'], version: ['--version'], signIn: 'qodercli',
+    signInBy: Object.fromEntries(['qoderclicn', 'qodercn', 'qoder-cn'].map(command => [command, 'qoderclicn'])),
+    signedInBy: Object.fromEntries(['qoderclicn', 'qodercn', 'qoder-cn'].map(command => [command, { file: ['.qoder-cn', '.auth', 'user'] }])),
+  },
   'minimax-code': { name: 'MiniMax Code', kind: 'acp', command: 'mcode', args: ['acp'], version: ['--version'], signIn: 'mcode' },
   'glm-cli': { name: 'GLM Agent', kind: 'acp', command: 'glm-acp-agent', args: [], version: ['--version'], signIn: 'glm-acp-agent --setup' },
   'kiro-cli': { name: 'Kiro CLI', kind: 'acp', command: 'kiro-cli', args: ['acp'], version: ['--version'], signIn: 'kiro-cli login' },
@@ -51,6 +96,10 @@ const CLIS = {
 
 // route -> engine, e.g. 'local-codex-cli'. `id` is the CLI's name without the prefix.
 export const ENGINES = Object.fromEntries(Object.entries(CLIS).map(([id, spec]) => [`${ROUTE_PREFIX}${id}`, { ...spec, id }]))
+
+const executableCommand = path => typeof path === 'string' ? basename(path).replace(/\.(cmd|exe|bat|com)$/i, '') : undefined
+export const signInFor = (spec, path) => spec?.signInBy?.[executableCommand(path)] ?? spec?.signIn
+export const signedInFor = (spec, path) => spec?.signedInBy?.[executableCommand(path)] ?? spec?.signedIn
 
 export const CUSTOM_PREFIX = `${ROUTE_PREFIX}acp-`
 

@@ -147,3 +147,58 @@ test('applying the same values again does not touch the page', () => {
   bridge.apply()
   assert.equal(writes, first, 'a repeated apply with the same values writes nothing')
 })
+
+
+test('skin.js reuses a single 1x1 canvas with willReadFrequently, guards null context, and skips no-op removeProperty', () => {
+  let canvases = 0
+  let removed = 0
+  const contextOptions = []
+  const styles = new Map()
+  const doc = {
+    createElement: (tag) => {
+      if (tag === 'canvas') canvases += 1
+      return {
+        width: 0,
+        height: 0,
+        getContext: (kind, opts) => {
+          contextOptions.push([kind, opts])
+          return {
+            fillStyle: '',
+            clearRect() {},
+            fillRect() {},
+            getImageData: () => ({ data: [255, 255, 255, 128] }),
+          }
+        },
+      }
+    },
+    defaultView: {
+      getComputedStyle: () => ({
+        getPropertyValue: (name) => (name === '--dsw-alias-bg-base' ? 'oklch(0.95 0.01 240 / 0.5)' : 'color-mix(in srgb, white 50%, transparent)'),
+      }),
+    },
+    body: {
+      hasAttribute: () => false,
+      style: {
+        getPropertyValue: name => styles.get(name) ?? '',
+        setProperty: (name, value) => { styles.set(name, value) },
+        removeProperty: (name) => { removed += 1; styles.delete(name) },
+      },
+    },
+  }
+  const theme = { light: { bg: '#ffffff', sidebar: '#f5f5f5', card: '#ffffff' }, dark: { bg: '#111111', sidebar: '#181818', card: '#222222' } }
+  readSkinSurfaceVars(doc, theme)
+  readSkinSurfaceVars(doc, theme)
+  readSkinSurfaceVars(doc, theme)
+  assert.equal(canvases, 1, 'canvas probe must be created once per document')
+  assert.deepEqual(contextOptions, [['2d', { willReadFrequently: true }]])
+
+  // Null 2d context must not throw and falls back safely to empty vars.
+  const nullCtxDoc = {
+    ...doc,
+    createElement: () => ({ width: 0, height: 0, getContext: () => null }),
+  }
+  assert.deepEqual(readSkinSurfaceVars(nullCtxDoc, theme), {})
+
+  writeSkinSurfaceVars(doc, () => ({}))
+  assert.equal(removed, 0)
+})

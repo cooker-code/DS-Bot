@@ -1,9 +1,12 @@
 import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
+import { SaveFileAction } from './file-save.js'
 import { MarkdownField } from './markdown-field.js'
 import { ChevronLeftIcon, CloseIcon } from './icons.js'
+import { TaskHandoffs } from './task-handoffs.js'
 import { TaskResults } from './task-results.js'
 import { TaskWorkspace } from './task-workspace.js'
+import { TaskStatusEditor } from './task-status-editor.js'
 import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
 import { t } from './i18n.js'
 
@@ -14,13 +17,32 @@ function taskList(text) {
     .map((line, index) => (index + 1) + '. ' + line).join('\n')
 }
 
-function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+function requirementDocuments(sources) {
+  const documents = new Map()
+  for (const line of sources) {
+    for (const file of line.files ?? []) {
+      const id = file.attachmentId ?? file.id
+      if (id) documents.set(id + '/' + file.name, { id, name: file.name })
+    }
+    // The composer serializes local file chips as @path or @"path with spaces".
+    for (const match of (line.text ?? '').matchAll(/(?:^|\s)@(?:"([^"\n]+)"|([^\s"]+))/gu)) {
+      const path = match[1] ?? match[2].replace(/[.,;:!?，。；：！？]+$/u, '')
+      const name = path.split(/[\\/]/u).at(-1)
+      if (!name || !/\.[\p{L}\p{N}]+$/u.test(name) || path.startsWith('[')) continue
+      documents.set('path:' + path, { path, name })
+    }
+  }
+  return [...documents.values()]
+}
+
+function TaskField({ roomId, taskId, label, value, versions, sources, openReference, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
   const [version, setVersion] = useState(null)
   const snapshot = version === null ? undefined : versions?.[version]
   const currentVersion = versions?.length ?? 0
   if (snapshot) {
     value = snapshot.text
     sourceImages = snapshot.images
+    sources = sources?.filter(line => snapshot.documentSources?.includes(line.seq))
     images = []
     readOnly = true
   }
@@ -62,6 +84,14 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
     onRemove: draft && !originals.has(image.attachmentId ?? image.id) ? () => setDraft({ ...draft, removed: [...draft.removed, image.attachmentId] }) : undefined })),
   ...(draft?.files ?? []).map((file, index) => h(TaskImage, { key: 'file-' + index, file, label: file.name,
     disabled: busy || readOnly, onRemove: () => setDraft({ ...draft, files: draft.files.filter(other => other !== file) }) }))]
+  const documents = requirementDocuments(sources ?? [])
+  const attachments = sources && (documents.length || gallery.length) ? h('div', { className: 'bt-requirement-attachments' },
+    h('h4', null, t('Attachments')),
+    documents.map(file => file.path
+      ? h('button', { key: file.path, type: 'button', className: 'bt-mini bt-reference-file', title: file.path,
+        onClick: () => setError(openReference(file.path) ? '' : t('File preview unavailable')) }, file.name)
+      : h(SaveFileAction, { key: file.id + '/' + file.name, attachmentTarget: { sessionId: roomId, attachmentId: file.id }, label: file.name })),
+    gallery) : gallery
   const changed = draft && (draft.text !== draft.initialText || draft.files.length || draft.removed.length)
   return h(MarkdownField, { title: label, autoSize: true, value: markdown,
     headerControl: versions && h('select', { className: 'bt-select', 'aria-label': t('Requirement version'),
@@ -69,8 +99,8 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
         const selected = Number(event.target.value)
         setVersion(selected === currentVersion ? null : selected)
       } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index },
-        'v' + (index + 1) + ' · ' + t(index === currentVersion ? 'Current' : 'Historical version')))),
-    placeholder: visible.length ? null : '—', maxLength,
+        t('Requirement v{version}', { version: index + 1 }) + ' · ' + t(index === currentVersion ? 'Current' : 'Historical version')))),
+    placeholder: visible.length || documents.length ? null : '—', maxLength,
     draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
     onEdit: readOnly ? undefined : () => {
       // Generated numbering must not push a legacy criterion past its saved-text limit.
@@ -83,7 +113,7 @@ function TaskField({ roomId, taskId, label, value, versions, sourceImages = [], 
       if (files.length) { event.preventDefault(); addFiles(files) }
     },
     tools: h('button', { type: 'button', className: 'bt-mini', disabled: busy || readOnly, onClick: () => picker.current?.click() }, t('Add image')),
-  }, gallery, draft ? h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
+  }, attachments, draft ? h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
     addFiles(Array.from(event.target.files))
     event.target.value = ''
   } }) : null)
@@ -114,12 +144,63 @@ export function ValidationProgress({ detail }) {
   })
 }
 
-export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack, close }) {
+function AcceptanceRequest({ roomId, card, actions, readOnly }) {
+  const [feedback, setFeedback] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const review = card.acceptanceRequest
+  const decide = async decision => {
+    setBusy(true)
+    setError('')
+    try {
+      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === 'return' ? feedback.trim() : undefined)
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return h('div', { className: 'bt-task-acceptance' },
+    !readOnly ? h('div', null,
+      h('textarea', { className: 'bt-input', rows: 2, value: feedback, maxLength: 2000, disabled: busy,
+        placeholder: t('Requested changes'), 'aria-label': t('Requested changes'), onChange: e => setFeedback(e.target.value) }),
+      h('div', { className: 'bt-task-actions' },
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => decide('approve') }, t('Accept delivery')),
+        h('button', { type: 'button', className: 'bt-mini', disabled: busy || !feedback.trim(), onClick: () => decide('return') }, t('Request changes')))) : null,
+    error ? h('p', { className: 'bt-task-error', role: 'alert' }, error) : null)
+}
+
+export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openReference, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = useState()
   const [error, setError] = useState('')
   const [attempt, retry] = useState(0)
   const activeRead = useRef(null)
   const taskId = card?.taskId
+  const [history, setHistory] = useState()
+  const readHistory = useRef(null)
+  useEffect(() => {
+    if (!taskId) return
+    const abort = new AbortController()
+    let loading = false
+    let pending = false
+    readHistory.current = async () => {
+      pending = true
+      if (loading) return
+      loading = true
+      while (pending && !abort.signal.aborted) {
+        pending = false
+        try {
+          const value = await call('project-task-detail', { roomId: room.id, taskId, interactionsOnly: true }, abort.signal)
+          if (!abort.signal.aborted) setHistory(value)
+        } catch {
+          if (!abort.signal.aborted) setHistory(current => ({ ...current, incomplete: true }))
+        }
+      }
+      loading = false
+    }
+    return () => { readHistory.current = null; abort.abort() }
+  }, [room.id, taskId])
+  useEffect(() => { void readHistory.current?.() }, [room.id, taskId, room.seq, roster?.revision, card?.updatedAt, attempt])
   useEffect(() => {
     if (!taskId) return
     const abort = new AbortController()
@@ -141,6 +222,13 @@ export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack
       retry(n => n + 1)
     }
   }
+  const saveStatus = async (previous, status, reason) => {
+    try {
+      const saved = await call('update-project-task-status', { roomId: room.id, taskId, previous, status, reason })
+      activeRead.current?.abort()
+      setDetail(current => ({ ...current, ...saved }))
+    } finally { retry(n => n + 1) }
+  }
   readOnly ||= room.taskManagementEnabled === false
   return h(Fragment, null,
     h('div', { className: 'bt-subhead', 'data-move': move },
@@ -151,12 +239,15 @@ export function ProjectTaskDetail({ room, card, readOnly, move, hasStrip, onBack
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
+          h(TaskHandoffs, { detail, roster, history, roomId: room.id, taskId }),
           h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
-            sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
+            sources: detail.requirements ?? [], openReference, sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),
           h(TaskResults, { key: room.id + taskId, roomId: room.id, taskId, detail }),
+          detail.acceptanceRequest ? h(AcceptanceRequest, { key: detail.acceptanceRequest.id, roomId: room.id, card: detail, actions, readOnly }) : null,
           h(ValidationProgress, { detail }),
-          h(TaskWorkspace, { room, card, readOnly }))
+          h(TaskWorkspace, { room, card, readOnly }),
+          h(TaskStatusEditor, { key: room.id + taskId, detail, readOnly, onSave: saveStatus }))
         : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))
 }

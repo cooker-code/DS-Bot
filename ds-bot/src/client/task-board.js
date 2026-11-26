@@ -1,4 +1,4 @@
-import { taskManagementEnabled } from '../shared/task-settings.js'
+import { taskManagementEnabled, TASK_STATUS } from '../shared/task-settings.js'
 // The group task board in the group's details panel: what each member is working on,
 // the latest line of progress, and the history of finished and cancelled work. The
 // board also holds accepted project cards. Users manage the list here.
@@ -10,11 +10,7 @@ import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from './icons.js'
 import { useAnchoredMenu } from './model-menu.js'
 import { t } from './i18n.js'
 
-export const TASK_STATUS = {
-  pending: 'Awaiting intake', clarify: 'Needs clarification', planning: 'Planning', dispatching: 'Dispatching',
-  active: 'In progress', review: 'Awaiting review', human_review: 'Human acceptance', blocked: 'Blocked',
-  failed: 'Failed', done: 'Done', cancelled: 'Cancelled',
-}
+export { TASK_STATUS }
 
 const BOARD_STATES = {
   clarify: 'The task needs more information from you to continue.',
@@ -103,7 +99,7 @@ function projectStartLabel(time) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
+function ProjectCard({ card, predecessor, successors, roster, now, onOpen, restoreFocus }) {
   const owners = card.owners ?? (card.ownerId ? [card.ownerId] : [])
   const start = card.startedAt
   const end = card.submittedAt ?? card.stoppedAt ?? (card.status === 'active' ? now : undefined)
@@ -124,43 +120,13 @@ function ProjectCard({ card, roster, now, onOpen, restoreFocus }) {
         h('span', { className: 'bt-project-statuses' },
           h('span', { className: 'bt-task-status' }, t(card.validatingMerge ? 'Merged into dev, validating' : TASK_STATUS[card.status] ?? card.status))),
         onOpen ? h('span', { className: 'bt-project-arrow' }, h(ChevronRightIcon)) : null),
-      (card.validationProgress ?? []).map(progress => h('span', { key: progress.round, className: 'bt-project-meta' },
-        progress.checking ? h('span', null, t('Testing: {check}', { check: progress.checking })) : null,
-        progress.lastPassed ? h('span', null, t('Passed: {check}', { check: progress.lastPassed })) : null,
-        progress.submitted ? h('span', null, t('Test receipt submitted')) : progress.cleaned ? h('span', null, t('Cleanup verified'))
-          : progress.checksComplete && card.status === 'active' ? h('span', null, t('Checks passed · awaiting cleanup')) : null)),
+      predecessor ? h('span', { className: 'bt-project-meta' }, t('Follows {task}', { task: predecessor.title })) : null,
+      successors?.map(task => h('span', { key: task.taskId, className: 'bt-project-meta' }, t('Follow-up: {task}', { task: task.title }))),
       branch || hasStart ? h('span', { className: 'bt-project-meta' },
         branch ? h('span', { className: 'bt-project-branch', title: branch }, branch) : null,
         hasStart ? h('span', { className: 'bt-project-times' },
           h('span', null, t('Started {time}', { time: projectStartLabel(start) })),
           h('span', null, t('Elapsed {time}', { time: projectElapsed(start, end) }))) : null) : null))
-}
-
-function AcceptanceRequest({ roomId, card, actions, readOnly }) {
-  const [feedback, setFeedback] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const review = card.acceptanceRequest
-  const decide = async decision => {
-    setBusy(true)
-    setError('')
-    try {
-      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === 'return' ? feedback.trim() : undefined)
-    } catch (failure) {
-      setError(failure.message)
-    } finally {
-      setBusy(false)
-    }
-  }
-  return h('div', { className: 'bt-task-acceptance' },
-    h('p', null, t('Final delivery'), ' · ', review.artifact),
-    !readOnly ? h('div', null,
-      h('textarea', { className: 'bt-input', rows: 2, value: feedback, maxLength: 2000, disabled: busy,
-        placeholder: t('Requested changes'), 'aria-label': t('Requested changes'), onChange: e => setFeedback(e.target.value) }),
-      h('div', { className: 'bt-task-actions' },
-        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => decide('approve') }, t('Accept delivery')),
-        h('button', { type: 'button', className: 'bt-mini', disabled: busy || !feedback.trim(), onClick: () => decide('return') }, t('Request changes')))) : null,
-    error ? h('p', { className: 'bt-task-error', role: 'alert' }, error) : null)
 }
 
 function ProjectRetry({ card, roomId, actions }) {
@@ -185,11 +151,6 @@ function ProjectRetry({ card, roomId, actions }) {
 }
 
 const OPEN = ['active', 'review', 'blocked', 'clarify', 'failed']
-// A block DS Bot set from how the member's work ended, not one the Bot reported.
-const blockedLine = blocked => blocked.cause === 'stopped' ? t('Stopped by the user')
-  : blocked.cause === 'restarted' ? t('Not updated after a restart')
-  : t('Its model call failed ({code})', { code: `${blocked.code}${blocked.status ? ` ${blocked.status}` : ''}` })
-
 function TaskRow({ task, bot, room, actions }) {
   const [writing, setWriting] = useState(false)
   const [text, setText] = useState('')
@@ -201,8 +162,6 @@ function TaskRow({ task, bot, room, actions }) {
     return () => clearTimeout(timer)
   }, [confirming])
   const open = OPEN.includes(task.status)
-  const notes = task.notes ?? []
-  const lastNote = notes[notes.length - 1]
   const failed = (error) => { setBusy(false); actions.reportError?.(error, 'task') }
   const send = () => {
     const line = text.trim()
@@ -226,11 +185,6 @@ function TaskRow({ task, bot, room, actions }) {
       h('span', { className: 'bt-task-status' }, t(TASK_STATUS[task.status])),
       h('span', { className: 'bt-task-time' }, clockLabel(task.startedAt))),
     h('div', { className: 'bt-task-goal' }, task.goal),
-    open && task.progress ? h('div', { className: 'bt-task-progress' }, task.progress) : null,
-    task.blocked ? h('div', { className: 'bt-task-reason' }, blockedLine(task.blocked)) : null,
-    !open && task.result ? h('div', { className: 'bt-task-result' }, task.result) : null,
-    !open && task.reason ? h('div', { className: 'bt-task-reason' }, task.reason) : null,
-    lastNote ? h('div', { className: 'bt-task-note' }, t('Note: {text}', { text: lastNote.text })) : null,
     open ? h('div', { className: 'bt-task-actions' },
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, 'aria-expanded': writing, onClick: () => setWriting(value => !value) }, t('Add a note')),
       h('button', {
@@ -318,6 +272,13 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     requestAnimationFrame(() => deleteButton.current?.focus())
   }
   const [collapsed, setCollapsed] = useState(() => new Set())
+  const byId = new Map((room.projectCards ?? []).map(card => [card.taskId, card]))
+  const successors = new Map()
+  for (const card of byId.values()) {
+    if (!card.followsTaskId) continue
+    if (!successors.has(card.followsTaskId)) successors.set(card.followsTaskId, [])
+    successors.get(card.followsTaskId).push(card)
+  }
   const visible = new Set(cards.map(card => card.taskId))
   const roots = [], children = new Map()
   for (const card of cards) {
@@ -326,10 +287,8 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
     children.get(card.parentTaskId).push(card)
   }
   function renderCard(card) {
-    const row = h(ProjectCard, { key: card.taskId, card, roster, now, onOpen: editing ? undefined : onOpen, restoreFocus: returnId === card.taskId })
+    const row = h(ProjectCard, { key: card.taskId, card, predecessor: byId.get(card.followsTaskId), successors: successors.get(card.taskId), roster, now, onOpen: editing ? undefined : onOpen, restoreFocus: returnId === card.taskId })
     if (editing) return pick('project', card.taskId, card.title, row)
-    if (card.status === 'human_review' && card.acceptanceRequest) return h('div', { key: card.taskId }, row,
-      h(AcceptanceRequest, { key: card.acceptanceRequest.id, roomId: room.id, card, actions, readOnly: roster.readOnly || !taskManagementEnabled(room) }))
     if (!taskManagementEnabled(room) || card.status !== 'failed' || card.version || !card.ownerId || !actions.resume) return row
     return h('div', { key: card.taskId }, row,
       h(ProjectRetry, { key: card.round + '-' + card.updatedAt, card, roomId: room.id, actions }))
@@ -451,7 +410,34 @@ export const TASK_CSS = `
 .bt-project-times span{white-space:nowrap}
 @container (max-width:420px){.bt-project-row .bt-task-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}}
 .bt-drawer-body.bt-project-detail{display:block;overflow-wrap:anywhere}
+.bt-task-copy-feedback{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.bt-task-detail-name{display:flex;gap:8px;align-items:flex-start;margin:0 0 16px}
+.bt-task-detail-name h2{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text;font-size:19px}
+.bt-task-detail-name button{flex:none}
+.bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
+.bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:8px;overflow:hidden;background:var(--bt-card)}
+.bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
+.bt-handoff-tooltip{position:fixed;z-index:80;box-sizing:border-box;padding:10px 12px;border:1px solid var(--bt-line);border-radius:8px;background:var(--bt-main);color:var(--bt-ink);box-shadow:var(--bt-glass-shadow);font-family:var(--bt-font);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
+.bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:6px;padding:1px}
+.bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
+.bt-task-content-modes [aria-pressed=true],.bt-task-content-modes [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
+.bt-task-content-body{max-height:24rem;overflow:auto;padding:8px 10px;overflow-wrap:anywhere;user-select:text}
+.bt-task-content-section+.bt-task-content-section{border-top:1px solid var(--bt-line);margin-top:12px;padding-top:10px}.bt-task-content-section-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;color:var(--bt-ink-2)}.bt-task-content-section-head>span{flex:1;min-width:0;overflow-wrap:anywhere}.bt-task-content-section-head>.bt-tool{flex:none}.bt-task-content-body pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.bt-task-content-body mark[data-current=true]{outline:2px solid var(--bt-accent)}
+.bt-task-find input{min-width:4em;flex:1}
+.bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
+.bt-handoff-bar>button{flex:1;min-width:0;position:relative;border:0;padding:0;cursor:pointer}.bt-handoff-bar>button:hover{filter:brightness(1.12)}.bt-handoff-bar>button:focus-visible{outline:2px solid var(--bt-ink);outline-offset:-2px}
+.bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,var(--bt-retry-stripe) 4px 6px)}
+.bt-handoff-row{padding:5px 0;overflow-wrap:anywhere}
+.bt-handoff-row summary{cursor:pointer}
+.bt-handoff-dot{display:inline-block;width:10px;height:10px;border-radius:4px;margin-inline:4px 6px}
+.bt-handoff-row p{white-space:pre-wrap;margin:3px 0 10px}
 .bt-project-detail>section+section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bt-line)}
+.bt-project-detail .bt-section-title{color:var(--bt-ink);font-size:17px;font-weight:600;line-height:1.35}
+.bt-requirement-attachments{display:grid;justify-items:start;grid-template-columns:minmax(0,1fr);gap:6px;margin-top:12px}
+.bt-requirement-attachments h4{font-size:14px;color:var(--bt-ink-2);margin:0}
+.bt-requirement-attachments button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}
+.bt-requirement-attachments .bt-reference-file{color:var(--bt-accent)}
 .bt-project-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .bt-project-field-head>.bt-section-title{margin:0}
 .bt-project-markdown{min-width:0;overflow-wrap:anywhere;overflow-x:auto;font-size:14px;line-height:1.5}
@@ -461,6 +447,10 @@ export const TASK_CSS = `
 .bt-result-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:8px}
 .bt-result-gallery .bt-task-image-open img{width:100%;max-height:140px;object-fit:contain}
 .bt-result-document{cursor:pointer;color:var(--bt-accent);text-decoration:underline;margin-top:8px}
+.bt-task-execution-status{font-size:13px;line-height:1.5;margin:12px 0 20px}
+.bt-task-execution-status[data-status=blocked]>strong,.bt-task-execution-status[data-status=failed]>strong{color:var(--bt-danger)}
+.bt-task-execution-status p{margin:6px 0;white-space:pre-wrap}
+.bt-task-blocker{margin-top:8px;padding-inline-start:12px;border-inline-start:2px solid var(--bt-danger)}
 .bt-task-image{display:grid;justify-items:start;gap:4px;margin-top:8px}
 .bt-task-image img{display:block;border-radius:8px}
 .bt-task-image-open{display:block;max-width:100%;padding:0;border:0;background:none;cursor:zoom-in}
@@ -473,6 +463,7 @@ export const TASK_CSS = `
 .bt-task-checkout-edit{display:grid;gap:4px;margin-top:8px}
 .bt-task-checkout-edit select{max-width:100%;width:100%;min-width:0}
 .bt-project-detail textarea{font-family:ui-monospace,monospace;tab-size:4}
+.bt-task-status-reason{white-space:pre-wrap}
 .bt-task-goal{margin-top:2px;font-size:13px;line-height:18px;color:var(--bt-ink)}
 .bt-task-progress{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
 .bt-task-result{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2);white-space:pre-wrap}

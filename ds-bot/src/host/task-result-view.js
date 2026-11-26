@@ -14,15 +14,16 @@ function receiptFiles(room, card, round, number) {
   const node = binding && card.plans?.find(plan => plan.version === binding.version)?.nodes[binding.node - 1]
   const root = round.workspace?.workDir || binding?.workDir || node?.workDir || card.workspace?.workDir || room.workDir
   if (!root) return []
-  const receipt = [round.result, binding?.feedback, binding?.block?.evidence, ...(round.validation?.passed ?? []).map(check => check.evidence)].filter(Boolean).join('\n')
+  const receipt = [round.result, binding?.feedback, binding?.checkpointArtifact, binding?.block?.evidence, ...(round.validation?.passed ?? []).map(check => check.evidence)].filter(Boolean).join('\n')
   const names = [...receipt.matchAll(/(?:<([^<>\n]+?\.(?:md|png|jpe?g|gif|webp))>|`([^`\n]+?\.(?:md|png|jpe?g|gif|webp))`|([^\s<>()`"'，、；：。,【】]+?\.(?:md|png|jpe?g|gif|webp))(?=$|[\s)>,;:，、；：。】]))/gi)]
     .map(match => match[1] ?? match[2] ?? match[3]).filter(path => !path.includes('://'))
-  const reports = [...new Set(names.filter(path => extname(path).toLowerCase() === '.md').map(path => dirname(resolve(root, path))))]
+  const reports = [...new Set(names.filter(path => extname(path).toLowerCase() === '.md' && !path.startsWith('同目录/')).map(path => dirname(resolve(root, path))))]
   const files = new Map()
   for (const name of names) {
     const mime = types[extname(name).toLowerCase()]
-    const base = mime !== 'text/markdown' && name === basename(name) && reports.length === 1 ? reports[0] : root
-    const path = resolve(base, name)
+    const sibling = name.startsWith('同目录/')
+    const base = reports.length === 1 && (sibling || (mime !== 'text/markdown' && name === basename(name))) ? reports[0] : root
+    const path = resolve(base, sibling ? name.slice('同目录/'.length) : name)
     if (!within(path, root)) continue
     const id = number + '-' + createHash('sha256').update(path).digest('hex')
     files.set(id, { id, root, path, name: basename(path), mime, kind: mime === 'text/markdown' ? 'markdown' : 'image' })
@@ -87,17 +88,19 @@ export async function taskResultView(rt, room, card, detail) {
   const groups = []
   for (const number of new Set(numbers)) {
     const round = detail.rounds[number - 1]
-    if (!round?.result && !round?.planNode?.feedback) continue
+    if (!round) continue
     const stored = round.resultFiles ?? []
     const files = receiptFiles(room, card, round, number).filter(file => !stored.some(saved => saved.name === file.name))
+    const partial = !round.result && !round.planNode?.feedback
+    if (partial && !stored.length && !files.length) continue
     let items = []
-    if (!round.planNode?.feedback) {
+    if (!partial && !round.planNode?.feedback) {
       for (const file of files.filter(file => file.kind === 'markdown')) {
         try { items = reportChecks((await readBytes(rt, file, 65536)).toString('utf8')) } catch { continue }
         if (items.length) break
       }
     }
-    groups.push({ items: items.length ? items : briefChecks(round), files: [...stored,
+    groups.push({ ...(partial && { partial: true }), items: partial ? [] : items.length ? items : briefChecks(round), files: [...stored,
       ...files.map(({ id, name, kind }) => ({ receiptFile: id, name, kind }))] })
   }
   return groups

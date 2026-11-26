@@ -1636,14 +1636,14 @@ test('a late member that passes on the promise retry still hands the work back (
 // Progress-based loop guard: consecutive 0-tool ack/repetitive relays pause after 6
 // turns and park the next call in room.paused, whereas tool calls reset the counter.
 // #872: the parked calls wait for the user, not for the next round of any kind.
-test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only when the user writes', async (t) => {
+test('consecutive 0-tool ack ping-pong relays pause after 2 turns and go on only when the user writes', async (t) => {
   const host = await start(t)
   const first = host.round('c1', host.say('@Chief 开始'))
   await settle(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
   host.finish('ga', '@Writer 收到，辛苦了')
 
-  for (let step = 1; step <= 6; step += 1) {
+  for (let step = 1; step <= 2; step += 1) {
     const isWriter = step % 2 === 1
     const sessionId = isWriter ? 'gb' : 'ga'
     const target = isWriter ? '@Chief' : '@Writer'
@@ -1659,17 +1659,17 @@ test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only
   const saved = () => savedTeam(host.home).rooms.r1
   assert.deepEqual(saved().paused.map(entry => [entry.id, entry.idle]), [['b', true]])
   assert.match(await host.tool('read_group_chat', { group: 'Ops' }, 'a'),
-    /\[Paused: Chief and Writer went back and forth 6 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
+    /\[Paused: Chief and Writer went back and forth 2 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
 
   // A Bot's quiet late result opens a round, which leaves the parked call alone.
   const second = host.round('c2', { content: [{ type: 'text', text: '[Group post from Tester]\n测试跑完了' }], source: { kind: 'bot', form: 'relay', role: 'post', exchangeId: 'x2', senderSessionId: 'c', senderName: 'Tester', roomId: 'r1', late: true, quiet: true } })
   await settle(() => second() !== undefined)
-  assert.equal(host.agentOf('gb').calls.length, 3)
+  assert.equal(host.agentOf('gb').calls.length, 1)
   assert.equal(saved().paused.length, 1)
 
   // The user's message brings the parked call back with the admin.
   const third = host.round('c3', host.say('好了，说正事'))
-  await settle(() => host.agentOf('gb').calls.length === 4 && host.agentOf('ga').calls.length === 5)
+  await settle(() => host.agentOf('gb').calls.length === 2 && host.agentOf('ga').calls.length === 3)
   assert.match(text(host.begin('gb')), /Chief mentioned you/)
   host.finish('gb', '')
   host.begin('ga')
@@ -2746,6 +2746,33 @@ const cardA = '11111111-1111-4111-8111-111111111111'
 const cardB = '22222222-2222-4222-8222-222222222222'
 const taskNotice = { taskManagementEnabled: true, notice: '' }
 
+test('clarified requirements retain user v1 and advance independently of plan-only revisions', async t => {
+  const host = await start(t, taskNotice)
+  const ended = host.round('requirement', host.say('Use reading scores instead of wrong counts'))
+  await until(() => ended() !== undefined)
+  host.begin('ga')
+  const project = args => host.tool('project_task', args, 'ga').then(JSON.parse)
+  const nodes = [{ title: 'Inspect scores', ownerId: 'b', instructions: 'Inspect the score source', deliverable: 'Score evidence', acceptance: 'Source verified', dependsOn: [] }]
+  const spec = { action: 'plan', version: 1, title: 'Reading scores', acceptance: 'Uses the real score', plan: '1. Read sentence_score from the actual reading assessment.', nodes }
+  const { taskId } = await project(spec)
+  const read = () => project({ action: 'read', taskId })
+  assert.deepEqual((await read()).requirementHistory.map(row => row.text), ['Use reading scores instead of wrong counts'])
+  assert.equal((await read()).requirement, spec.plan)
+  const { plan: _requirement, ...planOnly } = spec
+  await project({ ...planOnly, taskId, version: 2, reason: 'Clarify investigation steps' })
+  assert.equal((await read()).requirementHistory.length, 1)
+  const changed = { ...spec, taskId, version: 3, reason: 'Add score precision', plan: spec.plan + '\n2. Preserve decimals.' }
+  await project(changed)
+  await project(changed)
+  assert.deepEqual((await read()).requirementHistory.map(row => row.text), ['Use reading scores instead of wrong counts', spec.plan])
+  await assert.rejects(project({ ...changed, plan: 'Unversioned overwrite' }), /new plan version/)
+  assert.equal((await read()).requirement, changed.plan)
+  await project({ action: 'dispatch', taskId, version: 3, node: 1 })
+  await host.tool('message_bot', { to: 'Writer', taskId, card_round: 1, reply_to: 'user', request_id: 'reading-v3', message: 'Verify the saved requirement' }, 'ga')
+  assert.equal((await read()).rounds[0].requirementVersion, 3)
+  assert.deepEqual(savedTeam(rt.home).rooms.r1.projectCards[taskId].requirementHistory.map(row => row.text), ['Use reading scores instead of wrong counts', spec.plan])
+})
+
 test('a late group member network failure is visible under its own task', async t => {
   const host = await start(t, taskNotice)
   const room = rt.roomOf('r1')
@@ -2832,6 +2859,7 @@ test('only the dispatched owner turn exposes its failure on a card with no publi
     { type: 'turn/end', data: { turn: 2, reason: { kind: 'aborted' } } },
   ] })
   delete rt.botOf('b').failures.b
+  const firstStart = (await card()).startedAt
   const target = { taskId, roomId: 'r1', round: 1, failedAt: (await card()).rounds[0].failedAt }
   const retry = target => host.call('resume', { botId: 'b', target })
   for (const wrong of [{ roomId: 'wrong' }, { taskId: 'wrong' }, { round: 2 }, { failedAt: 0 }]) {
@@ -2841,6 +2869,12 @@ test('only the dispatched owner turn exposes its failure on a card with no publi
   assert.ok(receipts.every(r => r.ok))
   assert.equal(host.agentOf('b').calls.length, 2)
   const retried = host.begin('b')
+  const history = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[0].retries
+  assert.equal(history.length, 1)
+  assert.equal(history[0].failedAt, target.failedAt)
+  assert.equal(history[0].previousOutput, failure.message)
+  assert.match(history[0].input, /existing\/change.js/)
+  assert.equal((await card()).startedAt, firstStart)
   assert.equal(retried.source.taskId, taskId)
   assert.equal(retried.source.exchangeId, 'inspect-page')
   assert.match(text(retried), /existing\/change.js/)
@@ -2962,13 +2996,21 @@ test('an in-flight phase-one manager assignment retains its original handoff, at
   assert.equal(view.projectCards[0].ownerId, 'c')
   assert.equal(view.projectCards[0].round, 2)
   assert.equal(view.projectCards[0].rounds, undefined, 'whole assignment histories stay out of the roster payload')
-  assert.equal(view.projectCards[0].startedAt, undefined, 'the next owner has not started yet')
+  assert.equal(view.projectCards[0].startedAt, savedTeam(rt.home).rooms.r1.projectCards[id].rounds[0].startedAt)
   assert.equal(view.projectCards[0].submittedAt, undefined)
   assert.equal(view.projectCards[0].result, undefined)
   const detail = (await host.call('project-task-detail', { roomId: 'r1', taskId: id })).value
   assert.deepEqual(detail.requirements[0].images, [receipt])
   assert.equal(detail.acceptance, assignment.acceptance)
   assert.equal(detail.rounds.length, 2)
+  const timeline = (await host.call('project-task-detail', { roomId: 'r1', taskId: id, interactionsOnly: true })).value
+  const sends = timeline.messages.filter(row => detail.rounds.some(round => round.dispatchId === row.exchangeId))
+  assert.deepEqual(sends.map(row => [row.from, row.to]), [['a', 'b'], ['a', 'c']])
+  assert.equal(sends[0].text, 'Confirm start only')
+  assert.ok(timeline.messages.every(row => (row.from || row.sender === 'user') && row.to && row.from !== row.to))
+  assert.equal(detail.rounds[0].requirementVersion, 1)
+  assert.match(detail.rounds[0].dispatchInput, /Confirm start only/)
+  assert.match(detail.rounds[1].dispatchInput, /Verified the source in the record/)
   assert.ok(detail.rounds[0].submittedAt >= detail.rounds[0].startedAt)
   assert.equal(detail.rounds[0].result, 'Verified the source in the record')
   assert.equal((await host.call('project-task-detail', { roomId: 'missing', taskId: id })).error.code, 'GROUP_CONTEXT_REQUIRED')
@@ -3035,10 +3077,11 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   const [accepted] = Object.values(room.projectCards)
   assert.equal(accepted.classificationReason, handoff.plan)
   assert.equal(accepted.goal, handoff.plan)
+  assert.deepEqual(accepted.requirementHistory.map(row => row.text), ['Change the empty label into a dash.'])
   assert.equal(accepted.acceptance, handoff.acceptance)
   assert.match(text(intake), /two separate, concise Markdown numbered lists/)
   const delegated = host.begin('gc')
-  assert.equal(delegated.source.intakeId, intake.source.intakeId)
+  assert.equal(delegated.source.taskId, accepted.id)
   assert.match(text(delegated), /Change the empty label into a dash/)
   assert.match(text(delegated), /keep the candidate on the feature branch/)
   const plan = { action: 'plan', version: 1, title: 'Empty label', acceptance: handoff.acceptance,
@@ -3048,6 +3091,7 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   assert.equal(taskId, accepted.id)
   await project('ga', handoff)
   assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.equal(room.projectCards[taskId].requirementHistory.length, 1)
   const key = { taskId, version: 1, node: 1 }
   await project('gc', { action: 'dispatch', ...key })
   const send = { taskId, to: 'Writer', card_round: 1, reply_to: 'user', request_id: 'one', message: 'Check the label' }
@@ -3057,24 +3101,12 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   host.begin('gb')
   await project('gb', { action: 'start', taskId, round: 1 })
   const submit = { action: 'submit', taskId, round: 1, result: 'Empty label verified.' }
-  await project('gb', submit)
-  await project('gb', submit)
-  assert.equal(host.agentOf('gc').calls.length, 2)
-  const noticeOfSubmission = host.begin('gc')
-  assert.equal(noticeOfSubmission.source.taskId, taskId)
-  assert.ok(text(noticeOfSubmission).includes(JSON.stringify({ taskId, version: 1, node: 1, round: 1 })))
-  for (const action of ['approve', 'request_acceptance']) {
-    await assert.rejects(project('gc', { action, ...key, artifact: 'Verified display' }), /round.*project_task read/)
-  }
-  assert.equal((await project('gc', { action: 'read', taskId })).status, 'review')
   room.projectCards[cardB] = { id: cardB, parentTaskId: taskId, plans: [], rounds: [], intakes: [] }
-  const approval = { action: 'approve', ...key, round: 1, artifact: 'Verified display' }
-  const result = await project('gc', approval)
-  assert.equal(result.status, 'done')
+  assert.equal((await project('gb', submit)).status, 'done')
+  assert.equal((await project('gb', submit)).status, 'done')
   assert.equal((await project('gc', { action: 'read', taskId: cardB })).status, 'done')
-  await project('gc', approval)
   assert.equal(host.agentOf('ga').calls.length, 2)
-  assert.match(text(host.begin('ga')), /last node is approved/)
+  assert.match(text(host.begin('ga')), /Final delivery completed/)
   const feedback = { action: 'report', message: 'The empty label now displays a dash.' }
   await project('ga', feedback)
   await project('ga', feedback)
@@ -3085,6 +3117,135 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   await rt.updateRoom(room.id, { remove: ['c'] })
   assert.equal(room.projectAssistantId, 'c')
   await assert.rejects(project('ga', { action: 'plan' }), { code: 'TASK_ASSISTANT_INVALID' })
+})
+
+test('appointing an assistant automatically finds an accepted unassigned card and starts its original work', async t => {
+  const host = await start(t, taskNotice)
+  const sent = host.round('unassigned-user', host.say('Create a daily chat detail table.'))
+  await until(() => sent() !== undefined)
+  host.begin('ga')
+  await host.tool('project_task', { action: 'reply', acceptWork: true, classificationReason: 'Deliver the new daily table.', message: 'I will identify its sources and plan the work.' }, 'ga')
+  const room = rt.roomOf('r1')
+  const [original] = Object.values(room.projectCards)
+  host.finish('ga', 'Accepted')
+  await rt.updateRoom(room.id, { projectAssistantId: 'c' })
+  await until(() => host.agentOf('ga').calls.some(message => text(message).includes(original.id) && text(message).includes('unassigned cards')))
+  const recovery = host.agentOf('ga').calls.find(message => text(message).includes(original.id) && text(message).includes('unassigned cards'))
+  host.begin('ga', recovery)
+  const scan = JSON.parse(await host.tool('project_task', { action: 'scan' }, 'ga'))
+  assert.equal(scan.unassigned.find(row => row.taskId === original.id).status, 'needs_document')
+  const normalized = { title: 'Daily chat details', plan: '1. Create the daily chat detail table.', acceptance: '1. Verify its source, grain and daily update.' }
+  const result = JSON.parse(await host.tool('project_task', { action: 'retry_handoff', taskId: original.id, ...normalized }, 'ga'))
+  assert.equal(result.delegated, true)
+  assert.equal(savedTeam(host.home).rooms.r1.projectCards[original.id].goal, normalized.plan)
+  host.finish('ga', 'Handed the original card to the appointed assistant.')
+  const assistant = host.begin('gc')
+  assert.equal(assistant.source.taskId, original.id)
+  const plan = { action: 'plan', taskId: original.id, version: 1, title: normalized.title, plan: normalized.plan, acceptance: normalized.acceptance,
+    nodes: [{ ownerId: 'b', title: 'Read source assets', instructions: 'Inspect available source assets read-only.', deliverable: 'Source inventory', acceptance: 'Sources and missing business definitions are explicit.' }] }
+  await host.tool('project_task', plan, 'gc')
+  const dispatch = JSON.parse(await host.tool('project_task', { action: 'dispatch', taskId: original.id, version: 1, node: 1 }, 'gc'))
+  await host.tool('message_bot', { to: 'Writer', taskId: original.id, card_round: dispatch.dispatchRound, reply_to: 'user', request_id: 'recovered-original-card', message: 'Start the source inventory.' }, 'gc')
+  host.finish('gc', 'Dispatched the source inventory.')
+  host.begin('gb')
+  await host.tool('project_task', { action: 'start', taskId: original.id, round: dispatch.dispatchRound }, 'gb')
+  const stored = savedTeam(host.home).rooms.r1.projectCards
+  assert.equal(Object.keys(stored).length, 1)
+  assert.ok(stored[original.id].rounds[0].startedAt)
+  assert.equal(stored[original.id].managementHandoff.status, 'delivered')
+  host.finish('gb', 'Source investigation started.')
+})
+
+test('failed assistant delivery preserves the original document and the admin can retry without the original intake turn', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const sent = host.round('failed-handoff-user', host.say('Create a daily table.'))
+  await until(() => sent() !== undefined)
+  host.begin('ga')
+  const deliver = rt.deliver
+  rt.deliver = async args => {
+    if (args.toId === 'c') throw new Error('Temporary assistant delivery failure')
+    return deliver(args)
+  }
+  const accepted = JSON.parse(await host.tool('project_task', { action: 'reply', acceptWork: true, title: 'Daily table', plan: '1. Create the daily table.', acceptance: '1. Daily data is verifiable.', message: 'Accepted the daily table.' }, 'ga'))
+  assert.equal(accepted.delegated, false)
+  const room = rt.roomOf('r1')
+  const [card] = Object.values(room.projectCards)
+  const stored = savedTeam(host.home).rooms.r1.projectCards[card.id]
+  assert.equal(stored.goal, '1. Create the daily table.')
+  assert.match(stored.managementHandoff.error, /Temporary assistant delivery failure/)
+  host.finish('ga', 'Delivery failed; the original card is retained.')
+  rt.deliver = deliver
+  rt.eventsBackwards = async function* () {}
+  card.managementHandoff.nextAttemptAt = Date.now() - 1
+  await rt.recoverProjectHandoffs()
+  const recovery = host.agentOf('ga').calls.find(message => text(message).includes(card.id) && text(message).includes('unassigned cards'))
+  assert.ok(recovery)
+  host.begin('ga', recovery)
+  assert.equal(JSON.parse(await host.tool('project_task', { action: 'retry_handoff', taskId: card.id }, 'ga')).delegated, true)
+  assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.equal(savedTeam(host.home).rooms.r1.projectCards[card.id].managementHandoff.status, 'delivered')
+  host.finish('ga', 'Original card successfully delivered.')
+})
+
+test('changing the assistant during capability loading cannot enqueue to the old recipient', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Daily table', goal: 'Create a daily table.', acceptance: 'Verify daily data.', intakes: [], plans: [], rounds: [] } }
+  const ensure = rt.ensureCapabilities
+  let release, entered
+  const ready = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  rt.ensureCapabilities = async id => { if (id === 'gc') { entered(); await gate }; return ensure(id) }
+  const pending = host.tool('project_task', { action: 'retry_handoff', taskId: cardA }, 'ga')
+  await ready
+  await rt.updateRoom(room.id, { projectAssistantId: 'b' })
+  release()
+  assert.equal(JSON.parse(await pending).delegated, false)
+  assert.equal(host.agentOf('gc').calls.length, 0)
+  rt.ensureCapabilities = ensure
+  assert.equal(JSON.parse(await host.tool('project_task', { action: 'retry_handoff', taskId: cardA }, 'ga')).delegated, true)
+  assert.equal(host.agentOf('gb').calls.length, 1)
+})
+
+test('changing the admin during recovery capability loading does not notify the old admin', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Daily table', goal: 'Create a daily table.', acceptance: 'Verify daily data.', intakes: [], plans: [], rounds: [] } }
+  const ensure = rt.ensureCapabilities
+  let release, entered
+  const ready = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  rt.ensureCapabilities = async id => { if (id === 'ga') { entered(); await gate }; return ensure(id) }
+  const pending = rt.recoverProjectHandoffs()
+  await ready
+  await rt.updateRoom(room.id, { admin: 'b' })
+  release()
+  await pending
+  assert.equal(host.agentOf('ga').calls.length, 0)
+  rt.ensureCapabilities = ensure
+  await rt.recoverProjectHandoffs()
+  assert.equal(host.agentOf('gb').calls.length, 1)
+})
+
+test('a revised handoff supersedes the old document before it can enter the assistant inbox', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  const card = { id: cardA, title: 'Daily table', goal: 'Create the old daily table.', acceptance: 'Verify daily data.', intakes: [], plans: [], rounds: [] }
+  room.projectCards = { [cardA]: card }
+  const ensure = rt.ensureCapabilities
+  let release, entered, paused = false
+  const ready = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  rt.ensureCapabilities = async id => { if (id === 'gc' && !paused) { paused = true; entered(); await gate }; return ensure(id) }
+  const old = rt.retryProjectHandoff(room, card)
+  await ready
+  card.goal = 'Create the revised daily table.'
+  assert.equal((await rt.retryProjectHandoff(room, card)).delegated, true)
+  release()
+  assert.equal((await old).delegated, false)
+  assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.match(text(host.agentOf('gc').calls[0]), /revised daily table/)
+  assert.equal(card.managementHandoff.status, 'delivered')
 })
 
 test('the planner can relate existing cards without moving their history or execution', async t => {
@@ -3867,11 +4028,11 @@ test('interrupted picture task hands its checkpoint to one successor; a delayed 
   assert.equal(stored().rounds[0].planNode.lateResult,'Old delayed report')
   assert.equal(stored().rounds[1].result,undefined)
   await project({...key,action:'submit',round:2,result:'Existing source passed'},'gc')
-  await project({...key,action:'approve',round:2,artifact:'checked-report'})
+  assert.equal((await project({action:'read',taskId})).status,'done')
   const card=stored()
   assert.deepEqual(card.rounds[0].planNode.block.decisions.map(d=>d.action),['wait','takeover'])
   assert.equal(card.rounds[1].planNode.previousRound,1)
-  assert.equal(card.rounds[1].planNode.artifact,'checked-report')
+  assert.equal(card.rounds[1].planNode.artifact,'Existing source passed')
 })
 
 test('same-owner recovery keeps its checkpoint through another interruption and enforces the designated tester', async t => {
@@ -3929,6 +4090,8 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
   const card = await project(spec), taskId = card.taskId
   const detail = () => project({ action: 'read', taskId })
   assert.equal(card.status, 'dispatching')
+  assert.equal(card.humanAcceptanceRequired, false)
+  await host.call('set-task-human-acceptance', { roomId: 'r1', taskId, required: true })
   assert.equal((await project({ action: 'dispatch', taskId, version: 1, node: 1 })).status, 'dispatching')
   await host.tool('message_bot', { to: 'Writer', taskId, card_round: 1, request_id: 'lifecycle', message: 'Inspect', reply_to: 'user' }, 'ga')
   host.begin('gb')
@@ -3941,13 +4104,13 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
   const edition = host.round('edition', host.say('First edition', taskId))
   await until(() => edition() !== undefined)
   assert.equal((await detail()).status, 'active')
-  assert.equal((await project({ action: 'submit', taskId, round: 1, result: 'First edition verified' }, 'gb')).status, 'review')
+  assert.equal((await project({ action: 'submit', taskId, round: 1, result: 'First edition verified' }, 'gb')).status, 'human_review')
   assert.equal((await project({ action: 'clarify', taskId, reason: 'Which final environment?' })).status, 'clarify')
   const response = host.round('clarification', host.say('Staging', taskId))
   await until(() => response() !== undefined)
-  assert.equal((await detail()).status, 'review')
+  assert.equal((await detail()).status, 'human_review')
   room().projectCards[cardB] = { id: cardB, parentTaskId: taskId, plans: [], rounds: [], intakes: [] }
-  const approval = { taskId, version: 1, node: 1, round: 1, artifact: 'checked-v1' }
+  const approval = { taskId, version: 1, node: 1, round: 1, artifact: 'First edition verified' }
   assert.equal((await project({ ...approval, action: 'request_acceptance' })).status, 'human_review')
   await assert.rejects(project({ ...approval, action: 'approve' }), /human decision/)
   assert.equal((await host.call('project-task-detail', { roomId: 'r1', taskId: cardB })).value.status, 'planning')
@@ -3965,6 +4128,36 @@ test('an intake has one phase through pickup, scoped clarification, dispatch and
     const intake = db.prepare('SELECT received_at, planning_at FROM project_inbox').get()
     assert.equal(intake.planning_at, room().projectInbox[0].planningAt)
   } finally { db.close() }
+})
+
+test('loading a submitted plan finishes ordinary work and opens one decision for explicit sign-off', async t => {
+  const nodes = [{ no: 1, ownerId: 'b', title: 'Plan', instructions: 'Prepare', acceptance: 'Checked', deliverable: 'Plan', dependsOn: [] }]
+  const card = { id: cardA, title: 'Plan', intakes: [], humanAcceptanceRequired: true, plans: [{ version: 1, by: 'a', at: 1, nodes }],
+    rounds: [{ ownerId: 'b', startedAt: 1, submittedAt: 2, result: 'Planning document', planNode: { version: 1, node: 1, inputs: [] } }] }
+  const host = await start(t, { ...taskNotice, projectCards: { [cardA]: card, [cardB]: { ...structuredClone(card), id: cardB, humanAcceptanceRequired: false } } })
+  const read = async taskId => (await host.call('project-task-detail', { roomId: 'r1', taskId })).value
+  const planning = await read(cardA)
+  assert.equal(planning.status, 'human_review')
+  assert.equal(planning.acceptanceRequest.artifact, 'Planning document')
+  assert.equal((await read(cardB)).status, 'done')
+  assert.equal((await host.call('project-acceptance', { roomId: 'r1', taskId: cardA, reviewId: planning.acceptanceRequest.id, decision: 'approve' })).ok, true)
+  assert.equal((await read(cardA)).status, 'done')
+})
+
+test('withdrawing final sign-off completes the plan independently of its follow-up', async t => {
+  const node = { no: 1, ownerId: 'b', title: 'Plan', instructions: 'Prepare', acceptance: 'Checked', deliverable: 'Plan', dependsOn: [] }
+  const card = { id: cardA, title: 'Plan', intakes: [], humanAcceptanceRequired: true, plans: [{ version: 1, by: 'a', at: 1, nodes: [node] }],
+    rounds: [{ ownerId: 'b', startedAt: 1, submittedAt: 2, result: 'Planning document', planNode: { version: 1, node: 1, inputs: [] } }] }
+  const host = await start(t, { ...taskNotice, projectCards: { [cardA]: card, [cardB]: { id: cardB, plans: [], rounds: [], intakes: [] } } })
+  const call = (name, args) => host.call(name, { roomId: 'r1', ...args })
+  assert.equal((await call('set-task-predecessor', { taskId: cardB, followsTaskId: cardA })).ok, true)
+  assert.equal((await call('set-task-predecessor', { taskId: cardA, followsTaskId: cardB })).ok, false)
+  assert.equal((await call('set-task-human-acceptance', { taskId: cardA, required: false })).ok, true)
+  const { tasks } = (await call('project-task-list', {})).value
+  assert.equal(tasks.find(t => t.taskId === cardA).status, 'done')
+  const next = tasks.find(t => t.taskId === cardB)
+  assert.equal(next.followsTaskId, cardA)
+  assert.equal(next.status, 'planning')
 })
 
 test('loading a completed primary task closes existing descendants and preserves completion after deleting it', async t => {
@@ -3996,6 +4189,7 @@ test('returned acceptance goes to the manager and an old request cannot approve 
   const read = () => project({ action: 'read' })
   const approve = { version: 1, node: 1, round: 1, artifact: 'candidate' }
   assert.equal((await project({ action: 'approve', ...approve, taskId: cardB })).status, 'done')
+  await host.call('set-task-human-acceptance', { roomId: 'r1', taskId: cardA, required: true })
   await project({ action: 'request_acceptance', ...approve })
   const reviewId = (await read()).humanReview.id
   const decision = { roomId: 'r1', taskId: cardA, reviewId, decision: 'return', feedback: 'Cover the empty case' }
@@ -4014,8 +4208,8 @@ test('returned acceptance goes to the manager and an old request cannot approve 
   await host.tool('project_task', { action: 'start', taskId: cardA, round: 2 }, 'gb')
   await host.tool('project_task', { action: 'submit', taskId: cardA, round: 2, result: 'Empty case passes' }, 'gb')
   const revised = { version: 2, node: 1, round: 2, artifact: 'fixed candidate' }
-  assert.equal((await project({ action: 'approve', ...revised })).status, 'human_review')
-  const request = await project({ action: 'request_acceptance', ...revised })
+  await assert.rejects(project({ action: 'approve', ...revised }), /human decision/)
+  const request = await read()
   assert.notEqual(request.acceptanceRequest.id, reviewId)
   assert.equal((await host.call('project-acceptance', { ...decision, decision: 'approve', reviewId: request.acceptanceRequest.id })).ok, true)
   assert.equal((await read()).status, 'done')
@@ -4283,7 +4477,7 @@ test('a delegated feature candidate returns with feedback then integrates the re
       git(repo, 'commit', '--allow-empty', '-m', 'Unrelated follow-up on dev')
       await act('gc', { ...submit, testedCommit: commit })
       host.begin('gd')
-      assert.equal((await approve(version, 2, testRound, commit)).status, 'done')
+      assert.equal((await manager({ action: 'read', taskId })).status, 'done')
       const integrated = savedTeam(rt.home).rooms.r1.projectCards[taskId].rounds[testRound - 1].integration
       assert.equal(integrated.testedCommit, commit)
       assert.equal(integrated.tip, git(repo, 'rev-parse', 'dev'))
@@ -4417,6 +4611,6 @@ test('editing an active project card wakes its coordinator and reclaims the stop
   assert.equal(receipt.mergeReceipt, undefined)
   host.finish('gc', 'Verified candidate')
   host.begin('gd')
-  assert.equal((await manager({ action: 'approve', taskId, version: 3, node: 2, round: validation, artifact: 'Verified ' + commit })).status, 'done')
+  assert.equal((await manager({ action: 'read', taskId })).status, 'done')
   assert.equal(git(repo, 'rev-parse', 'dev'), base)
 })

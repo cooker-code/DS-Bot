@@ -1,10 +1,9 @@
-import { spawn } from 'node:child_process'
 // The Codex app-server engine: `codex app-server --listen stdio://`, one
 // JSON-RPC process per route that multiplexes threads. DS Bot Sessions map to
 // threads; turns stream item notifications back.
 import { prepareCodexSkills, verifyCodexSkills } from './codex-skills.js'
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
-import { cleanEnv, findEngineExecutable, terminateChild } from './discover.js'
+import { PROBE_FORCE_KILL_AFTER_MS, cleanEnv, findEngineExecutable, probeEnv, spawnAgent, terminateChild } from './discover.js'
 
 // The name the loopback MCP server is registered under in each thread's config.
 const MCP_SERVER = 'dsbot'
@@ -18,6 +17,7 @@ export class CodexEngine {
     this.peer = undefined
     this.starting = undefined
     this.threads = new Map()
+    this.probeEngines = new Set()
   }
 
   threadFor(dshSessionId) {
@@ -32,11 +32,11 @@ export class CodexEngine {
     return thread
   }
 
-  async ensure() {
+  async ensure({ probe = false } = {}) {
     // A peer exists before its handshake has finished; other callers wait for it.
     if (this.starting !== undefined) return this.starting
     if (this.peer !== undefined) return this.peer
-    const starting = this.startPeer()
+    const starting = this.startPeer({ probe })
     this.starting = starting
     try {
       return await starting
@@ -45,12 +45,12 @@ export class CodexEngine {
     }
   }
 
-  async startPeer() {
+  async startPeer({ probe = false } = {}) {
     const bin = findEngineExecutable(this.engine, name => this.findExecutable(name))
     if (bin === undefined) throw Object.assign(new Error(`${this.engine.name} is not installed`), { code: 'NO_ADAPTER' })
     const selection = this.engine.managedSkills?.length ? prepareCodexSkills(this.engine.managedSkills) : undefined
-    const child = spawn(bin, [...(this.engine.args ?? []), ...(selection?.args ?? [])], {
-      env: cleanEnv(this.engine.env ?? {}),
+    const child = spawnAgent(bin, [...(this.engine.args ?? []), ...(selection?.args ?? [])], {
+      env: (probe ? probeEnv : cleanEnv)(this.engine.env ?? {}),
       stdio: ['pipe', 'pipe', 'inherit'],
     })
     this.selection = selection
@@ -90,7 +90,7 @@ export class CodexEngine {
       if (this.child === child) {
         this.child = undefined
         this.peer = undefined
-        terminateChild(child)
+        terminateChild(child, probe ? { forceKillAfterMs: PROBE_FORCE_KILL_AFTER_MS } : undefined)
       }
       if (selection?.roots.length && error.code === -32601) throw new Error('Update the local Codex CLI to load skill folders selected in DS Bot.')
       throw error
@@ -108,16 +108,23 @@ export class CodexEngine {
         const item = params?.item ?? {}
         if (thread === undefined) break
         // Codex 0.166 condenses as an item of its own, in a turn of its own or mid-turn.
-        if (item.type === 'contextCompaction') {
+        if (item.type === 'contextCompaction' || item.type === 'context_compaction') {
           if (method === 'item/started') this.activateTurn(thread, params?.turnId)
           thread.push({ type: 'compaction', status: method === 'item/started' ? 'started' : 'completed' })
+          break
         }
         // Every event names its turn, so the adapter can tell a finished turn's
         // leftovers from the turn it reads now (#1513).
         const turnId = params?.turnId
-        if (item.type === 'agentMessage' || item.type === 'agent_message') thread.push({ type: 'text', text: item.text ?? '', turnId })
-        else if (item.type === 'reasoning') thread.push({ type: 'thought', text: (item.content ?? []).join('') || item.text || '', turnId })
-        else if (method === 'item/started' && item.type !== undefined) thread.push({ type: 'activity', text: `▸ ${activityOf(item)}`, turnId })
+        if (item.type === 'agentMessage' || item.type === 'agent_message') {
+          if ((item.text ?? '') !== '') thread.push({ type: 'text', text: item.text, turnId })
+        } else if (item.type === 'reasoning') {
+          const thought = (item.content ?? []).join('') || item.text || ''
+          if (thought !== '') thread.push({ type: 'thought', text: thought, turnId })
+        } else if (method === 'item/started' && item.type !== undefined && !NON_ACTIVITY_ITEMS.has(item.type)) {
+          const team = item.type === 'mcpToolCall' && (item.server === MCP_SERVER || item.serverName === MCP_SERVER)
+          thread.push({ type: 'activity', text: `▸ ${activityOf(item)}`, turnId, ...(team ? { team: true } : {}) })
+        }
         break
       }
       case 'turn/completed': {
@@ -186,9 +193,11 @@ export class CodexEngine {
     return Promise.reject({ code: -32601, message: `method not found: ${method}` })
   }
 
-  async open(dshSessionId, { cwd, mcp, resumeId, mode, instructions, model, ephemeral }) {
+  async open(dshSessionId, { cwd, mcp, resumeId, resumeOnly = false, mode, instructions, model, ephemeral }) {
     const peer = await this.ensure()
     if (this.selection) await verifyCodexSkills(peer, cwd, this.engine.managedSkills, this.selection.selected)
+    const prior = this.threads.get(dshSessionId)
+    const created = prior === undefined || prior.dead
     const thread = this.threadFor(dshSessionId)
     if (resumeId !== undefined) thread.threadId = resumeId
     // Codex 0.166 reads `ThreadStartParams` from the top level and takes the MCP
@@ -210,6 +219,10 @@ export class CodexEngine {
         return thread
       } catch {
         thread.threadId = undefined
+        if (resumeOnly) {
+          if (created && this.threads.get(dshSessionId) === thread) this.threads.delete(dshSessionId)
+          throw Object.assign(new Error('the saved local agent session could not be resumed for maintenance'), { code: 'LOCAL_AGENT_EXIT' })
+        }
       }
     }
     const reply = await peer.request('thread/start', { ...params, ...(instructions ? { developerInstructions: instructions } : {}), ...(ephemeral ? { ephemeral: true } : {}) }, { timeout: 60_000 })
@@ -296,8 +309,8 @@ export class CodexEngine {
     this.threads.delete(dshSessionId)
   }
 
-  async listModels() {
-    const peer = await this.ensure()
+  async listModelsOnOwnPeer({ probe }) {
+    const peer = await this.ensure({ probe })
     const reply = await peer.request('model/list', {}, { timeout: 30_000 })
     return (reply?.data ?? reply?.models ?? []).map((entry) => {
       const model = {
@@ -318,7 +331,26 @@ export class CodexEngine {
     })
   }
 
-  async close() {
+  async listModels() {
+    // Reuse an existing live peer if one is already running; otherwise probe in a
+    // temporary process with probeEnv so a concurrent live session never inherits MISE_OFFLINE=1.
+    if (this.peer !== undefined || this.starting !== undefined) {
+      return this.listModelsOnOwnPeer({ probe: false })
+    }
+    const temp = new CodexEngine(this.route, this.engine, { findExecutable: this.findExecutable })
+    this.probeEngines.add(temp)
+    try {
+      return await temp.listModelsOnOwnPeer({ probe: true })
+    } finally {
+      this.probeEngines.delete(temp)
+      await temp.close({ forceKillAfterMs: PROBE_FORCE_KILL_AFTER_MS }).catch(() => {})
+    }
+  }
+
+  async close({ forceKillAfterMs } = {}) {
+    const probes = [...this.probeEngines]
+    this.probeEngines.clear()
+    await Promise.all(probes.map(engine => engine.close({ forceKillAfterMs }).catch(() => {})))
     for (const thread of this.threads.values()) this.releaseCompaction(thread)
     const child = this.child
     this.child = undefined
@@ -326,11 +358,9 @@ export class CodexEngine {
     this.starting = undefined
     if (child === undefined) return this.closing
     if (child.exitCode !== null || child.signalCode !== null) return
-    this.closing = new Promise(resolve => {
-      const timer = setTimeout(() => { try { child.kill('SIGKILL') } catch {} }, 5_000)
-      timer.unref?.()
-      child.once('close', () => { clearTimeout(timer); resolve() })
-      child.kill('SIGTERM')
+    this.closing = new Promise((resolve) => {
+      child.once('close', () => resolve())
+      terminateChild(child, forceKillAfterMs === undefined ? undefined : { forceKillAfterMs })
     })
     return this.closing
   }
@@ -349,8 +379,29 @@ function codexInput(blocks) {
   return out.length > 0 ? out : [{ type: 'text', text: '' }]
 }
 
+const NON_ACTIVITY_ITEMS = new Set(['userMessage', 'user_message', 'developerMessage', 'developer_message', 'contextCompaction', 'context_compaction'])
+
+export function unwrapShellCommand(raw) {
+  if (Array.isArray(raw)) {
+    if (raw.length >= 3 && /(?:^|\/)(?:ba|z|da|k)?sh$/.test(String(raw[0])) && /^-[a-z]*c$/i.test(String(raw[1]))) {
+      return String(raw[2])
+    }
+    return raw.join(' ')
+  }
+  const text = String(raw ?? '').trim()
+  const match = /^(?:\/\S+\/)?(?:ba|z|da|k)?sh\s+-[a-z]*c\s+([\s\S]+)$/i.exec(text)
+  if (!match) return text
+  const body = match[1].trim()
+  if ((body.startsWith('"') && body.endsWith('"')) || (body.startsWith("'") && body.endsWith("'"))) {
+    const quote = body[0]
+    const inner = body.slice(1, -1)
+    return quote === '"' ? inner.replace(/\\(["\\$`])/g, '$1') : inner.replace(/'\\''/g, "'")
+  }
+  return body
+}
+
 const activityOf = item => {
-  const kind = item.type === 'commandExecution' ? (item.command ?? 'command')
+  const kind = item.type === 'commandExecution' ? unwrapShellCommand(item.command ?? 'command')
     : item.type === 'fileChange' ? 'edit'
       : item.type === 'mcpToolCall' ? (item.tool ?? 'tool')
         : (item.title ?? item.type)

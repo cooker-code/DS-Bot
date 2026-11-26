@@ -1,6 +1,6 @@
 import { snapshotResultFiles } from './project-result-files.js'
 import { beginValidation, checkpointValidation, validationReceipt } from './project-validation.js'
-import { taskError } from '../shared/task-settings.js'
+import { taskError, editableProjectStatuses } from '../shared/task-settings.js'
 import { assistantId, decidesGitWorkspace, runsProject, projectNotice } from './project-assistant.js'
 // Project cards belong to the group. Keep small assignment records here and resolve
 // the original text and attachments from the group's durable ledger when delivering.
@@ -9,16 +9,26 @@ import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { approveRound, completeRelatedCards, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
+import { approveRound, completeRelatedCards, finishSubmittedPlan, requestAcceptance, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
 import { blockRound, checkProjectStart, currentBinding, inspectReplannedWriter, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
-import { codeDelivery, projectStatus, taskPhase } from './project-status.js'
+import { codeDelivery, projectStatus, taskPhase, taskStatusBasis } from './project-status.js'
 import { scopeFields, scopeOf, taskRoom } from './task-routing.js'
 import { taskMessage } from '../shared/task-message.js'
 import { speakerOf } from '../shared/mentions.js'
 import { excerpt } from './text.js'
 import { output } from './tools.js'
 
-export const relatedTaskGuidance = 'Before planning, list the group cards and read plausible matches. Compare the actual fix, deliverables and acceptance criteria. If one implementation can satisfy both cards, call relate with taskId for the child and parentTaskId for the primary card. Inspect existing plans and rounds. Coordinate the shared fix once on the primary card and track both acceptance criteria; do not dispatch duplicate work on the child. Keep independent work separate; a similar title alone is insufficient.'
+export const relatedTaskGuidance = 'Before planning, list the group cards and read plausible matches. Compare the actual fix, deliverables and acceptance criteria. If one implementation can satisfy both cards, call relate with taskId for the child and parentTaskId for the primary card. Inspect existing plans and rounds. Coordinate the shared fix once on the primary card and track both acceptance criteria; do not dispatch duplicate work on the child. When a new card implements a specific previous planning delivery, pass its taskId as followsTaskId in the plan. Both cards keep independent completion. Keep independent work separate; a similar title alone is insufficient.'
+
+export function setPredecessor(room, card, id) {
+  if (typeof id !== 'string' || !Object.hasOwn(room.projectCards ?? {}, id)) throw new Error('Choose an existing preceding task in this group.')
+  const seen = new Set([card.id])
+  for (let cursor = id; cursor; cursor = room.projectCards[cursor]?.followsTaskId) {
+    if (seen.has(cursor)) throw new Error('A task sequence cannot form a cycle.')
+    seen.add(cursor)
+  }
+  card.followsTaskId = id
+}
 
 export function projectRoomForCard(rt, id) {
   if (typeof id !== 'string') return undefined
@@ -53,8 +63,13 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq, docum
     if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
     const existing = cardForIntake(room, intakeId)
     if (existing) {
-      if (delegatedSeq && delegatedSeq > (existing.delegatedSeq ?? 0)) {
-        const updated = { ...existing, ...(existing.goal === undefined && !existing.plans?.length ? document : {}), delegatedSeq }
+      const newerSource = delegatedSeq && delegatedSeq > (existing.delegatedSeq ?? 0)
+      const unplanned = !existing.plans?.length && !existing.rounds?.length
+      const updateDocument = document && (unplanned || newerSource)
+      if (updateDocument || newerSource) {
+        const updated = { ...existing, ...(updateDocument ? document : {}),
+          ...(unplanned && title && { title }), ...(delegatedSeq && { delegatedSeq }) }
+        if (updateDocument) reviseRequirement(room, updated, projectSources(rt, room, existing.intakes, existing.id, delegatedSeq), document.goal, existing)
         delete updated.clarification
         room.projectCards[existing.id] = updated
         return () => { room.projectCards[existing.id] = existing }
@@ -65,7 +80,11 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq, docum
     if (!receipt || room.deletedTaskIntakes?.includes(intakeId)) throw new Error('This intake is unavailable.')
     const previous = { ...receipt }
     const card = intakeCard(room, receipt, field(reason, 'the independently verifiable outcome for this new task', 4000), title)
-    if (delegatedSeq) Object.assign(card, document, { delegatedSeq })
+    if (document) {
+      reviseRequirement(room, card, projectSources(rt, room, card.intakes, card.id, delegatedSeq), document.goal)
+      Object.assign(card, document)
+    }
+    if (delegatedSeq) card.delegatedSeq = delegatedSeq
     return () => {
       delete room.projectCards[card.id]
       delete receipt.reason
@@ -118,15 +137,20 @@ export function projectSources(rt, room, intakeIds, taskId, throughSeq = Infinit
 export const projectCardSummary = (card, taskId = card.id) => {
   const round = card.rounds?.at(-1)
   return {
-    taskId, ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
+    taskId, ...(card.followsTaskId && { followsTaskId: card.followsTaskId }), ...(card.parentTaskId ? { parentTaskId: card.parentTaskId } : {}), title: card.title, humanAcceptanceRequired: card.humanAcceptanceRequired ?? Boolean(card.humanReview), classificationReason: card.classificationReason, round: card.rounds?.length ?? 0, ownerId: round?.ownerId,
     ...(card.finishAfterIntegration && { finishAfterIntegration: card.finishAfterIntegration }),
     ...(card.updatedAt !== undefined ? { textUpdatedAt: card.updatedAt } : {}),
-    startedAt: round?.startedAt, submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
+    submittedAt: round?.submittedAt, stoppedAt: round?.failedAt,
     ...(card.clarification ? { clarification: card.clarification } : {}),
     ...(!card.completedWithTaskId && card.humanReview?.status === 'pending' && card.humanReview.version === card.plans?.at(-1)?.version
       ? { acceptanceRequest: { id: card.humanReview.id, artifact: card.humanReview.artifact } } : {}),
-    updatedAt: round?.submittedAt ?? round?.failedAt ?? round?.startedAt ?? round?.sentAt ?? round?.assignedAt,
+    updatedAt: round?.submittedAt ?? round?.failedAt ?? round?.retries?.at(-1)?.at ?? round?.startedAt ?? round?.sentAt ?? round?.assignedAt,
     status: taskPhase(card, projectStatus(round)), ...(card.plans?.length ? plannedSummary(card) : {}),
+    ...(card.managementHandoff && { handoff: { status: card.managementHandoff.status, toId: card.managementHandoff.toId,
+      attempts: card.managementHandoff.attempts, ...(card.managementHandoff.error && { reason: card.managementHandoff.error }),
+      ...(card.managementHandoff.deliveredAt && { deliveredAt: card.managementHandoff.deliveredAt }) } }),
+    startedAt: (card.rounds ?? []).reduce((first, run) =>
+      Number.isFinite(run.startedAt) && (first === undefined || run.startedAt < first) ? run.startedAt : first, undefined),
   }
 }
 
@@ -147,14 +171,35 @@ function uniqueImages(images) {
   return [...new Map(images.map(image => [image.attachmentId ?? image.id, image])).values()]
 }
 
-function requirementHistory(room, card, sources) {
-  if (card.requirementHistory) return card.requirementHistory
-  // Older hosts recorded a user edit and its source messages but did not take snapshots.
-  if (!card.fieldEditTimes?.requirement || typeof card.goal !== 'string') return []
-  const original = sources.find(line => line.intakeId === card.intakes?.[0] && card.requirementSources?.includes(line.seq))
-  if (!original) return []
+function documentSources(lines) {
+  const seqs = lines.filter(line => line.files?.length || line.text.includes('@')).map(line => line.seq)
+  return seqs.length ? { documentSources: seqs } : {}
+}
+
+export function requirementHistory(room, card, sources) {
+  const history = card.requirementHistory ?? []
+  const original = sources.find(line => line.intakeId === card.intakes?.[0])
+  if (!original) return history
   const text = taskMessage(original.text, room).body
-  return text && text !== card.goal ? [{ text, images: original.images ?? [] }] : []
+  // The user intake is v1, including cards whose clarified goal predates snapshots.
+  if ((!text && !original.images?.length && !original.files?.length) || text === (history[0]?.text ?? projectRequirement(room, card, sources))) return history
+  return [{ text, images: original.images ?? [], ...documentSources([original]) }, ...history]
+}
+
+function reviseRequirement(room, card, sources, value, previous = card) {
+  const covered = new Set(previous.requirementSources ?? sources.slice(0, 1).map(line => line.seq))
+  const previousSources = sources.filter(line => covered.has(line.seq))
+  const current = projectRequirement(room, previous, previousSources)
+  const beforeImages = uniqueImages([...previousSources.flatMap(line => line.images ?? []), ...(previous.fieldImages?.requirement ?? [])])
+  const afterImages = uniqueImages([...sources.flatMap(line => line.images ?? []), ...(card.fieldImages?.requirement ?? [])])
+  const imageIds = images => images.map(image => image.attachmentId ?? image.id).sort()
+  if (current === value && isDeepStrictEqual(imageIds(beforeImages), imageIds(afterImages))) return
+  card.requirementHistory = [...requirementHistory(room, previous, previousSources), {
+    ...documentSources(previousSources), text: current, images: beforeImages,
+  }]
+  card.goal = value
+  card.requirementSources = sources.map(line => line.seq)
+  card.updatedAt = Math.max(Date.now(), (previous.updatedAt ?? 0) + 1)
 }
 
 export function projectImages(card, sources) {
@@ -186,7 +231,34 @@ export function projectCardDetail(rt, room, card, taskId = card.id, textOnly = f
     ...(card.plans?.length ? { plans: card.plans.map(plan => ({ ...plan, nodes: nodeViews(card, plan) })) } : {}),
     ...(card.previousReviews?.length ? { previousReviews: card.previousReviews } : {}),
     requirements: sources.map(({ seq, text, images, files }) => ({ seq, text, images, files })),
+    statusHistory: (card.statusHistory ?? []).map(({ basis: _basis, ...change }) => change),
   }
+}
+
+export async function updateProjectTaskStatus(rt, { roomId, taskId, previous, status, reason }) {
+  if (!editableProjectStatuses.includes(status) || typeof previous !== 'string') throw new Error('Choose a valid task status.')
+  reason = field(reason, 'the reason for changing the task status', 2000)
+  await rt.save({ required: true, mutate() {
+    const room = rt.roomOf(roomId)
+    if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+    if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+    if (typeof taskId !== 'string' || !Object.hasOwn(room.projectCards ?? {}, taskId))
+      throw Object.assign(new Error('No such task'), { code: 'bot/not-found' })
+    const card = room.projectCards[taskId]
+    const current = projectCardSummary(card).status
+    if (current !== previous) throw new Error('The task status changed. Reopen it to edit the latest status.')
+    if (!['blocked', 'failed'].includes(current)) throw new Error('Only blocked or failed tasks can be changed manually.')
+    if (status === current) throw new Error('Choose a different task status.')
+    const at = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)
+    const change = { from: current, status, reason, at, by: 'user', basis: taskStatusBasis(card) }
+    const previousCards = room.projectCards
+    const cards = { ...previousCards, [taskId]: { ...card, updatedAt: at, statusHistory: [...(card.statusHistory ?? []), change] } }
+    if (status === 'done') completeRelatedCards(cards)
+    room.projectCards = cards
+    return () => { room.projectCards = previousCards }
+  } })
+  const room = rt.roomOf(roomId)
+  return projectCardDetail(rt, room, room.projectCards[taskId])
 }
 
 export async function updateProjectTaskText(rt, { roomId, taskId, field: key, previous, value, removeImages = [] }, saveImages) {
@@ -218,6 +290,7 @@ export async function updateProjectTaskText(rt, { roomId, taskId, field: key, pr
     if (!isDeepStrictEqual(images, beforeImages)) changes.fieldImages = { ...card.fieldImages, [key]: images }
     if (!Object.keys(changes).length) return
     if (key === 'requirement') changes.requirementHistory = [...requirementHistory(room, card, sources), {
+      ...documentSources(sources),
       text: current, images: uniqueImages([...sources.flatMap(line => line.images ?? []), ...beforeImages]),
     }]
     const updatedAt = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)
@@ -259,19 +332,19 @@ export function developmentHandoff(rt, session, room, card, owner, number) {
   const legacyWorkspace = !round.planNode && round.workspace
   const folder = legacyWorkspace && 'Before starting, use working_directory to enter ' + legacyWorkspace.workDir + ' on branch ' + legacyWorkspace.workRef + '.'
   const text = [card.title, requirement, folder, previous && 'Previous delivery: ' + previous, round.planNode && nodeHandoff(card, round), 'Handoff: ' + round.plan, 'Acceptance: ' + card.acceptance].filter(Boolean).join('\n\n')
-  return { text, images: projectImages(card, lines), files: lines.flatMap(line => line.files ?? []), round }
+  return { text, images: projectImages(card, lines), files: lines.flatMap(line => line.files ?? []), round, requirementVersion: requirementHistory(room, card, lines).length + 1 }
 }
 
 export function install(rt) {
   rt.teamTools.push(defineTool({
     name: 'project_task',
-    description: 'Manage DS Bot project cards. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. After revising requirements or acceptance, dispatch ready nodes in the current plan. Dispatch checks whether the same developer can reclaim a stopped historical writer’s clean checkout at its original start commit. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Normally approve the last artifact to finish automatically. Only if the user explicitly requested human sign-off, request_acceptance for the final submitted artifact instead. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
+    description: 'Manage DS Bot project cards. Use scan to list unassigned cards with actual reasons and retryability. The group admin uses retry_handoff with an existing taskId to normalize title, plan and acceptance and safely retry delivery to the current assistant, including from a recovery group turn. Do not use attach to edit card content. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. After revising requirements or acceptance, dispatch ready nodes in the current plan. Dispatch checks whether the same developer can reclaim a stopped historical writer’s clean checkout at its original start commit. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Submitting the final outstanding delivery finishes the task automatically or opens human acceptance if required. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
     parameters: {
       acceptWork: { type: 'boolean', description: 'With reply, create the formal task card before announcing acceptance of actual work, including read-only investigation.' },
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
-      humanAcceptanceRequired: { type: 'boolean', description: 'Record required human sign-off on the first plan.' },
+      followsTaskId: { type: 'string', description: 'For plan: the existing task whose delivery this task continues.' },
       classificationReason: { type: 'string', description: 'For new work accepted by reply, specify the distinct deliverable and how its completion can be verified.' },
-      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'record_merge', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
+      action: { type: 'string', required: true, enum: ['reply', 'report', 'delegate', 'scan', 'retry_handoff', 'branches', 'describe_branch', 'prepare_worktree', 'list', 'context', 'read', 'relate', 'assign', 'attach', 'start', 'submit', 'handoff', 'plan', 'dispatch', 'approve', 'request_acceptance', 'clarify', 'chat', 'checkpoint', 'block', 'record_merge', 'return_for_changes', 'wait', 'inspect_recovery', 'resume', 'takeover'] },
       message: { type: 'string', description: 'First public answer to the current group input. Use reply before planning, or chat with message and reason to answer and classify an unassigned question together. Members are not called.' },
       ...planParameters, ...recoveryParameters,
       repository: { type: 'string', description: 'Repository root inside the configured project working folder.' },
@@ -283,7 +356,7 @@ export function install(rt) {
       parentTaskId: { type: 'string', description: 'For relate, the existing primary project card in this group. The child keeps its ID and history.' },
       ownerId: { type: 'string', description: 'Group member ID for assign or handoff.' },
       title: { type: 'string', description: 'Short title for a new card.' },
-      plan: { type: 'string', description: 'For first plan and delegation, the clarified requirement as a concise numbered list. For assignment or handoff, instructions for the next owner.' },
+      plan: { type: 'string', description: 'For plan and delegation, the clarified requirement as a concise numbered list. A changed requirement creates its next requirement version; omit on plan-only revisions. For assignment or handoff, instructions for the next owner.' },
       acceptance: { type: 'string', description: 'Concise numbered list of observable conditions the user can verify.' },
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       checking: { type: 'string', description: 'Checkpoint: the acceptance check now in progress.' },
@@ -304,13 +377,14 @@ export function install(rt) {
       const session = exec.agent?.id
       const actor = rt.selfOf(session)
       const source = rt.live.get(session)?.info
+      if (source?.workProtocol && rt.protocolCancelled?.(rt.workOf(source)) && !['list', 'read', 'context'].includes(args.action)) throw new Error('This delegated work was cancelled; it cannot submit or change a project card.')
       const id = args.taskId?.toLowerCase() ?? source?.taskId
       const boundRoom = rt.groupOwners.get(session)?.roomId ?? source?.roomId
       const room = rt.roomOf(boundRoom ?? args.roomId) ?? (!boundRoom && !args.roomId ? projectRoomForCard(rt, id) : undefined)
       if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
       if (!room.members.includes(actor)) throw taskError('NOT_GROUP_MEMBER')
       if (args.roomId && args.roomId !== room.id) throw taskError('GROUP_CONTEXT_MISMATCH')
-      if (!['list', 'read', 'context'].includes(args.action)) {
+      if (!['list', 'read', 'context', 'scan'].includes(args.action)) {
         if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
         if (room.unresolvedTaskAssistant || (room.projectAssistantId && !assistantId(room))) throw taskError('TASK_ASSISTANT_INVALID')
       }
@@ -325,17 +399,33 @@ export function install(rt) {
       if (source?.taskId && source.taskId !== id && !planningAccess) throw new Error('This execution belongs to a different card.')
       const members = room.members.map(rt.botOf).filter(Boolean).map(({ id, name, role }) => ({ id, name, role }))
       const cards = Object.values(room.projectCards ?? {})
-      if (args.action === 'list') return JSON.stringify({ roomId: room.id, workspacePolicy: workspacePolicyOf(room), members, inbox: pendingIntakes(room), cards: cards.map(card => projectCardSummary(card)) })
+      if (args.action === 'list') return JSON.stringify({ roomId: room.id, workspacePolicy: workspacePolicyOf(room), members, inbox: pendingIntakes(room), cards: cards.map(card => projectCardSummary(card)), unassigned: rt.scanProjectHandoffs?.(room) ?? [] })
+      if (args.action === 'scan') {
+        if (!contact && !manager) throw taskError('TASK_ROLE_REQUIRED')
+        return JSON.stringify({ roomId: room.id, assistantId: assistantId(room), unassigned: rt.scanProjectHandoffs(room) })
+      }
       const reminder = original?.reminderFor !== undefined
       if (reminder && !['reply', 'context', 'read'].includes(args.action) && !(args.action === 'chat' && args.message !== undefined))
         throw new Error('This mention asks for a group answer. Use project_task reply.')
       if (['branches', 'describe_branch', 'prepare_worktree'].includes(args.action)) return JSON.stringify(await manageBranches(rt, room, args, actor, exec))
       const card = cards.find(item => item.id === id)
       const assistant = assistantId(room)
-      if (['delegate', 'report', 'reply', 'chat', 'attach'].includes(args.action) && !contact) throw taskError('TASK_ROLE_REQUIRED')
+      if (['delegate', 'retry_handoff', 'report', 'reply', 'chat', 'attach'].includes(args.action) && !contact) throw taskError('TASK_ROLE_REQUIRED')
       if (['relate', 'plan', 'dispatch', 'approve', 'request_acceptance', 'wait', 'takeover', 'resume', 'inspect_recovery'].includes(args.action) && !manager && !intakeRelation) throw taskError('TASK_ROLE_REQUIRED')
       const handoffOnReply = args.action === 'reply' && args.acceptWork === true && assistant && args.plan && args.acceptance
+      if (args.action === 'retry_handoff') {
+        if (!card) throw new Error('Choose an existing card in this group.')
+        if (!assistant) throw new Error('No task assistant is appointed. The group admin must plan this card.')
+        if (card.plans?.length || card.rounds?.length) throw new Error('Continue the saved plan and execution rounds; do not repeat the handoff.')
+        if (args.plan !== undefined || args.acceptance !== undefined || args.title !== undefined) {
+          const document = { goal: field(args.plan ?? card.goal, 'the clarified requirement', 4000),
+            acceptance: field(args.acceptance ?? card.acceptance, 'acceptance conditions', 2000) }
+          await acceptWork(rt, room, card.intakes[0], card.classificationReason, field(args.title ?? card.title, 'a title', 200), undefined, document)
+        }
+        return JSON.stringify(await rt.retryProjectHandoff(room, room.projectCards[card.id]))
+      }
       if (args.action === 'delegate' || handoffOnReply) {
+        if (!assistant) throw new Error('No task assistant is appointed. The group admin must plan this card.')
         const intakeId = original?.intakeId
         const linked = intakeId && cardForIntake(room, intakeId)
         if (!assistant || !contact || source?.role !== 'request' || source.roomId !== room.id || source.senderSessionId ||
@@ -345,26 +435,12 @@ export function install(rt) {
         const goal = field(args.plan, 'the clarified requirement', 4000)
         const acceptance = field(args.acceptance, 'acceptance conditions', 2000)
         const lines = projectSources(rt, room, linked?.intakes ?? [intakeId], linked?.id, original.seq)
-        const owners = members.filter(bot => bot.id !== actor && bot.id !== assistant)
         await acceptWork(rt, room, intakeId, args.classificationReason || goal, args.title, original.seq, { goal, acceptance, requirementSources: lines.map(line => line.seq) })
         if (handoffOnReply) {
           const message = field(args.message, 'the answer for the group', 4000)
           await rt.replyToProjectIntake(room, rt.botOf(actor), original, message)
         }
-        const scope = linked ? { taskId: linked.id } : { intakeId }
-        const text = [
-          'The group admin delegated this requirement to you as its task assistant. Manage this same project card in your session for this group.',
-          relatedTaskGuidance,
-          'For every feature task, the developer commits on the feature branch. Dispatch a final independent read-only test node with independentReview=true, writePaths=[] and a dependency on the approved developer candidate. Keep the user’s acceptance criteria separate from the tester’s choice of checks. Reuse existing results, record each check on the card, and submit the read-only receipt with cleanupEvidence. No separate report file is needed. Approve the receipt to finish; keep the candidate on the feature branch. Integration, installation and release require separate work. On test failure return the feedback to the developer and retest the revised candidate.',
-          'Requirement: ' + goal, 'Acceptance: ' + acceptance, 'Eligible node owners: ' + JSON.stringify(owners),
-          linked ? 'Read and continue the existing card: ' + linked.id : 'For independent work, save the complete plan with project_task plan (version 1).',
-          'For Git work, inventory branches, prepare the checkout if needed, and follow the group workspace policy: ' + workspacePolicyOf(room) + '.',
-          'When revising the test plan, reuse the accepted developer round and preserve its branch and candidate. Trellis records requirements and evidence; an authorized feature commit needs no separate grouping approval.',
-          'Dispatch ready nodes and use message_bot with taskId, card_round, reply_to=user and request_id to the assigned owner. Review submitted evidence, approve nodes, and resolve blocks. Handle branch, review, validation and recovery blockers within the team. On a blocked round clarify sends a technical question to the admin for a decision. The host informs the admin of clarification and completion. Normally approve the final node; request_acceptance only for explicit human sign-off.',
-          ...lines.map(line => 'Group #' + line.seq + ': ' + taskMessage(line.text, room).body),
-        ].join('\n\n')
-        await projectNotice(rt, room, assistant, scope, 'delegate-' + original.seq, text, { images: projectImages(linked, lines), files: lines.flatMap(line => line.files ?? []) }, { goal, acceptance })
-        return JSON.stringify({ delegated: true, assistantId: assistant, ...scope })
+        return JSON.stringify(await rt.retryProjectHandoff(room, cardForIntake(room, intakeId), { continuation: true }))
       }
       if (args.action === 'report') {
         if (!assistant || !contact || source?.role !== 'request' || source.roomId !== room.id || !scopeOf(source) ||
@@ -383,7 +459,12 @@ export function install(rt) {
             (args.taskId && !card?.intakes?.includes(original.intakeId)))
           throw new Error('Reply from the manager chat handling this group message.')
         const message = field(args.message, 'the answer for the group', 4000)
-        if (args.action === 'reply' && args.acceptWork === true && !reminder) await acceptWork(rt, room, original.intakeId, args.classificationReason, args.title)
+        if (args.action === 'reply' && args.acceptWork === true && !reminder) {
+          const document = args.plan !== undefined || args.acceptance !== undefined ? {
+            goal: field(args.plan, 'the clarified requirement', 4000), acceptance: field(args.acceptance, 'acceptance conditions', 2000),
+          } : undefined
+          await acceptWork(rt, room, original.intakeId, args.classificationReason, args.title, undefined, document)
+        }
         publish = () => rt.replyToProjectIntake(room, rt.botOf(actor), original, message)
         if (args.action === 'reply' || reminder) return publish()
       }
@@ -581,7 +662,7 @@ export function install(rt) {
             throw new Error('The result files or assignment changed. Read the current round.')
           target.resultFiles = resultFiles
         }
-        if (args.action === 'approve' || args.action === 'plan') completeRelatedCards(draft.projectCards)
+        if (args.action === 'approve' || args.action === 'plan' || (args.action === 'submit' && JSON.parse(result).status === 'done')) completeRelatedCards(draft.projectCards)
         if (Object.keys(draft.projectCards).length) room.projectCards = draft.projectCards
         if (previousInbox) room.projectInbox = draft.projectInbox
         return () => {
@@ -601,7 +682,7 @@ export function install(rt) {
 async function notifyProjectChange(rt, room, args, actor, source, result) {
   const assistant = assistantId(room)
   const card = room.projectCards?.[result.taskId ?? args.taskId ?? source?.taskId]
-  const scope = card ? { taskId: card.id } : { intakeId: source?.intakeId }
+  const scope = { ...(card ? { taskId: card.id } : { intakeId: source?.intakeId }), projectActorId: actor }
   const round = card?.rounds[args.round - 1]
   if (args.action === 'record_merge' && round?.mergeReceipt) {
     await projectNotice(rt, room, assistant ?? room.admin, scope, round.dispatchId + ':merged',
@@ -616,6 +697,10 @@ async function notifyProjectChange(rt, room, args, actor, source, result) {
     if (toId && toId !== actor) await projectNotice(rt, room, toId, scope,
       'technical-block:' + card.id + ':' + actor + ':' + (source?.exchangeId ?? '') + ':' + createHash('sha256').update(args.reason).digest('hex'),
       instruction + '\nIssue or decision: ' + args.reason, {}, args.reason)
+  } else if (args.action === 'submit' && ['done', 'human_review'].includes(result.status) && !result.lateReceiptRound) {
+    await projectNotice(rt, room, room.admin, scope, card.id + ':delivery:' + round.planNode.version,
+      result.status === 'done' ? 'Final delivery completed the task. Report the saved result to the group.' :
+        'Final delivery is ready for human acceptance. Report the pending decision to the group.')
   } else if ((args.action === 'submit' || args.action === 'block') && round && !result.lateReceiptRound && (round.planNode ? currentBinding(card, round) : round === card.rounds.at(-1))) {
     const status = args.action === 'submit' ? 'submitted evidence for review' : 'reported a blocker'
     const next = args.action === 'submit' && round.planNode
@@ -699,17 +784,20 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       const acceptance = field(args.acceptance ?? card?.acceptance, 'acceptance conditions', 2000)
       if (card && card.plans?.length && (card.title !== title || card.acceptance?.trim() !== acceptance)) throw new Error('This card has different details.')
       card ??= { id: randomUUID(), title, acceptance, intakes: [receipt.id], rounds: [] }
+      if (args.plan !== undefined) {
+        const requirement = field(args.plan, 'the clarified requirement', 4000)
+        const sources = projectSources(rt, room, card.intakes, card.id, source?.intakeSeq)
+        if (card.plans?.at(-1)?.version === args.version && requirement !== projectRequirement(room, card, sources))
+          throw new Error('Save a changed requirement with a new plan version.')
+        reviseRequirement(room, card, sources, requirement)
+      }
       if (!card.plans?.length) {
-        if (card.goal === undefined && args.plan?.trim()) {
-          card.goal = field(args.plan, 'the clarified requirement', 4000)
-          card.requirementSources = projectSources(rt, room, card.intakes, card.id, source?.intakeSeq).map(line => line.seq)
-        }
         card.title = title
         card.acceptance = acceptance
         delete card.clarification
       }
-      if (args.humanAcceptanceRequired !== undefined && typeof args.humanAcceptanceRequired !== 'boolean') throw new Error('Choose a valid human acceptance setting.')
-      if (card.humanAcceptanceRequired === undefined) card.humanAcceptanceRequired = args.humanAcceptanceRequired === true || Boolean(card.humanReview)
+      if (args.followsTaskId !== undefined) setPredecessor(room, card, args.followsTaskId)
+      card.humanAcceptanceRequired ??= Boolean(card.humanReview)
       card.classificationReason ??= args.classificationReason || acceptance
       savePlan(card, args, room, actor)
       ;(room.projectCards ??= {})[card.id] = card
@@ -721,7 +809,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         reserveNodePaths(rt, room.id, card, card.rounds[dispatchRound - 1])
       }
       else if (args.action === 'request_acceptance') {
-        if (card.humanAcceptanceRequired === false) throw new Error('Human acceptance is disabled for this task.')
+        if (!card.humanAcceptanceRequired) throw new Error('Human acceptance is disabled for this task.')
         requestAcceptance(card, args)
       }
       else {
@@ -786,7 +874,9 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (card.workspace) next.workspace = card.workspace
       card.rounds.push(next)
     } else {
-      if (!round.dispatchId || actor !== round.ownerId || source?.exchangeId !== round.dispatchId || (card.plans && source.taskId !== card.id)) throw new Error('Only the owner in the dispatched execution can confirm or submit it.')
+      const protocol = rt.state.works?.[rt.workOf?.(source)]
+      const executionId = protocol?.protocol && protocol.to === actor && protocol.taskId === card.id ? protocol.dispatchId : source?.exchangeId
+      if (!round.dispatchId || actor !== round.ownerId || executionId !== round.dispatchId || (card.plans && source.taskId !== card.id)) throw new Error('Only the owner in the dispatched execution can confirm or submit it.')
       const binding = round.planNode
       if (binding && (card.completedWithTaskId || binding.supersededBy || binding.block)) {
         if (args.action === 'block' && !binding.supersededBy && args.reason === binding.block.reason) return JSON.stringify(projectCardSummary(card))
@@ -831,6 +921,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         if (round.result && result !== round.result) throw new Error('This round already has a different result.')
         round.result = result
         round.submittedAt ??= Date.now()
+        if (binding && currentBinding(card, round)) finishSubmittedPlan(card)
       } else throw new Error('Confirm the start before submitting the result.')
     }
   }
@@ -845,23 +936,6 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
 
 function assignment(ownerId, plan) {
   return { ownerId, plan, assignedAt: Date.now(), dispatchId: randomUUID() }
-}
-
-function requestAcceptance(card, args) {
-  const plan = card.plans.at(-1)
-  const nodes = nodeViews(card, plan)
-  const node = nodes.find(n => n.no === args.node)
-  if (plan.version !== args.version || !node || node.round !== args.round || node.status !== 'review' ||
-      nodes.some(n => n !== node && !['verified', 'omitted'].includes(n.status))) throw new Error('Request human acceptance for the final submitted node.')
-  const artifact = field(args.artifact, 'the artifact to review', 2000)
-  const current = card.humanReview
-  if (current?.version === args.version && current.round === args.round) {
-    if (current.artifact === artifact && current.status === 'pending') return
-    throw new Error('Revise the plan before requesting acceptance of a different delivery.')
-  }
-  if (current) (card.previousReviews ??= []).push(current)
-  card.humanReview = { id: randomUUID(), version: args.version, node: args.node, round: args.round,
-    artifact, requestedAt: Date.now(), status: 'pending' }
 }
 
 export async function decideAcceptance(rt, room, args) {

@@ -22,7 +22,7 @@ const ENDPOINT_HINTS = {
 const SHOWN_MODELS = 8
 
 // A failure in the interface language; the dialog's error line shows it.
-const translated = promise => Promise.resolve(promise).catch((failure) => { throw new Error(hostText(failure?.message ?? String(failure))) })
+export const translated = promise => Promise.resolve(promise).catch((failure) => { throw new Error(hostText(failure?.message ?? String(failure))) })
 
 // A discovery result as a draft: what the endpoint returned is selected; entries the
 // endpoint no longer returns stay visible and selected, so a smaller upstream list never
@@ -125,9 +125,10 @@ export function fallbacksFor(provider, draft, roster) {
   return { switching, failed, local }
 }
 
-export function ProvidersPage({ actions, run, roster, Section, advanced = null }) {
+export function ProvidersPage({ actions, run, roster, Section, advanced = null, start = null }) {
   const [view, setView] = useState(null)
-  const [open, setOpen] = useState(null)
+  const [open, setOpen] = useState(start)
+  useEffect(() => { if (start) setOpen(start) }, [start])
   const [adding, setAdding] = useState(false)
   // Resolves true when the host took it; the page then shows the host's new view.
   const apply = promise => run(translated(promise).then((next) => { if (next?.providers) setView(next) }))
@@ -294,7 +295,7 @@ function ModelDraft({ provider, draft, roster, onToggle, onSave, onCancel, confi
       }, confirmRemove && (switching.length > 0 || failed.length > 0) ? t('Save anyway') : t('Save'))))
 }
 
-function KeyEditor({ provider, apply, actions }) {
+export function KeyEditor({ provider, apply, actions }) {
   const [value, setValue] = useState('')
   const [saved, setSaved] = useState(false)
   const ready = value.trim() !== ''

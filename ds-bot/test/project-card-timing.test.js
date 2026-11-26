@@ -70,6 +70,19 @@ test('a task needing clarification opens its detail without showing the explanat
   assert.deepEqual(opened, ['a'])
 })
 
+test('the list identifies both ends of a sequence and omits review forms and validation prose', () => {
+  const plan = { taskId: 'a', title: 'Plan', status: 'human_review', acceptanceRequest: { id: 'receipt', artifact: 'Private delivery body' } }
+  const work = { taskId: 'b', title: 'Implement', status: 'active', followsTaskId: 'a', validationProgress: [{ round: 1, checking: 'Long check' }] }
+  const view = TaskBoard({ room: { projectCards: [plan, work] }, roster: {}, actions: {} })
+  for (const card of [plan, work]) {
+    const component = find(view, n => n.props?.card === card)
+    const rendered = component.type(component.props)
+    assert.ok(find(rendered, n => n.children.some(child => typeof child === 'string' && child.includes(card === plan ? work.title : plan.title))))
+    assert.equal(find(rendered, n => n.children.includes('Long check')), undefined)
+  }
+  assert.equal(find(view, n => n.type?.name === 'AcceptanceRequest'), undefined)
+})
+
 test('a related card is nested under its primary card and still opens its own detail', () => {
   const room = { projectCards: [{ taskId: 'b', parentTaskId: 'a', status: 'planning' }, { taskId: 'a', status: 'active' }] }
   const opened = []
@@ -147,7 +160,7 @@ test('a blocked card has one status and no clock until its round actually starte
   assert.equal(row(card).times[1], 'Elapsed 2 min')
 })
 
-test('assigned, delivered and replacement rounds hide timing; old submitted rounds retain their status', () => {
+test('unstarted cards hide timing and handoffs retain the first confirmed start', () => {
   const first = { ownerId: 'dev', assignedAt: 10 }
   const card = { id: 'old', rounds: [first] }
   assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
@@ -158,7 +171,9 @@ test('assigned, delivered and replacement rounds hide timing; old submitted roun
   first.startedAt = 12
   assert.equal(row(card).times.length, 2)
   card.rounds.push({ ownerId: 'backup', assignedAt: 30 })
-  assert.deepEqual(row(card), { labels: ['In progress'], times: undefined })
+  assert.equal(projectCardSummary(card).startedAt, 12)
+  card.rounds[1].startedAt = 36
+  assert.equal(projectCardSummary(card).startedAt, 12)
 })
 
 test('an accepted plan retains its status before dispatch, even if the plan is blocked', () => {
@@ -167,6 +182,16 @@ test('an accepted plan retains its status before dispatch, even if the plan is b
   assert.deepEqual(row(card), { labels: ['Dispatching'], times: undefined })
   node.contextGap = 'Missing repository'
   assert.deepEqual(row(card), { labels: ['Blocked'], times: undefined })
+})
+
+test('replanning after a restart preserves the first start before and after the replacement starts', () => {
+  const node = { no: 1, ownerId: 'dev', dependsOn: [] }
+  const card = { id: 'restart', rounds: [{ ownerId: 'dev', startedAt: 20,
+    planNode: { version: 1, node: 1, block: { cause: 'restart', at: 40, decisions: [] } } }],
+    plans: [1, 2].map(version => ({ version, at: version * 10, nodes: [node] })) }
+  assert.equal(projectCardSummary(card).startedAt, 20)
+  card.rounds.push({ ownerId: 'dev', startedAt: 60, planNode: { version: 2, node: 1 } })
+  assert.equal(projectCardSummary(card).startedAt, 20)
 })
 
 test('parallel rounds keep their clocks and completed cards hide Bot icons and freeze at the last submission', () => {
@@ -232,10 +257,12 @@ test('the card distinguishes a recorded dev merge from completed post-merge chec
 test('task detail shows results below the criteria and switches to a read-only requirement snapshot', async () => {
   const { outputFiles } = await build({
     entryPoints: [fileURLToPath(new URL('../src/client/project-task-detail.js', import.meta.url))],
-    bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
+    bundle: true, format: 'cjs', write: false, external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
   })
   const history = [{ text: 'Earlier request', images: [] }]
-  const detail = { requirement: 'First。Second。', acceptance: '1. Check output', requirementHistory: history }
+  const detail = { requirement: 'First。Second。', acceptance: '1. Check output', requirementHistory: history, requirements: [
+    { seq: 2, text: '@"plans/S8 Listen.md" @owner', files: [{ attachmentId: 'plan-id', name: 'uploaded.md' }] },
+  ], sourceImages: [{ attachmentId: 'image-id' }] }
   const state = [detail]
   let hook = 0
   const runtime = { ...react, useState(initial) {
@@ -247,10 +274,41 @@ test('task detail shows results below the criteria and switches to a read-only r
   runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => runtime })
   const panel = module.exports.ProjectTaskDetail({ room: { id: 'r' }, card: { taskId: 't' } })
   const body = find(panel, n => n.props?.className?.includes('bt-drawer-body'))
-  const fields = body.children[0].children[1].children
-  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
+  const [handoffs, ...fields] = body.children[0].children[1].children.filter(Boolean)
+  assert.equal(handoffs.type.name, 'TaskHandoffs')
+  const rounds = [
+    { ownerId: 'a', dispatchId: 'one', startedAt: 2, dispatchInput: 'Original input',
+      retries: [{ at: 6, input: 'Retry input', failedAt: 4, previousOutput: 'Service timed out' }], result: 'Final receipt' },
+    { ownerId: 'b', startedAt: 5, plan: 'Inspect output', planNode: { inputs: [] } },
+  ]
+  const flows = handoffs.type({ detail: { title: 'Example task', rounds }, history: { messages: [
+    { key: 'user', exchangeId: 'intake', at: 0, sender: 'user', to: 'manager', text: 'User request' },
+    { key: 'first', exchangeId: 'one', replyTo: 'intake', at: 1, from: 'manager', to: 'a', text: 'Original input' },
+    { key: 'second', exchangeId: 'two', replyTo: 'one', at: 7, from: 'a', to: 'b', text: 'Final receipt' },
+  ] } })
+  const rows = Array.from(flows.children.at(-1), row => row.props.entry)
+  assert.deepEqual(rows.map(r => r.owner), ['manager', 'a', 'a', 'b'])
+  assert.equal(rows[0].outputs[0], rows[1].incoming)
+  assert.equal(rows[1].incoming, rows[2].incoming)
+  assert.equal(rows[2].outputs[0], rows[3].incoming)
+  assert.equal(rows[2].reason, 'Service timed out')
+  assert.deepEqual(Array.from(flows.children.at(-1), row => row.props.entry.label),
+    ['1. User → manager', '2. manager → a', '3. manager → a · Retry', '4. a → b'])
+  assert.deepEqual(Array.from(flows.children.find(child => child?.props?.className === 'bt-handoff-bar').children[0], segment => segment.props['data-retry']), [false, false, true, false])
+  const bar = flows.children.find(child => child?.props?.className === 'bt-handoff-bar')
+  assert.equal(bar.props['aria-hidden'], undefined)
+  for (const [i, segment] of bar.children[0].entries()) {
+    assert.equal(segment.type, 'button')
+    assert.equal(segment.props['aria-controls'], rows[i].id)
+    assert.equal(segment.props['aria-label'], rows[i].label)
+    assert.equal(typeof segment.props.onClick, 'function')
+  }
+  assert.equal(new Set(rows.map(row => row.id)).size, rows.length)
+  assert.equal(flows.children[0].children[1].props.text, 'Example task')
+  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace', 'TaskStatusEditor'])
   const results = () => fields[2].type(fields[2].props)
-  assert.equal(results().props.placeholder, 'No results submitted yet')
+  assert.equal(results().props.placeholder.props.className, 'bt-empty')
+  assert.equal(results().props.placeholder.children[0], 'No results submitted yet')
   detail.results = [{ items: ['Time is correct', 'Narrow layout fits'], files: [
     { kind: 'image', name: 'screen.png', receiptFile: '5-image' },
     { kind: 'markdown', name: 'report.md', receiptFile: '5-report' },
@@ -268,14 +326,27 @@ test('task detail shows results below the criteria and switches to a read-only r
   const labels = JSON.stringify(progress)
   for (const label of ['Testing: Narrow layout', 'Passed: Format', 'Passed in Web']) assert.ok(labels.includes(label))
   assert.ok(!labels.includes('Test receipt submitted'))
-  const show = (field = fields[0]) => { hook = 3; return field.type(field.props).props }
+  const show = (field = fields[0]) => { hook = 4; return field.type(field.props).props }
+  const attachmentField = fields[0].type
+  const opened = []
+  const renderAttachments = () => {
+    hook = 4
+    return attachmentField({ ...fields[0].props, openReference: path => { opened.push(path); return true } })
+  }
+  const attachments = find(renderAttachments(), n => n.props?.className === 'bt-requirement-attachments')
+  assert.ok(find(attachments, n => n.type === 'h4' && n.children[0] === 'Attachments'))
+  assert.equal(find(attachments, n => n.props?.label === 'uploaded.md').props.attachmentTarget.attachmentId, 'plan-id')
+  assert.ok(find(attachments, n => n.props?.image?.attachmentId === 'image-id'))
+  find(attachments, n => n.children[0] === 'S8 Listen.md').props.onClick()
+  assert.deepEqual(opened, ['plans/S8 Listen.md'])
   const latest = show()
   assert.equal(latest.value, '1. First。Second。')
-  assert.deepEqual(Array.from(latest.headerControl.children[0], option => option.children[0]), ['v1 · Historical version', 'v2 · Current'])
+  assert.deepEqual(Array.from(latest.headerControl.children[0], option => option.children[0]), ['Requirement v1 · Historical version', 'Requirement v2 · Current'])
   assert.equal(latest.headerControl.props.value, 1)
   latest.headerControl.props.onChange({ target: { value: '0' } })
   assert.equal(show().value, '1. Earlier request')
   assert.equal(show().onEdit, undefined)
+  assert.equal(find(renderAttachments(), n => n.props?.className === 'bt-requirement-attachments'), undefined)
   show().headerControl.props.onChange({ target: { value: '1' } })
   assert.equal(typeof show().onEdit, 'function')
   for (const source of fields.slice(0, 2)) {

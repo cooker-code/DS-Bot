@@ -122,6 +122,14 @@ export function install(rt) {
         await rt.save().catch(() => {})
         return receipt
       } catch (error) {
+        if (request.unsent === true) {
+          delete receipts()[request.key]
+          try { await rt.save({ required: true }) } catch {
+            fresh.outcome = 'uncertain'
+            receipts()[request.key] = fresh
+          }
+          throw error
+        }
         // The message may have gone out; it is not sent again.
         fresh.outcome = 'uncertain'
         fresh.at = Date.now()

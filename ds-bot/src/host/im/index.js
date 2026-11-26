@@ -6,10 +6,13 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { replaceFile } from '../files.js'
+import { isClock } from '../time-context.js'
 import { viewCardText } from '../parts.js'
 import { imPlatform, IM_PLATFORMS } from '../../shared/im-platforms.js'
 import { REPLY_KIND, SOURCE_KIND } from '../constants.js'
 import { adapters } from './platforms/index.js'
+import { boundedFetch } from './platforms/media.js'
+import { documentTargets, deliverDocument, installDocumentTool } from './document-delivery.js'
 
 const RECONCILE_MS = 15_000
 const RUNTIME_SAVE_MS = 400
@@ -33,6 +36,30 @@ const SENT_ID_LEN = 100
 // bounded even with many chats, so a connection with lots of chats cannot grow
 // it without limit (#1306 review).
 const SENT_STORE_LIMIT = 200_000
+
+// Keep the global cap as well as each chat's cap, evicting the oldest entries
+// first. Empty lists still count toward the limit until eviction is done.
+export function capSentStore(sent) {
+  let size = JSON.stringify(sent).length
+  if (size <= SENT_STORE_LIMIT) return
+  const byAge = []
+  for (const [chatKey, list] of Object.entries(sent)) {
+    if (!Array.isArray(list)) continue
+    for (const entry of list) byAge.push({ chatKey, entry, age: Number(entry?.at) || 0 })
+  }
+  byAge.sort((a, b) => a.age - b.age)
+  for (const { chatKey, entry } of byAge) {
+    if (size <= SENT_STORE_LIMIT) break
+    const list = sent[chatKey]
+    const at = list.indexOf(entry)
+    if (at === -1) continue
+    list.splice(at, 1)
+    size -= JSON.stringify(entry).length + (list.length > 0 ? 1 : 0)
+  }
+  for (const [chatKey, list] of Object.entries(sent)) {
+    if (Array.isArray(list) && list.length === 0) delete sent[chatKey]
+  }
+}
 
 const secretField = key => key.replace(/[A-Z]/g, char => `_${char}`).toUpperCase()
 
@@ -357,32 +384,6 @@ export function install(rt) {
     capSentStore(data.sent)
     scheduleWrite(id)
   }
-  // The runtime file is one blob, so bound the whole sent store, not just each
-  // chat's list. Collect every entry with its age and drop the oldest first —
-  // a chat's last message is the one a quoted reply is most likely to name, so
-  // it must survive even when older chats have to go. A single entry is already
-  // bounded above (text, id count and id length), so the store always converges.
-  const capSentStore = (sent) => {
-    let size = JSON.stringify(sent).length
-    if (size <= SENT_STORE_LIMIT) return
-    const byAge = []
-    for (const [chatKey, list] of Object.entries(sent)) {
-      if (!Array.isArray(list)) continue
-      for (const entry of list) byAge.push({ chatKey, entry, age: Number(entry?.at) || 0 })
-    }
-    byAge.sort((a, b) => a.age - b.age)
-    for (const { chatKey, entry } of byAge) {
-      if (size <= SENT_STORE_LIMIT) break
-      const list = sent[chatKey]
-      const at = list.indexOf(entry)
-      if (at === -1) continue
-      list.splice(at, 1)
-      size = JSON.stringify(sent).length
-    }
-    for (const [chatKey, list] of Object.entries(sent)) {
-      if (Array.isArray(list) && list.length === 0) delete sent[chatKey]
-    }
-  }
   // The text a quoted reply answers: the first of its ids that names a message
   // this chat sent, else the text the platform kept of that message. An id only
   // ever matches a message this connection actually sent there, so a wrong one
@@ -452,7 +453,7 @@ export function install(rt) {
   }
 
   const envFor = async (conn, runtime) => ({
-    fetch: globalThis.fetch,
+    fetch: boundedFetch(),
     WebSocket: globalThis.WebSocket,
     config: rt.config.im?.[conn.platform],
     runtime: runtime ?? await runtimeEnv(conn.id),
@@ -1347,6 +1348,7 @@ export function install(rt) {
   })
 
   const endpoints = {
+    async 'im-send-document'(body) { return deliverDocument(rt, body) },
     async 'im-add'(body) {
       const platform = imPlatform(String(body.platform ?? ''))
       if (platform === undefined || adapters[platform.id] === undefined) throw new Error('This platform is not available yet')
@@ -1589,12 +1591,19 @@ export function install(rt) {
     }
     if (event.type === 'user/message') {
       const source = event.data?.source
+      if (source?.silent) return
+      const delegatedOrigin = source?.protocolReturn ? rt.state.works?.['closed:' + source.protocolReturn]?.protocolReceipt?.imOrigin
+        : source?.workQuestion ? rt.state.works?.[source.workQuestion]?.imOrigin : undefined
+      // A clock snapshot accompanies the prompt without adding a speaker.
+      if (isClock(source)) return
       const imOrigin = source?.imOrigin
       const rpcId = source?.rpcId
       // A late member result or part-switch handoff continues the work the chat asked for;
       // any other first message starts a fresh turn, which clears the previous turn's origin.
       if (pendingReset.delete(session.id) && !(typeof imOrigin === 'string' || (source?.kind === SOURCE_KIND && source.role === 'post'))) resetOrigin(session.id)
-      if (typeof imOrigin === 'string') {
+      if (delegatedOrigin) {
+        claimOrigin(session.id, delegatedOrigin.connId, delegatedOrigin.chatKey, delegatedOrigin.senderId, delegatedOrigin.binding)
+      } else if (typeof imOrigin === 'string') {
         const resumed = resumedOrigins.get(imOrigin)
         resumedOrigins.delete(imOrigin)
         if (resumed === undefined) dropOrigin(session.id)
@@ -1702,5 +1711,27 @@ export function install(rt) {
     return [id, { state: status.state, ...(status.error !== undefined ? { error: status.error } : {}), at: status.at }]
   }))
 
-  Object.assign(rt, { imView, imStatusView, imViaView, imEndpoint, holdImOrigin, peekImOrigin, dropImOrigin })
+  const imDocumentTarget = (body, requireReady = false) => {
+    const candidates = documentTargets(connections(), body.roomId).filter(target =>
+      (!body.id || target.id === body.id) && (!body.chatKey || target.chatKey === body.chatKey))
+    if (candidates.length !== 1) throw new Error('Choose one configured WeCom chat bound to this group.')
+    const target = candidates[0]
+    if (requireReady && (typeof runners.get(target.id)?.handle?.sendFile !== 'function' || combinedStatus(target.id)?.state !== 'ready'))
+      throw new Error('The configured WeCom connection is not ready for document delivery.')
+    return target
+  }
+  const imSendDocument = async (target, file, roomId) => {
+    const validate = () => {
+      const current = imDocumentTarget({ ...target, roomId }, true)
+      if (current.chatKey !== target.chatKey || rt.readOnly() !== undefined) throw new Error('The IM route or team ownership changed before sending.')
+    }
+    validate()
+    return runners.get(target.id).handle.sendFile({ key: target.chatKey, kind: target.kind, title: target.title }, { ...file, validate })
+  }
+  Object.assign(rt, { captureWorkImOrigin: sid => {
+    const room = rt.roomOf(rt.groupOwners.get(sid)?.roomId)
+    const carrier = room ? room.sessionId ?? room.id : sid
+    return originOf(carrier) && !mixed.has(carrier) ? structuredClone(origins.get(carrier)) : undefined
+  }, imView, imStatusView, imViaView, imEndpoint, holdImOrigin, peekImOrigin, dropImOrigin, imDocumentTarget, imSendDocument })
+  installDocumentTool(rt)
 }

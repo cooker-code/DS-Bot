@@ -30,7 +30,7 @@
 
 | 操作 | 业务及输入 | 服务、返回与数据层 |
 | --- | --- | --- |
-| `set-prefs` | 差量对象。`theme` 主题，`accent` 为十六进制颜色或 null，`layout` 为 bubble/flat，`width/flatWidth` 为 50–100 的整数百分比，`effects` 为 full/reduced/off，`motion` 为 normal/quiet/lively。`thinking,enterToSend,memoryAutoRecall` 为开关。`defaultBotModel` 为模型引用或 null。`memoryLimits` 以 bot/group/team 映射到每层 1000–200000 个字符。 | `channel.setPrefs` 写 `team_state.prefs_json`，返回完整 prefs。用 `state.prefs` 回读。 |
+| `set-prefs` | 差量对象。`theme` 主题，`accent` 为十六进制颜色或 null，`layout` 为 bubble/flat，`width/flatWidth` 为 50–100 的整数百分比，`effects` 为 full/reduced/off，`motion` 为 normal/quiet/lively。`thinking,enterToSend,memoryAutoRecall` 为开关。`defaultBotModel` 为模型引用或 null。`taskExplanationPrompt` 为任务人话解释的自定义话术提示词（字符串，最多 20000 字符）；传 null 或空白恢复默认。`memoryLimits` 以 bot/group/team 映射到每层 1000–200000 个字符。 | `channel.setPrefs` 写 `team_state.prefs_json`，返回完整 prefs。用 `state.prefs` 回读。taskExplanationPrompt 仅影响任务解释，保存后新生成或已打开的人话视图按新 Prompt 重新生成，旧缓存按实际 Prompt 失效；不更改消息、Bot 简介或执行模型。 |
 | `models` / `efforts` | `models {}` 刷新目录；`efforts {ref}` 查询某一模型支持的思考强度。 | `catalog/reasoningOf` 返回 `{modelsKey}` 和强度结构（无候选时 `{efforts:[]}`）。模型清单从 `state.models` 获取。 |
 | `providers` / `provider-key` | 读取可配置供应商用 `{}`。设置密钥用 `{provider,value}`，`value:null` 清除。 | [providers.js](../../../../ds-bot/src/host/providers.js) 的 `providersView/setProviderKey/clearProviderKey`，使用 DSH settings 和 credentials。返回供应商视图，读取可用状态与是否已配置。 |
 | `provider-add` / `provider-remove` | 添加用 `provider,custom?,key?`，自定义供应商还提供 `name,api,baseURL,models`。移除用 `provider`。 | `addProvider/removeProvider` 操作宿主供应商配置及其凭据，返回更新后的供应商视图。 |
@@ -44,3 +44,5 @@
 | `schedules` / `schedule-create` / `schedule-delete` | 查询 `{}`。创建用 `{target,title,prompt,when}`，target 为 Bot 或群 ID。单次用 `{kind:"at",at:"2030-01-01T10:00:00Z"}`。每日用 `kind:"daily",time,timeZone?`，每周用 `kind:"weekly",time,weekdays,timeZone?`（星期取 1–7），间隔用 `kind:"every",minutes`。删除用 `{sessionId,id}`。 | [scheduleEndpoint](../../../../ds-bot/src/host/schedules.js) 调 DSH 调度服务。返回 `{available,tasks}`，id、目标会话和下一次执行时间以实际记录为准。 |
 
 DSH 自身的字体、外观、开发工具、账号、插件和其他宿主设置由注册设置项的模块维护。例如开发工具用 `configForms.developerTools.setEnabled`，读取配置文档用 `remote.settings.openSettingsDocument`。它们使用对应 DSH 版本公开的设置服务，独立于团队偏好表。[设置项组装](../../../../ds-bot/src/client/settings.js) · [宿主设置接入](../../../../ds-bot/src/client/settings-shell.js)
+
+任命或更换任务助理后，服务会安排管理员扫描尚无计划、尚无执行轮次的原卡，说明未交接原因并按条件重试；不重新派发在途工作。扫描与重试契约见 [项目工作与运行接口](runtime-api.md#管理员扫描与重试交接)。

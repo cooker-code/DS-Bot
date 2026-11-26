@@ -463,3 +463,13 @@ test('in Agent mode, General offers the way back to Bot mode', () => {
   walk(row, node => node.type === 'button' && textOf(node) === 'Switch')[0].props.onClick()
   assert.deepEqual(calls, ['bot'])
 })
+
+// Rendering the domain through a helper must not leave its page outside the scroller.
+test('computer and sibling tool settings stay inside the real settings scroll tree', () => {
+  const { tree } = dialog({ page: 'computer' })
+  const scroll = walk(tree, node => node.props?.className?.includes('bt-settings-scroll'))[0]
+  assert.ok(scroll)
+  for (const name of ['ComputerPage', 'BrowserPage', 'CapabilitiesPage', 'SecretsPage']) {
+    assert.equal(walk(scroll, node => typeof node.type === 'function' && node.type.name === name).length, 1)
+  }
+})

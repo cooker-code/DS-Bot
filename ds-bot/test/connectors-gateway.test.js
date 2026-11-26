@@ -123,3 +123,39 @@ test('gateway preserves MCP POST headers and bodies and reports expired sessions
   assert.match(JSON.stringify(logs), /notion.*POST.*404/)
   assert.equal(JSON.stringify(logs).includes('private-'), false)
 })
+
+
+test('connectors gateway.close() aborts active upstream SSE requests without hanging', async (t) => {
+  let upstreamClosed = false
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.write(': keepalive\n\n')
+    res.on('close', () => { upstreamClosed = true })
+  })
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve))
+  t.after(() => { upstream.closeAllConnections?.(); upstream.close() })
+
+  const gw = createGateway({
+    credential: () => ({ url: `http://127.0.0.1:${upstream.address().port}/mcp`, headers: { authorization: 'Bearer tok' } }),
+    readOnly: () => false,
+    onUnauthorized: async () => false,
+  })
+  await gw.listen()
+  t.after(() => gw.close())
+
+  const clientAbort = new AbortController()
+  const resp = await fetch(gw.urlFor('c1'), { headers: gw.headers(), signal: clientAbort.signal })
+  const reader = resp.body.getReader()
+  await reader.read()
+  const t0 = Date.now()
+  await gw.close()
+  assert.ok(Date.now() - t0 < 2000, 'gateway.close() must not hang on open SSE streams')
+  await reader.cancel().catch(() => {})
+  clientAbort.abort()
+  await new Promise(resolve => setTimeout(resolve, 50))
+  assert.equal(upstreamClosed, true, 'upstream SSE stream must be closed on gateway.close()')
+})
+
+// ============================================================================
+// 4. IM Bridges
+// ============================================================================

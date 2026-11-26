@@ -1,0 +1,23 @@
+{
+  "canonicalSources": 265,
+  "canonicalTablesSorted": true,
+  "queueUniqueRows": 119,
+  "statuses": {
+    "采用": 95,
+    "需讨论": 5,
+    "暂缓": 108,
+    "跳过": 57
+  },
+  "localMarkdownLinksChecked": 220,
+  "sqliteIntegrity": "ok",
+  "foreignKeyErrors": 0,
+  "explanationsAndCachedMergeSHA": 265,
+  "pendingExport": 0,
+  "servedBranch": "chore/upstream-2028-catalog",
+  "devSHA": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d",
+  "devTrackedDiffByteIdentical": true,
+  "registeredWorktrees": 20,
+  "unregisteredSingularWorktreeDirs": [],
+  "worktreeCleanupPerformed": false,
+  "sqliteBackup": "<repo>/.git/upstream-sync/backups/2026-11-26-upstream-2028.sqlite3"
+}

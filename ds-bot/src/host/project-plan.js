@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { assistantId } from './project-assistant.js'
 import { workspacePolicyOf, usesGitWorkspace } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
@@ -212,7 +213,7 @@ export function completeRelatedCards(cards) {
   const done = new Set()
   for (const id of children.keys()) {
     const card = cards[id]
-    if (card?.completedWithTaskId || (card?.plans?.length && plannedSummary(card).status === 'done')) done.add(id)
+    if (card && (card.plans?.length ? plannedSummary(card).status : taskPhase(card, projectStatus(card.rounds?.at(-1)))) === 'done') done.add(id)
   }
   let changed = false
   for (const parent of done) {
@@ -243,7 +244,7 @@ export function plannedSummary(card) {
   const started = current.filter(r => Number.isFinite(r.startedAt))
   const submissions = current.map(r => r.submittedAt).filter(Number.isFinite)
   const stops = (started.length ? started : current).map(r => r.planNode?.block?.at ?? r.failedAt).filter(Number.isFinite)
-  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.planNode?.acceptedAt ?? 0, r.mergeReceipt?.at ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
+  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.retries?.at(-1)?.at ?? 0, r.planNode?.acceptedAt ?? 0, r.mergeReceipt?.at ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
   const awaitingCode = status === 'review' && views.some(node => {
     const run = card.rounds[node.round - 1]
     return codeDelivery(card, run, node) && !run?.mainReview
@@ -256,7 +257,6 @@ export function plannedSummary(card) {
     return [{ round: n.round, checking: n.status === 'active' ? checking : undefined, checksComplete: run.validation.checksComplete, cleaned: Boolean(run.validation.cleanup), lastPassed: passed.at(-1)?.name, passedCount: passed.length, submitted: Boolean(run.submittedAt) }]
   })
   return { ...(validationProgress.length && { validationProgress }), ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
-    startedAt: started.length ? Math.min(...started.map(r => r.startedAt)) : undefined,
     submittedAt: submissions.length && submissions.length === current.length ? Math.max(...submissions) : undefined,
     stoppedAt: stops.length ? Math.max(...stops) : undefined, updatedAt }
 }
@@ -323,4 +323,41 @@ export function nodeHandoff(card, round) {
       return 'Approved input from node ' + input.node + ', round ' + input.round + ': ' + prev.planNode.artifact + '\n' + prev.result
     }),
   ].join('\n')
+}
+
+export function finishSubmittedPlan(card) {
+  const plan = card.plans?.at(-1)
+  if (!plan || card.completedWithTaskId || card.clarification || card.humanReview?.version === plan.version) return false
+  const views = nodeViews(card, plan)
+  if (views.some(n => !['verified', 'review', 'omitted'].includes(n.status))) return
+  const pending = views.filter(n => n.status === 'review')
+  if (pending.some(node => {
+    const round = card.rounds[node.round - 1]
+    return !round?.result || (codeDelivery(card, round, node) && !round.mainReview) || (node.mergeToDev && !round.integration)
+  })) return false
+  for (const node of pending) {
+    const round = card.rounds[node.round - 1]
+    const delivery = { version: plan.version, node: node.no, round: node.round,
+      artifact: round.mainReview?.commit ?? (round.result.length <= 2000 ? round.result : 'Task ' + card.id + ', plan v' + plan.version + ', round ' + node.round) }
+    if (node === pending.at(-1) && card.humanAcceptanceRequired) requestAcceptance(card, delivery)
+    else approveRound(card, delivery, 'system')
+  }
+  return pending.length > 0
+}
+
+export function requestAcceptance(card, args) {
+  const plan = card.plans.at(-1)
+  const nodes = nodeViews(card, plan)
+  const node = nodes.find(n => n.no === args.node)
+  if (plan.version !== args.version || !node || node.round !== args.round || node.status !== 'review' ||
+      nodes.some(n => n !== node && !['verified', 'omitted'].includes(n.status))) throw new Error('Request human acceptance for the final submitted node.')
+  const artifact = field(args.artifact, 'the artifact to review', 2000)
+  const current = card.humanReview
+  if (current?.version === args.version && current.round === args.round) {
+    if (current.artifact === artifact && current.status === 'pending') return
+    throw new Error('Revise the plan before requesting acceptance of a different delivery.')
+  }
+  if (current) (card.previousReviews ??= []).push(current)
+  card.humanReview = { id: randomUUID(), version: args.version, node: args.node, round: args.round,
+    artifact, requestedAt: Date.now(), status: 'pending' }
 }

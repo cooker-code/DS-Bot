@@ -1,3 +1,7 @@
+import { PUBLISH_ISSUE } from './issue-report.js'
+import { taskInteractions } from './task-interactions.js'
+import { explainTaskMessage } from './task-explanations.js'
+import { TASK_EXPLANATION_PROMPT_LIMIT } from '../shared/task-explanation-prompt.js'
 import { readReceiptFile, taskResultView } from './task-result-view.js'
 import { readResultDocument } from './project-result-files.js'
 import { assistantId, projectNotice } from './project-assistant.js'
@@ -7,7 +11,8 @@ import { memberSettings } from './team-storage/member-settings.js'
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
 import { isIntakeReceipt, taskCaption, taskMessage } from '../shared/task-message.js'
 import { branchReport, selectTaskWorkspace, taskWorkspaceChoices, setProjectWorkspacePolicy, workspaceDecisions, workspaceSummary } from './project-branches.js'
-import { decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText } from './project-tasks.js'
+import { finishSubmittedPlan, completeRelatedCards } from './project-plan.js'
+import { setPredecessor, decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText, updateProjectTaskStatus } from './project-tasks.js'
 import { readTaskReference } from './task-reference.js'
 import { deleteBoardTasks } from './tasks.js'
 import { fileDownload } from './file-download.js'
@@ -112,7 +117,7 @@ export function install(rt) {
     // ones; `parts` the members' hidden group Sessions and their earlier segments,
     // for usage.
     rooms: Object.values(state.rooms).map(original => {
-      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
+      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectHandoffScan: _handoffScan, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId), ...(ownParts ?? []).map(segment => segment.sessionId)]
       const last = (log ?? []).findLast(line => line.kind === undefined && !isIntakeReceipt(line))
       const preview = last && taskCaption(taskMessage(last.text, original))
@@ -183,7 +188,7 @@ export function install(rt) {
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
       .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined)
       .map(sessionId => [sessionId, true])),
-    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
+    work: { delegated: rt.protocolWorksView?.() ?? [], bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
     learning: rt.learningView(),
@@ -220,9 +225,12 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'session-times', 'run-stats', 'room-context', 'group-discussions', 'room-progress', 'task-reference', 'project-task-list', 'project-task-detail', 'project-branches', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'session-times', 'run-stats', 'room-context', 'group-discussions', 'room-progress', 'task-reference', 'project-task-list', 'project-task-detail', 'task-explanation', 'project-branches', 'group-rows', 'group-relay-replies', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
 
   async function setPrefs(body) {
+    if (body.taskExplanationPrompt !== undefined && body.taskExplanationPrompt !== null &&
+        (typeof body.taskExplanationPrompt !== 'string' || body.taskExplanationPrompt.length > TASK_EXPLANATION_PROMPT_LIMIT))
+      throw invalid('The explanation prompt must be text of at most {n} characters.'.replace('{n}', TASK_EXPLANATION_PROMPT_LIMIT))
     if (body.theme !== undefined) {
       if (typeof body.theme !== 'string' || !/^[a-z][\w-]{0,31}$/.test(body.theme)) throw invalid('Unknown theme')
       state.prefs.theme = body.theme
@@ -282,6 +290,11 @@ export function install(rt) {
       const sizes = Object.entries(body.memoryLimits ?? {}).filter(([scope, size]) => MEMORY_LIMIT_SCOPES.has(scope) && Number.isInteger(size) && size >= MEMORY_LIMIT_MIN && size <= MEMORY_LIMIT_MAX)
       if (sizes.length === 0) delete state.prefs.memoryLimits
       else state.prefs.memoryLimits = { ...state.prefs.memoryLimits, ...Object.fromEntries(sizes) }
+    }
+    if (body.taskExplanationPrompt !== undefined) {
+      const prompt = body.taskExplanationPrompt?.trim()
+      if (prompt) state.prefs.taskExplanationPrompt = prompt
+      else delete state.prefs.taskExplanationPrompt
     }
     return rt.save()
   }
@@ -432,7 +445,7 @@ export function install(rt) {
           await rt.load()
           const room = rt.roomOf(body.roomId)
           if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
-          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room) })
+          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room), unassigned: rt.scanProjectHandoffs(room) })
         }
         case 'set-task-node-constraint': {
           await rt.load()
@@ -481,6 +494,20 @@ export function install(rt) {
             'The user selected this test-and-merge node as final. Preserve history; archive separately and skip extra architecture review. If an older submitted round lacks the separate merge receipt, revise the plan now: reuse prior accepted evidence and dispatch the independent tester on the existing candidate for the final receipt and targeted verification; preserve the old result without repeating the Git merge. Otherwise recover the tester if blocked, using the immutable dev snapshot and existing valid evidence. Have the tester immediately call record_merge (commit=candidate, mergeCommit=actual dev merge), then submit targeted validation with testedCommit. Approve and report completion. No user continuation is needed.')
           return ok(card.finishAfterIntegration)
         }
+        case 'set-task-predecessor': {
+          await rt.load()
+          await rt.save({ required: true, mutate() {
+            const room = rt.roomOf(body.roomId)
+            if (!room || !taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+            const card = rt.own(room.projectCards, body.taskId)
+            if (!card) throw new Error('No such task')
+            const updated = { ...card }
+            setPredecessor(room, updated, body.followsTaskId)
+            room.projectCards[card.id] = updated
+            return () => { room.projectCards[card.id] = card }
+          } })
+          return ok(body.followsTaskId)
+        }
         case 'set-task-human-acceptance': {
           await rt.load()
           const required = body.required
@@ -491,6 +518,17 @@ export function install(rt) {
             if (!taskManagementEnabled(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
             const card = rt.own(room.projectCards, body.taskId)
             if (!card) throw Object.assign(new Error('No such task'), { code: 'bot/not-found' })
+            if (!required && card.humanReview?.status === 'pending') {
+              const previous = room.projectCards
+              const updated = structuredClone(card)
+              ;(updated.previousReviews ??= []).push({ ...updated.humanReview, status: 'withdrawn' })
+              delete updated.humanReview
+              updated.humanAcceptanceRequired = false
+              finishSubmittedPlan(updated)
+              room.projectCards = { ...previous, [card.id]: updated }
+              completeRelatedCards(room.projectCards)
+              return () => { room.projectCards = previous }
+            }
             if (!card.plans || card.humanReview || projectCardSummary(card).status === 'done') throw new Error('This task cannot change its acceptance setting.')
             const previous = card.humanAcceptanceRequired
             card.humanAcceptanceRequired = required
@@ -517,12 +555,16 @@ export function install(rt) {
           if (!['sent', 'replay'].includes(outcome.status)) return fail('Check the group before resending this reply.', 'bot/refused')
           return ok(true)
         }
+        case 'task-explanation':
+          await rt.load()
+          return ok(await explainTaskMessage(rt, body, signal))
         case 'project-task-detail': {
           await rt.load()
           const room = rt.roomOf(body.roomId)
           if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
           const cards = room.projectCards ?? {}
           if (typeof body.taskId !== 'string' || !Object.hasOwn(cards, body.taskId)) return fail('No such task', 'bot/not-found')
+          if (body.interactionsOnly === true) return ok(await taskInteractions(rt, room, cards[body.taskId], signal, body.taskId))
           if (typeof body.receiptFile === 'string') return ok(await readReceiptFile(rt, room, cards[body.taskId], body.receiptFile))
           if (typeof body.documentId === 'string') return ok(await readResultDocument(rt, cards[body.taskId], body.documentId, signal))
           if (typeof body.imageId === 'string') return ok(await readProjectImage(rt, room, cards[body.taskId], body.taskId, body.imageId, signal))
@@ -535,6 +577,9 @@ export function install(rt) {
         case 'select-task-workspace':
           await rt.load()
           return ok(await selectTaskWorkspace(rt, body))
+        case 'update-project-task-status':
+          await rt.load()
+          return ok(await updateProjectTaskStatus(rt, body))
         case 'update-project-task-text': {
           await rt.load()
           const ids = body.addImages ?? []
@@ -590,6 +635,9 @@ export function install(rt) {
           const speaking = active ? [...rt.roomProgress.values()].filter(round => round.roomId === room.id).flatMap(round => round.slots.filter(slot => slot.status === 'speaking').map(slot => slot.id)) : []
           return ok({ ...view, active, speaking })
         }
+        case 'group-relay-replies':
+          await rt.load()
+          return ok(rt.groupRelayReplies(body.sessionId, body.preview))
         case 'create-bot': {
           await rt.bootstrap()
           const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir, section: body.section, sectionId: body.sectionId })
@@ -600,6 +648,18 @@ export function install(rt) {
           return ok(await rt.updateBot(body.id, body))
         // Give up one wait for a hand-off that will not come back: only that sub-work
         // closes, with an explicit result for the work above it.
+        case 'resume-room-pause':
+          await rt.load()
+          return ok(await rt.resumeRoomPause(String(body.roomId ?? '')))
+        case 'answer-work':
+          await rt.load()
+          return ok(await rt.answerDelegatedWork(String(body.id ?? ''), String(body.answer ?? '')))
+        case 'resume-work':
+          await rt.load()
+          return ok(await rt.resumePausedWork(String(body.id ?? '')))
+        case 'cancel-work':
+          await rt.load()
+          return ok(await rt.cancelDelegatedWork(String(body.id ?? ''), String(body.reason ?? 'Cancelled by the user.')))
         case 'abandon-work':
           await rt.load()
           if (rt.abandonWork?.(String(body.id ?? '')) !== true) return fail('That wait is no longer open', 'bot/stale')
@@ -885,17 +945,25 @@ export function install(rt) {
           if (reply === undefined) return fail('Nothing to send', 'bot/invalid')
           // Claim the view before queueing so a second answer is refused.
           delete state.views[sessionId]
+          let consumed = false
+          let issueReportResult
           try {
             await rt.ensureCapabilities(sessionId)
             const agent = await rt.resolveAgent(sessionId)
+            if (pending.issueDraft !== undefined && body.action === PUBLISH_ISSUE && checked.confirmed === true) {
+              await rt.save({ required: true })
+              consumed = true
+              issueReportResult = await rt.settleIssueReport(sessionId, pending.issueDraft)
+              reply.text = JSON.stringify({ ...JSON.parse(reply.text), issueReportResult })
+            }
             agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: reply.source }))
             await ctx.sessions.flush(agent.session)
           } catch (error) {
-            state.views[sessionId] ??= pending
+            if (!consumed) state.views[sessionId] ??= pending
             throw error
           }
           await rt.save()
-          return ok(true)
+          return ok(issueReportResult === undefined ? true : { issueReportResult })
         }
         // Upload each photo separately. The message references its staged images in order.
         case 'stage-image': {
@@ -1034,6 +1102,7 @@ export function install(rt) {
           return ok(true)
         }
         case 'im-add':
+        case 'im-send-document':
         case 'im-update':
         case 'im-remove':
         case 'im-pair':

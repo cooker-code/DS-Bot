@@ -7,7 +7,6 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { output } from './tools.js'
 import { reviewBaseline, verifyReviewCommit } from './project-branches.js'
 
-export const TASK_STATUSES = ['active', 'review', 'blocked', 'clarify', 'failed', 'done', 'cancelled']
 const OPEN_STATUSES = ['active', 'review', 'blocked', 'clarify', 'failed']
 const GOAL_MAX = 200
 const PROGRESS_MAX = 300
@@ -45,9 +44,11 @@ export function deleteBoardTasks(room, items) {
     if (remaining.length !== entries.length) changes[field] = Object.fromEntries(remaining)
   }
   for (const [id, card] of Object.entries(changes.projectCards ?? {})) {
-    if (!selected.project.has(card.parentTaskId)) continue
-    const { parentTaskId, ...independent } = card
-    changes.projectCards[id] = independent
+    const updated = { ...card }
+    for (const field of ['parentTaskId', 'followsTaskId']) {
+      if (selected.project.has(card[field])) delete updated[field]
+    }
+    changes.projectCards[id] = updated
   }
   for (const intake of room.projectInbox ?? []) {
     if (!selected.intake.has(intake.id)) continue

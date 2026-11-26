@@ -116,7 +116,7 @@ export async function openBotBrowser({ botId, profileRoot, downloadDir, headless
   return createSession({ context, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, downloadGraceMs, getHold, onHold, uploadRoots })
 }
 
-export function createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
+export function createSession({ context, page, browser = context.browser?.(), botId, userDataDir, cookieFile, downloadDir, actionTimeout = ACTION_TIMEOUT, downloadGraceMs = DOWNLOAD_GRACE_MS, getHold, onHold, uploadRoots }) {
   const pages = new Set()
   const unknownByOrigin = new Map()
   const unknownPageOrigins = new WeakMap()
@@ -128,6 +128,14 @@ export function createSession({ context, page, botId, userDataDir, cookieFile, d
   let lastImage = ''
   let activeDownloads = null
   let closed = false
+  const lifetime = new AbortController()
+  const disconnect = () => {
+    closed = true
+    lifetime.abort(new Error('The browser session is closed. Retry browser_open to reconnect.'))
+    activeDownloads?.notify?.()
+  }
+  context.on('close', disconnect)
+  browser?.on('disconnected', disconnect)
   let pendingDelete = null
   let pendingDeleteLocator = null
 
@@ -600,6 +608,7 @@ export function createSession({ context, page, botId, userDataDir, cookieFile, d
   return {
     botId,
     userDataDir,
+    signal: lifetime.signal,
     get hold() { return hold },
     get lastImage() { return lastImage },
     takeLastImage() {
@@ -611,7 +620,11 @@ export function createSession({ context, page, botId, userDataDir, cookieFile, d
     async open(url) {
       ready()
       await clearPendingDelete()
-      const target = activePage()
+      ready()
+      const target = activePage() ?? await context.newPage()
+      trackPage(target)
+      current = target
+      ready()
       return finishAction(() => target.goto(String(url), { waitUntil: 'domcontentloaded', timeout: 30_000 }), target, false)
     },
     tabs,
@@ -857,8 +870,7 @@ export function createSession({ context, page, botId, userDataDir, cookieFile, d
       }
     },
     async close() {
-      closed = true
-      activeDownloads?.notify?.()
+      disconnect()
       for (const { download } of activeDownloads?.items ?? []) await download.cancel().catch(() => {})
       const cookies = await context.cookies().catch(() => [])
       const kept = cookies.map(cookie => cookie.expires > 0 ? cookie : { ...cookie, expires: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 })

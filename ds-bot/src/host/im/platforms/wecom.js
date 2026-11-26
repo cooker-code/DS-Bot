@@ -8,7 +8,7 @@
 // The gateway takes a WebSocket on its root path only (/wss answers 403) and
 // matches Connection / Upgrade case-sensitively, so the socket comes from `ws`:
 // Node's built-in WebSocket sends those header names in lowercase.
-import { createDecipheriv } from 'node:crypto'
+import { createDecipheriv, createHash } from 'node:crypto'
 import { chunkMarkdown } from '../format.js'
 
 // Loaded on first WeCom check or connect so plugin startup skips `ws` when unused.
@@ -87,29 +87,43 @@ export default {
       lastError = message
       handlers.onStatus({ state: 'error', error: message })
     }
-    // Passive replies reuse the last callback req_id per chat.
-    const lastReqId = new Map()
+    // Groups use callback replies. A direct chat can receive delayed room output
+    // after a newer callback, so address its user through an acknowledged send.
+    const groupReqIds = new Map()
     const pending = new Map() // req_id → {resolve, reject}
 
     const nextReqId = () => `r${++reqCounter}`
     const sendFrame = (packet) => { if (socket?.readyState === 1) socket.send(JSON.stringify(packet)) }
-    const request = (cmd, body, reqId) => {
-      const req_id = reqId ?? nextReqId()
-      sendFrame({ cmd, headers: { req_id }, body })
-      if (cmd === 'aibot_send_msg') {
-        return new Promise((resolve, reject) => {
-          pending.set(req_id, { resolve, reject })
-          setTimeout(() => {
-            if (pending.delete(req_id)) reject(new Error('WeCom did not answer the send'))
-          }, 15_000).unref?.()
-        })
+    const request = (cmd, body) => new Promise((resolve, reject) => {
+      if (socket?.readyState !== 1) { reject(new Error('WeCom socket is not open')); return }
+      const req_id = nextReqId()
+      const timer = setTimeout(() => {
+        pending.delete(req_id)
+        reject(new Error('WeCom did not answer the send'))
+      }, 15_000)
+      timer.unref?.()
+      pending.set(req_id, { resolve, reject, timer })
+      try {
+        socket.send(JSON.stringify({ cmd, headers: { req_id }, body }))
+      } catch (error) {
+        clearTimeout(timer)
+        pending.delete(req_id)
+        reject(error)
       }
+    })
+    const sendToChat = (chatid, body) => request('aibot_send_msg', { ...body, chatid })
+    const rejectPending = reason => {
+      for (const held of pending.values()) {
+        clearTimeout(held.timer)
+        held.reject(new Error(reason))
+      }
+      pending.clear()
     }
 
     const onCallback = async (headers, body) => {
       const key = String(body.chattype === 'single' ? body.from?.userid ?? '' : body.chatid ?? '')
-      lastReqId.set(key, String(headers?.req_id ?? ''))
       const direct = body.chattype === 'single'
+      if (!direct && headers?.req_id) groupReqIds.set(key, headers.req_id)
       // Groups only count when the bot was @-ed: the text keeps the mention.
       // A voice message carries its own transcription, which is all of the text
       // there is to send on. A mixed message carries its words as items, so those
@@ -197,13 +211,15 @@ export default {
             const held = pending.get(packet.headers?.req_id)
             if (held !== undefined) {
               pending.delete(packet.headers?.req_id)
-              held.reject(Object.assign(new Error(String(packet.errmsg ?? 'WeCom refused')), { permanent: true }))
+              clearTimeout(held.timer)
+              held.reject(Object.assign(new Error(`WeCom ${packet.errcode}: ${packet.errmsg ?? 'send refused'}`), { permanent: true }))
             }
             return
           }
           if (packet.headers?.req_id !== undefined && pending.has(packet.headers.req_id)) {
             const held = pending.get(packet.headers.req_id)
             pending.delete(packet.headers.req_id)
+            clearTimeout(held.timer)
             held.resolve(packet.body)
           }
           lastError = undefined
@@ -219,6 +235,8 @@ export default {
       socket.on('close', () => {
         clearTimeout(pingTimer)
         if (stopped || generation !== gen) return
+        rejectPending('WeCom socket closed before the send was acknowledged')
+        groupReqIds.clear()
         // A refusal stays on screen until a socket subscribes again.
         if (lastError === undefined) handlers.onStatus({ state: 'connecting' })
         reconnectTimer = setTimeout(() => { if (!stopped) open() }, 2000)
@@ -236,6 +254,23 @@ export default {
     void open()
 
     return {
+      sendFile: async (chat, { name, data, validate }) => {
+        if (!Buffer.isBuffer(data) || !data.length || data.length > 25 * 1024 * 1024) throw new Error('Choose a non-empty document up to 25 MB.')
+        const chunkSize = 512 * 1024
+        const total = Math.ceil(data.length / chunkSize)
+        const init = await request('aibot_upload_media_init', { type: 'file', filename: name, total_size: data.length,
+          total_chunks: total, md5: createHash('md5').update(data).digest('hex') })
+        if (!init?.upload_id) throw new Error('WeCom did not return an upload ID.')
+        for (let index = 0; index < total; index++) {
+          await request('aibot_upload_media_chunk', { upload_id: init.upload_id, chunk_index: index,
+            base64_data: data.subarray(index * chunkSize, (index + 1) * chunkSize).toString('base64') })
+        }
+        const uploaded = await request('aibot_upload_media_finish', { upload_id: init.upload_id })
+        if (!uploaded?.media_id) throw new Error('WeCom did not return a media ID.')
+        validate?.()
+        const receipt = await sendToChat(chat.key, { msgtype: 'file', file: { media_id: uploaded.media_id } })
+        return { acknowledged: true, ...(receipt?.msgid && { messageId: String(receipt.msgid) }) }
+      },
       send: async (chat, { text, buttons }) => {
         const chunks = chunkMarkdown(String(text ?? ''), TEXT_LIMIT)
         let messageId
@@ -251,12 +286,12 @@ export default {
               button_selection: { question_key: 'choice', option_list: buttons.slice(0, 10).map(b => ({ id: b.data, text: b.label.slice(0, 30) })) },
             }
           }
-          const reqId = lastReqId.get(chat.key)
+          const reqId = chat.kind === 'group' ? groupReqIds.get(chat.key) : undefined
           if (reqId !== undefined) {
             sendFrame({ cmd: 'aibot_respond_msg', headers: { req_id: reqId }, body })
             messageId = undefined
           } else {
-            const result = await request('aibot_send_msg', { ...body, chatid: chat.kind === 'group' ? chat.key : undefined, userid: chat.kind === 'direct' ? chat.key : undefined })
+            const result = await sendToChat(chat.key, body)
             messageId = String(result?.msgid ?? messageId ?? '')
           }
         }
@@ -267,8 +302,7 @@ export default {
         generation += 1
         clearTimeout(reconnectTimer)
         clearTimeout(pingTimer)
-        for (const held of pending.values()) held.reject(new Error('stopped'))
-        pending.clear()
+        rejectPending('stopped')
         try { socket?.close(1000, 'stop') } catch { /* not open */ }
       },
     }

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { DatabaseSync } from 'node:sqlite'
 import { savedTeam } from './team-state.js'
 import { createRuntime } from '../index.js'
 import { deleteBoardTasks, install } from '../src/host/tasks.js'
@@ -456,15 +457,117 @@ test('a legacy user edit recovers the original intake before the next version is
   const read = async () => (await host.call('project-task-detail', target)).value
   const stored = room.projectCards.card
   stored.requirementSources = [original.seq]
-  assert.deepEqual((await read()).requirementHistory, [])
-  stored.fieldEditTimes = { requirement: 10 }
   const v1 = { text: 'MM:dd HH:mm:ss', images: [] }
+  assert.deepEqual((await read()).requirementHistory, [v1])
+  stored.fieldEditTimes = { requirement: 10 }
   assert.deepEqual((await read()).requirementHistory, [v1])
   assert.equal((await read()).requirement, card.goal)
   const edit = { ...target, field: 'requirement', previous: stored.goal, value: 'Show seconds' }
   for (let attempt = 0; attempt < 2; attempt++) assert.equal((await host.call('update-project-task-text', edit)).ok, true)
   assert.deepEqual(host.saved().rooms.r1.projectCards.card.requirementHistory, [v1, { text: 'MM-dd HH:mm:ss', images: [] }])
   assert.equal((await read()).requirement, edit.value)
+})
+
+test('only blocked and failed project cards accept a reasoned manual status correction without changing rounds', async t => {
+  const team = seed()
+  const card = { id: 'card', title: 'External delivery', intakes: [], rounds: [{ ownerId: 'b', assignedAt: 1, startedAt: 2, failedAt: 3 }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: { card } })
+  const host = await start(t, team)
+  await host.rt.load()
+  const target = { roomId: 'r1', taskId: 'card' }
+  const read = async () => (await host.call('project-task-detail', target)).value
+  const edit = extra => host.call('update-project-task-status', { ...target, previous: 'failed', status: 'done', reason: 'Completed and checked using another agent', ...extra })
+  assert.equal((await read()).status, 'failed')
+  for (const extra of [{ reason: '  ' }, { status: 'human_review' }, { status: 'failed' }, { previous: 'blocked' }])
+    assert.equal((await edit(extra)).ok, false)
+  assert.equal((await read()).statusHistory.length, 0)
+  const locked = new DatabaseSync(join(host.home, 'state', 'rooms', 'id-r1', 'room.sqlite'))
+  try {
+    locked.exec('BEGIN IMMEDIATE')
+    assert.equal((await edit()).ok, false)
+    assert.equal((await read()).status, 'failed')
+    assert.equal((await read()).statusHistory.length, 0)
+  } finally { locked.close() }
+  assert.equal((await edit()).ok, true)
+  const saved = host.saved().rooms.r1.projectCards.card
+  assert.equal((await read()).status, 'done')
+  assert.deepEqual(saved.rounds, card.rounds)
+  assert.deepEqual((await read()).statusHistory.map(({ from, status, reason, by }) => ({ from, status, reason, by })),
+    [{ from: 'failed', status: 'done', reason: 'Completed and checked using another agent', by: 'user' }])
+  assert.equal((await edit({ previous: 'done', status: 'active' })).ok, false)
+  const restarted = await start(t, host.saved())
+  assert.equal((await restarted.call('project-task-detail', target)).value.status, 'done')
+  host.rt.roomOf('r1').projectCards.card.rounds.push({ ownerId: 'b', assignedAt: 4, startedAt: 5 })
+  assert.equal((await read()).status, 'active')
+  assert.equal((await read()).statusHistory.length, 1)
+  for (const status of ['planning', 'active', 'review', 'done']) {
+    const current = host.rt.roomOf('r1').projectCards.card
+    current.rounds = status === 'planning' ? [] : [{ assignedAt: 1, startedAt: 2, ...(status === 'review' ? { result: 'Delivered' } : {}) }]
+    current.plans = status === 'planning' ? [] : undefined
+    if (status === 'done') current.completedWithTaskId = 'parent'
+    const previous = (await read()).status
+    assert.equal((await edit({ previous, status: 'blocked' })).ok, false)
+  }
+})
+
+test('a blocked project card saves the reason and resumes automatic status when its blocker changes', async t => {
+  const team = seed()
+  const card = { id: 'card', intakes: [], rounds: [{ ownerId: 'b', assignedAt: 1, planNode: { version: 1, node: 1, block: { at: 2, reason: 'Unavailable' } } }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: { card } })
+  const host = await start(t, team)
+  const target = { roomId: 'r1', taskId: 'card' }
+  assert.equal((await host.call('update-project-task-status', { ...target, previous: 'blocked', status: 'cancelled', reason: 'Replaced by another task' })).ok, true)
+  assert.equal((await host.call('project-task-detail', target)).value.status, 'cancelled')
+  const restarted = await start(t, host.saved())
+  assert.equal((await restarted.call('project-task-detail', target)).value.status, 'cancelled')
+  const stored = host.rt.roomOf('r1').projectCards.card
+  stored.rounds[0].planNode.block = { at: 3, reason: 'A different blocker' }
+  assert.equal((await host.call('project-task-detail', target)).value.status, 'blocked')
+  team.rooms.r1.taskManagementEnabled = false
+  host.rt.roomOf('r1').taskManagementEnabled = false
+  assert.equal((await host.call('update-project-task-status', { ...target, previous: 'blocked', status: 'done', reason: 'Done elsewhere' })).ok, false)
+})
+
+test('manually completing a planned failed primary card completes descendants in the same transaction', async t => {
+  const team = seed()
+  const card = { id: 'card', intakes: [], plans: [{ version: 1, by: 'a', at: 1, nodes: [{ no: 1, ownerId: 'b', title: 'Deliver', instructions: 'Inspect score', deliverable: 'Verified result', acceptance: 'Score verified', dependsOn: [] }] }],
+    rounds: [{ ownerId: 'b', assignedAt: 1, startedAt: 2, failedAt: 3, planNode: { version: 1, node: 1, inputs: [], block: { at: 3, by: 'b', cause: 'failure', reason: 'Failed', decisions: [] } } }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: {
+    card, child: { id: 'child', parentTaskId: 'card', plans: [], rounds: [], intakes: [] },
+    grandchild: { id: 'grandchild', parentTaskId: 'child', plans: [], rounds: [], intakes: [] },
+  } })
+  const host = await start(t, team)
+  await host.rt.load()
+  const target = { roomId: 'r1', taskId: 'card' }
+  const edit = status => host.call('update-project-task-status', { ...target, previous: 'failed', status, reason: 'External agent delivered and verified the result' })
+  const read = async (source, taskId) => (await source.call('project-task-detail', { ...target, taskId })).value
+  const locked = new DatabaseSync(join(host.home, 'state', 'rooms', 'id-r1', 'room.sqlite'))
+  try {
+    locked.exec('BEGIN IMMEDIATE')
+    assert.equal((await edit('done')).ok, false)
+    assert.equal((await read(host, 'card')).status, 'failed')
+    assert.equal((await read(host, 'grandchild')).status, 'planning')
+  } finally { locked.close() }
+  assert.equal((await edit('done')).ok, true)
+  const restarted = await start(t, host.saved())
+  for (const source of [host, restarted]) for (const id of ['card', 'child', 'grandchild'])
+    assert.equal((await read(source, id)).status, 'done')
+  assert.deepEqual((await read(host, 'card')).rounds, card.rounds)
+  assert.equal(host.saved().rooms.r1.projectCards.grandchild.completedWithTaskId, 'child')
+})
+
+test('manually cancelling a planned blocked primary card preserves its descendants', async t => {
+  const team = seed()
+  const card = { id: 'card', intakes: [], plans: [{ version: 1, by: 'a', at: 1, nodes: [{ no: 1, ownerId: 'b', title: 'Deliver', instructions: 'Inspect score', deliverable: 'Verified result', acceptance: 'Score verified', dependsOn: [] }] }],
+    rounds: [{ ownerId: 'b', assignedAt: 1, planNode: { version: 1, node: 1, inputs: [], block: { at: 2, by: 'b', cause: 'dependency', reason: 'Unavailable', decisions: [] } } }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: {
+    card, child: { id: 'child', parentTaskId: 'card', plans: [], rounds: [], intakes: [] },
+  } })
+  const host = await start(t, team)
+  assert.equal((await host.call('update-project-task-status', { roomId: 'r1', taskId: 'card', previous: 'blocked', status: 'cancelled', reason: 'Replaced by another task' })).ok, true)
+  const restarted = await start(t, host.saved())
+  assert.equal((await restarted.call('project-task-detail', { roomId: 'r1', taskId: 'card' })).value.status, 'cancelled')
+  assert.equal((await restarted.call('project-task-detail', { roomId: 'r1', taskId: 'child' })).value.status, 'planning')
 })
 
 test('task fields show original annotation images and save separate pictures for acceptance and requirements', async t => {
@@ -478,7 +581,8 @@ test('task fields show original annotation images and save separate pictures for
   await host.rt.load()
   const room = host.rt.roomOf('r1')
   const text = '【网页批注】1 处\n截图：1 张（编号对应）'
-  host.rt.logRoom(room, { who: 'User', intakeId: intake, text, images: [original], session: true })
+  const document = await attachments.saveFile({ name: 'requirement.md', data: Buffer.from('# Requirement') })
+  const source = host.rt.logRoom(room, { who: 'User', intakeId: intake, text, files: [document], images: [original], session: true })
   const target = { roomId: room.id, taskId: card.id }
   const read = async (extra = {}) => (await host.call('project-task-detail', { ...target, textOnly: true, ...extra })).value
   const edit = (field, previous, value, images) => host.call('update-project-task-text', { ...target, field, previous, value, ...images })
@@ -504,5 +608,7 @@ test('task fields show original annotation images and save separate pictures for
   const history = (await host.call('project-task-detail', target)).value.requirementHistory
   assert.deepEqual(history.map(entry => entry.text), [text, 'Revised', 'Revised'])
   assert.deepEqual(history.at(-1).images, [original, requirementImage])
+  assert.deepEqual(history.at(-1).documentSources, [source.seq])
+  assert.deepEqual((await read({ textOnly: false })).requirements.find(line => line.seq === source.seq).files, [document])
   assert.equal(await read({ imageId: requirementImage.attachmentId }), 'data:image/png;base64,Aw==')
 })

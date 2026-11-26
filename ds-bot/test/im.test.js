@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
+import { fakeWsServer } from './fake-ws.js'
 import { fakeContext } from './fake-ctx.js'
+import { capSentStore } from '../src/host/im/index.js'
 import { adapters } from '../src/host/im/platforms/index.js'
 
 // A platform adapter that records sends/edits and lets the test feed inbound
@@ -95,6 +97,7 @@ async function start({ platform = 'telegram', adapter, seed, services = {} } = {
     llm: { listProviders: () => [] },
     workspaceRegistry: { get: () => undefined, resolveByPath: async () => undefined, create: async () => ({ id: 'w1' }), archiveSession: async () => {} },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       resolveAgent: async sessionId => ({ agent: agentOf(sessionId) }),
       selectModel: async () => {},
@@ -207,6 +210,187 @@ test('unpaired DM asks once, allow pairs it, next message prompts the Bot', asyn
   assert.equal(s.prompts[0].mode, 'queue')
   assert.match(s.prompts[0].requestId, /^im:telegram:/)
   assert.deepEqual(s.prompts[0].content, [{ type: 'text', text: 'do a thing' }])
+})
+
+test('a WeCom direct chat can route to a room and return to the connection Bot', async (t) => {
+  const s = await start({ platform: 'wecom' })
+  t.after(s.stop)
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  const send = (id, text) => dm(s, id, text, { chat: { key: id, kind: 'direct', title: id } })
+  for (const id of ['u1', 'u2']) {
+    await send(id, 'connect')
+    await s.rt.imEndpoint('im-pair', { id: conn.id, senderId: id, allow: true })
+    await send(id, 'before binding')
+    assert.equal(s.prompts.at(-1).sessionId, 'a')
+  }
+  const bind = target => s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'u1', target })
+  await bind({ roomId: 'r1' })
+  await send('u2', 'still private')
+  assert.equal(s.prompts.at(-1).sessionId, 'a')
+  await send('u1', 'hello room')
+  assert.equal(s.prompts.at(-1).sessionId, 'r1')
+  assert.deepEqual(s.prompts.at(-1).content, [{ type: 'text', text: 'hello room' }])
+  s.imTurn('r1')
+  s.emitEvent('r1', 'user/message', { source: { kind: 'ds-bot-time-context', form: 'snapshot' } })
+  s.fake.sent.length = 0
+  s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'reply from room' })
+  await s.flush()
+  assert.deepEqual(s.fake.sent.map(msg => [msg.chat.key, msg.chat.kind, msg.text]), [
+    ['u1', 'direct', '**Writer**: reply from room'],
+  ])
+  await bind(null)
+  await send('u1', 'back to private')
+  assert.equal(s.prompts.at(-1).sessionId, 'a')
+})
+
+test('a room member reply reaches the originating WeCom DM through the WebSocket adapter', async (t) => {
+  const waitFor = async condition => {
+    for (let i = 0; i < 100 && !condition(); i++) await delay(20)
+    assert.ok(condition())
+  }
+  const delivered = []
+  const gateway = await fakeWsServer({ onSocket(ws) {
+    ws.on('message', raw => {
+      const packet = JSON.parse(raw)
+      let errcode = 0
+      if (packet.cmd !== 'aibot_subscribe') {
+        if (packet.cmd === 'aibot_send_msg' && packet.body.chatid === 'u1' && packet.body.msgtype === 'markdown') {
+          delivered.push(packet.body.markdown.content)
+        } else errcode = 40058
+      }
+      ws.send(JSON.stringify({ headers: packet.headers, errcode }))
+    })
+  } })
+  t.after(() => gateway.close())
+  const s = await start({ platform: 'wecom', adapter: adapters.wecom })
+  t.after(s.stop)
+  s.rt.config.im = { wecom: { gateway: gateway.url } }
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  s.rt.state.im.connections[conn.id].paired.push({ id: 'u1', name: 'User', at: 1 })
+  await s.rt.save()
+  await waitFor(() => s.rt.imStatusView()[conn.id]?.state === 'ready')
+  const inbound = id => gateway.sockets.at(-1).send(JSON.stringify({
+    cmd: 'aibot_msg_callback', headers: { req_id: id },
+    body: { chattype: 'single', from: { userid: 'u1' }, msgtype: 'text', msgid: id, text: { content: id } },
+  }))
+  inbound('before binding')
+  await waitFor(() => s.prompts.length === 1)
+  await s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'u1', target: { roomId: 'r1' } })
+  inbound('which workspace')
+  await waitFor(() => s.prompts.at(-1)?.sessionId === 'r1')
+  s.imTurn('r1')
+  s.emitEvent('r1', 'user/message', { source: { kind: 'time-context', form: 'snapshot' } })
+  s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'room workspace' })
+  await waitFor(() => delivered.includes('**Writer**: room workspace'))
+})
+
+test('explicit task document delivery uses the configured WeCom chat, uploads complete bytes and records one acknowledged receipt', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'im-document-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const report = join(dir, 'discussion.md')
+  const document = '# Discussion\n\n' + '完整正文与证据。'.repeat(40000)
+  writeFileSync(report, document)
+  const uploaded = []
+  const sends = []
+  let reject = false
+  let rejectUpload = false
+  let unbind = false
+  const gateway = await fakeWsServer({ onSocket(ws) {
+    ws.on('message', raw => {
+      const packet = JSON.parse(raw)
+      const answer = (body = {}) => ws.send(JSON.stringify({ headers: packet.headers, errcode: 0, body }))
+      if (packet.cmd === 'aibot_subscribe' || packet.cmd === 'ping') return answer()
+      if (packet.cmd === 'aibot_upload_media_init') {
+        if (rejectUpload) return ws.send(JSON.stringify({ headers: packet.headers, errcode: 60001, errmsg: 'media refused' }))
+        assert.equal(packet.body.type, 'file')
+        assert.equal(packet.body.filename, 'discussion.md')
+        assert.equal(packet.body.total_size, Buffer.byteLength(document))
+        uploaded.push({ init: packet.body, chunks: [] })
+        return answer({ upload_id: 'upload-' + uploaded.length })
+      }
+      if (packet.cmd === 'aibot_upload_media_chunk') {
+        const file = uploaded.at(-1)
+        assert.equal(packet.body.chunk_index, file.chunks.length)
+        file.chunks.push(Buffer.from(packet.body.base64_data, 'base64'))
+        return answer()
+      }
+      if (packet.cmd === 'aibot_upload_media_finish') {
+        const file = uploaded.at(-1)
+        assert.equal(file.chunks.length, file.init.total_chunks)
+        assert.equal(Buffer.concat(file.chunks).toString(), document)
+        if (unbind) one.chats.u1.target = null
+        return answer({ media_id: 'media-' + uploaded.length })
+      }
+      assert.equal(packet.cmd, 'aibot_send_msg')
+      assert.equal(packet.body.chatid, 'u1')
+      assert.equal(packet.body.msgtype, 'file')
+      assert.equal(packet.body.file.media_id, 'media-' + uploaded.length)
+      sends.push(packet.body)
+      if (reject) ws.close()
+      else answer({ msgid: 'file-' + sends.length })
+    })
+  } })
+  t.after(() => gateway.close())
+  const s = await start({ platform: 'wecom', adapter: adapters.wecom })
+  t.after(s.stop)
+  s.rt.config.im = { wecom: { gateway: gateway.url } }
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'User', at: 1 })
+  one.chats.u1 = { kind: 'direct', title: 'Configured recipient', target: { roomId: 'r1' }, at: 1 }
+  const room = s.rt.roomOf('r1')
+  room.workDir = dir
+  room.projectCards = { delivery: { id: 'delivery', title: 'Discussion document', intakes: [], rounds: [
+    { ownerId: 'b', assignedAt: 1, startedAt: 2, submittedAt: 3, result: 'Document ready: ' + report },
+  ] } }
+  await s.rt.save()
+  const ready = async () => {
+    for (let i = 0; i < 150 && s.rt.imStatusView()[conn.id]?.state !== 'ready'; i++) await delay(20)
+    assert.equal(s.rt.imStatusView()[conn.id]?.state, 'ready')
+  }
+  await ready()
+  const input = { roomId: 'r1', taskId: 'delivery', fileName: 'discussion.md', requestId: 'deliver-discussion' }
+  const send = extra => s.rt.imEndpoint('im-send-document', { ...input, ...extra })
+  const [first, replay] = await Promise.all([send(), send()])
+  assert.deepEqual(first, replay)
+  assert.equal(first.status, 'sent')
+  assert.equal(first.messageId, 'file-1')
+  assert.equal(first.acknowledged, true)
+  assert.equal(first.chatKey, 'u1')
+  assert.equal(uploaded.length, 1)
+  assert.equal(sends.length, 1)
+  const tool = s.rt.teamTools.find(tool => tool.name === 'send_im_document')
+  assert.ok(tool)
+  room.sessions = { a: 'admin-current' }
+  s.rt.groupOwners.set('admin-current', { roomId: 'r1', botId: 'a' })
+  s.rt.groupOwners.set('admin-old', { roomId: 'r1', botId: 'a' })
+  s.rt.groupOwners.set('unassigned-member', { roomId: 'r1', botId: 'b' })
+  assert.deepEqual(JSON.parse(await tool.execute(input, { agent: { id: 'admin-current' } })), first)
+  await assert.rejects(tool.execute(input, { agent: { id: 'admin-old' } }), /group admin|dispatched document owner/)
+  await assert.rejects(tool.execute(input, { agent: { id: 'unassigned-member' } }), /group admin|dispatched document owner/)
+  await assert.rejects(send({ fileName: 'unrelated.md', requestId: 'other' }), /registered on this task/)
+  one.chats.u2 = { ...one.chats.u1 }
+  one.paired.push({ id: 'u2', name: 'Another user', at: 2 })
+  await assert.rejects(send({ requestId: 'ambiguous' }), /one configured WeCom chat/)
+  delete one.chats.u2
+  one.paired = []
+  await assert.rejects(send({ requestId: 'unpaired' }), /one configured WeCom chat/)
+  one.paired.push({ id: 'u1', name: 'User', at: 1 })
+  reject = true
+  await assert.rejects(send({ requestId: 'lost-ack' }), /acknowledged|socket/)
+  assert.deepEqual(await send(), first, 'a confirmed receipt remains readable while the socket reconnects')
+  reject = false
+  await ready()
+  await assert.rejects(send({ requestId: 'lost-ack' }), /no confirmed result.*uncertain/)
+  assert.equal(sends.length, 2, 'a lost acknowledgement never triggers another file send')
+  unbind = true
+  await assert.rejects(send({ requestId: 'unbound-before-post' }), /one configured WeCom chat/)
+  assert.equal(sends.length, 2, 'a route removed during upload cannot receive the document')
+  unbind = false
+  one.chats.u1.target = { roomId: 'r1' }
+  rejectUpload = true
+  await assert.rejects(send({ requestId: 'refused-upload' }), /WeCom 60001/)
+  assert.equal(sends.length, 2, 'a refused upload never posts a file message')
 })
 
 test('unbound group mention replies unbound and records the chat; binding routes mentions', async (t) => {
@@ -513,6 +697,37 @@ test('a runtime file written before sent existed still loads and behaves unchang
     adapters.telegram = original
   }
 })
+
+for (const extra of [0, 1]) {
+  test(`sent store eviction counts JSON characters at cap + ${extra}`, (t) => {
+    const entry = (id, at, text = '') => ({ ids: [id], text, at })
+    const filler = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
+      `chat-${i}`, Array.from({ length: 20 }, (_, j) => entry(`f${i}-${j}`, 4)),
+    ]))
+    const retained = entry('kept', 3, '最新🦊')
+    const tied = entry('tied', 2, 'keep if at the limit')
+    const expected = { single: [], multi: [retained], tie: [tied], ...filler }
+    const { stringify } = JSON
+    const padding = 200_000 + extra - stringify(expected).length
+    Object.values(filler).flat().forEach((item, i, all) => {
+      item.text = 'x'.repeat(Math.floor((padding + i) / all.length))
+    })
+    assert.equal(stringify(expected).length, 200_000 + extra)
+
+    const sent = {
+      ...expected,
+      single: [entry('first', 1, 'oldest')],
+      multi: [retained, entry('second', 2, '"quote"\n\\🦊')],
+    }
+    delete expected.single
+    if (extra !== 0) delete expected.tie
+    const spy = t.mock.method(JSON, 'stringify')
+    capSentStore(sent)
+    assert.deepEqual(sent, expected)
+    assert.ok(stringify(sent).length <= 200_000)
+    assert.equal(spy.mock.calls.filter(call => call.arguments[0] === sent).length, 1)
+  })
+}
 
 test('the sent store is bounded across chats so the runtime file cannot grow without limit', async (t) => {
   const s = await start({ adapter: fakeAdapter({ quote: true }) })
@@ -1563,6 +1778,7 @@ async function startSwitchHarness(t, { tokens = new Map([['a', 1_000]]), cwd = (
       archiveSession: async () => {},
     },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       create: async () => {
         if (createGate) await createGate()
@@ -2248,4 +2464,49 @@ test('a failed update keeps the network reason and redacts a secret as it appear
     assert.ok(!error.message.includes('new%2Btok%2F1'), 'the encoded token is redacted')
     return true
   })
+})
+
+test('delegated work restores its original IM chat after another chat used the same caller session; unpaired origins stay blocked', async t => {
+  const s=await start()
+  t.after(s.stop)
+  const conn=await add(s)
+  const settings=s.rt.state.im.connections[conn.id]
+  settings.paired.push({id:'u1',name:'First',at:1},{id:'u2',name:'Second',at:1})
+  await s.rt.save()
+  await dm(s,'u1','Delegate a comparison')
+  s.imTurn('a')
+  const run=(name,args,id)=>s.rt.teamTools.find(tool=>tool.name===name).execute(args,{agent:{id}})
+  const receipt=await run('delegate_work',{to:'Writer',goal:'Compare the two records'},'a')
+  const id=/work_id: ([\w-]+)/.exec(receipt)[1]
+  assert.equal(s.rt.state.works[id].imOrigin.chatKey,'dm-u1')
+  s.emitEvent('a','turn/end',{turn:1,reason:{kind:'completed'}})
+  // A different IM conversation uses the same front chat before the work returns.
+  await dm(s,'u2','An unrelated message')
+  s.imTurn('a')
+  s.emitEvent('a','turn/end',{turn:2,reason:{kind:'completed'}})
+  const incoming=s.agentOf('b').lastFollowup
+  s.emitEvent('b','turn/start',{turn:1})
+  s.emitEvent('b','user/message',incoming)
+  s.emitEvent('b','assistant/message',{message:{content:[{type:'text',text:'A verified comparison result.'}]}})
+  s.emitEvent('b','turn/end',{turn:1,reason:{kind:'completed'}})
+  for(let i=0;i<100&&!s.agentOf('a').lastFollowup?.source?.protocolReturn;i++) await delay(5)
+  const returned=s.agentOf('a').lastFollowup
+  assert.equal(returned.source.protocolReturn,id)
+  assert.ok(!JSON.stringify(returned.source).includes('dm-u1'),'private IM address stays out of the Session source')
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:3})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'Here is the original comparison.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.at(-1).chat.key,'dm-u1')
+  assert.equal(s.fake.sent.some(message=>message.chat.key==='dm-u2'),false)
+  s.emitEvent('a','turn/end',{turn:3,reason:{kind:'completed'}})
+  settings.paired=settings.paired.filter(user=>user.id!=='u1')
+  await s.rt.save()
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:4})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'A stale receipt must not leave the app.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.length,0)
 })
