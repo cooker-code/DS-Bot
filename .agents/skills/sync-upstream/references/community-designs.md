@@ -21,7 +21,7 @@ python3 scripts/upstream-catalog.py community-sync
 python3 scripts/upstream-catalog.py community --q 能力包 --kind design
 ```
 
-community-sync从已缓存PR和固定来源Git补齐正文、版本和关系，不fetch、不改变采用状态或盘点终点。首次升级增加designs/design_versions/pr_designs三表，schema v2保留原六表与偏好。相同来源的重复执行不全量重读设计或刷新条目时间。
+community-sync从已缓存PR和固定来源Git补齐正文、版本和关系，不fetch、不改变采用状态或盘点终点。首次升级增加designs/design_versions/pr_designs三表，schema v2保留原六表与偏好。相同来源的重复执行不全量重读设计或刷新条目时间。升级后使用当前工作树或后继版本的新脚本；旧schema v1工具不能读取v2，回滚须先停止管理服务并从一致备份恢复。
 
 之后普通sync自动处理新增、修改、重命名、删除、目录索引和直接提交的设计变化。新/变更设计返回pendingDesigns，补完整评估后才能推进完整盘点游标；失败时来源、PR和设计同事务回滚。
 

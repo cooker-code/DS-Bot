@@ -4,6 +4,14 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ## Local repository tooling
 
+### 2026-11-26 — community functions and design evidence
+
+- Add a community view organized around upstream function changes, use cases, implementation evidence, limits and local PR decisions. Separate implementation PRs from design updates and keep functional changes without design documents discoverable.
+- Read fixed design sources and per-PR design differences from the catalog, with links back to the upstream PR and local adoption reasons. Mark later combined designs explicitly.
+- Cache versioned design bodies and relationships in SQLite schema v2; incremental changes and completed source checkpoints share a transaction, and changed sources require renewed explanations. Preserve existing PR decisions and user preferences.
+
+This is repository tooling; the installed DSH package is unchanged. Historical backfill and verification are recorded in the [implementation receipt](docs/reviews/2026-11-26-upstream-community-implementation.md).
+
 ### 2026-11-26 — upstream catalog timestamps and skill entry
 
 - Show dependency group codes with their Chinese names in filters, table rows and PR details, using the existing review document while retaining stable filter values.

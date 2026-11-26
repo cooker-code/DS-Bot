@@ -71,3 +71,15 @@ python3 scripts/upstream-catalog.py --help
 ```
 
 备份通过SQLite一致性备份接口生成，不直接复制运行中的主文件。`--database`仅用于明确选择独立台账或临时验证库；程序拒绝给已有非台账数据库创建表。`inspect`不访问网络。详情中的原始来源、当前功能解释和历史部署证据分别显示；类型初值来自历史标题，完整评估可修订。
+
+## 本地管理接口
+
+| 请求 | 参数和结果含义 |
+| --- | --- |
+| GET /api/community | q、kind(design/pr)、stage、status(相关实现PR状态)、scope、recent、offset/limit；返回total、rows、designCount、standaloneCount、lastUpdate。阶段与本地状态分开。 |
+| GET /api/design/id | 返回用途/场景/阶段依据/限制、本地注意事项、当前固定原文、实现PR与设计更新PR、版本列表；needs_review时effective_stage为待核实。 |
+| GET /api/pr/N | 原字段保持，追加designs：包含固定原文、PR对应版本、change_kind及本地缓存全文。related明确为后续/关联设计，不能倒算到原补丁。 |
+
+这些是独立管理工具的只读接口，DSH插件API不变。写选择和导出的原同源接口继续使用。首次升级schema v2应先备份、community-sync，再用本批或后继版本启动管理页；旧v1工具不支持新库。
+
+本次完整结果见[实施回执](reviews/2026-11-26-upstream-community-implementation.md)。

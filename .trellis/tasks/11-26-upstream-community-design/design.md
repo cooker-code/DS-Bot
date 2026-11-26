@@ -16,7 +16,7 @@ Git固定SHA/现有PR缓存→prepare读取变化的plan文件和blob→一个SQ
 
 ## API与边界
 
-GET /api/community按关键词、条目类型、上游阶段、本地相关PR状态/范围和最近变化筛选，返回说明和当前关联PR摘要；GET /api/community/<id>返回全文、来源、版本与关系。GET /api/pr/N追加designs，但不改PR判断和选择字段。保留固定允许路径、同源写保护、参数化查询；源码文本用textContent，不执行Markdown中的HTML。CLI补community-sync、design-annotate与查询；写命令仍拒绝dev/main/master。
+GET /api/community按关键词、条目类型、上游阶段、本地相关PR状态/范围和最近变化筛选，返回说明和当前关联PR摘要；GET /api/design/<id>返回全文、来源、版本与关系。GET /api/pr/N追加designs，但不改PR判断和选择字段。保留固定允许路径、同源写保护、参数化查询；源码文本用textContent，不执行Markdown中的HTML。CLI补community-sync、design-annotate与查询；写命令仍拒绝dev/main/master。
 
 ## 验证和回滚
 
@@ -117,3 +117,5 @@ CREATE INDEX pr_designs_by_design ON pr_designs(design_id);
 | pr_designs | previous_path | TEXT | 重命名前路径 |
 | pr_designs | source_sha | TEXT | PR合入SHA |
 | pr_designs | blob_sha | TEXT | PR设计全文版本 |
+
+实现结果：主库schema v2，43设计/索引、113正文版本、192关系；原五类记录逐行保持。源链接同blob改名时按实际提交/路径生成，156条正式链接已核对。[实施回执](../../../docs/reviews/2026-11-26-upstream-community-implementation.md)。

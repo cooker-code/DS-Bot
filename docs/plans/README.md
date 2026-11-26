@@ -72,4 +72,4 @@
 | [连接器](2026-11-04-connectors.md) | 通用连接器引擎、OAuth、网关、邮箱 |
 | [功能结单与异步集成](2026-11-21-async-dev-integration.md) | 功能卡独立结单、Git 管理师更新本地 dev、快照回执和中断恢复 |
 
-本地已定设计：[上游增量台账与PR管理页](2026-11-26-upstream-catalog.md)，2026-11-26已实施、独立复核并安装.29；[实施回执](../reviews/2026-11-26-upstream-2028-implementation.md)。
+本地已定设计：[上游增量台账与PR管理页](2026-11-26-upstream-catalog.md)，包含PR台账和社区功能/设计判断入口。[设置功能.29部署](../reviews/2026-11-26-upstream-2028-implementation.md)与[社区设计增量回执](../reviews/2026-11-26-upstream-community-implementation.md)分别记录。

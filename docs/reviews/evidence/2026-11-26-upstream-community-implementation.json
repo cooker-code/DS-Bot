@@ -1,0 +1,123 @@
+{
+  "recordedAt": "2026-11-26T14:33:28+08:00",
+  "base": "bd78b42d",
+  "branch": "chore/upstream-community-design",
+  "candidate": "0df9784deb12c34ae853d422184f4ec8639280c1",
+  "initialCandidate": "d22c547a3ce29790ed0b5a5693fc15ae861a8d29",
+  "toolsTests": {
+    "originalCatalog": 22,
+    "community": 10,
+    "uniqueTotal": 32,
+    "independentInitial": 29,
+    "independentDeltaCommunity": 10
+  },
+  "isolatedUI": {
+    "pid": 9433,
+    "communityPurposeAndScenario": true,
+    "stageAndLocalPRSeparate": true,
+    "sourceCached": true,
+    "pr2019RoundTrip": true,
+    "pr2028LaterDesignExplicit": true,
+    "noDesignPR1709Visible": true,
+    "choicePreservedInCopy": true,
+    "excludedScopeFilter": true,
+    "narrow390": true,
+    "questionHelpPreserved": true,
+    "detailResetsToTop": true,
+    "mobileSelectionScrollsToDetail": true,
+    "pageErrors": []
+  },
+  "formalReadonlyUI": {
+    "pid": 96826,
+    "formalReadonlyUI": true,
+    "defaultDesignTopics42": true,
+    "abilityPackStageAndLocalReasons": true,
+    "standalone1709Visible": true,
+    "pageErrors": []
+  },
+  "v1CopyMigration": {
+    "v1BackupDidNotMigrateOriginal": true,
+    "v2Copy": true,
+    "oldTablesIdentical": {
+      "prs": true,
+      "preferences": true,
+      "sources": true,
+      "events": true
+    },
+    "counts": {
+      "designs": 43,
+      "design_versions": 113,
+      "pr_designs": 192
+    },
+    "describedDesigns": 42,
+    "indexPaths": 1,
+    "repeat": {
+      "changedDesigns": [],
+      "pendingDesigns": []
+    },
+    "integrity": "ok"
+  },
+  "deployment": {
+    "oldOwnedPID": 86208,
+    "oldServiceExited": true,
+    "backup": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/backups/2026-11-26-142507-before-community-v2.sqlite3",
+    "dailyDSHStopped": false,
+    "schemaVersion": 2,
+    "oldTablesIdentical": {
+      "prs": true,
+      "preferences": true,
+      "sources": true,
+      "events": true,
+      "sync_runs": true
+    },
+    "counts": {
+      "designs": 43,
+      "design_versions": 113,
+      "pr_designs": 192
+    },
+    "designThemes": 42,
+    "standaloneChanges": 197,
+    "fixedLinksChecked": 156,
+    "sourceSHA": "bb1b1592472084c32278c12287944ee40b8087c5",
+    "statuses": {
+      "采用": 95,
+      "需讨论": 5,
+      "暂缓": 108,
+      "跳过": 57
+    },
+    "integrity": "ok",
+    "repeat": {
+      "changedDesigns": [],
+      "pendingDesigns": []
+    },
+    "deliveryURL": "http://127.0.0.1:4179/?view=community",
+    "deliveryPID": 33111
+  },
+  "cleanup": {
+    "dailyDSHStopped": false,
+    "deliveryURL": "http://127.0.0.1:4179/?view=community",
+    "deliveryServiceIntentionallyRunning": true,
+    "previewPID": 4279,
+    "previewExited": true,
+    "previewPortClosed": true,
+    "ownedDatabaseCopiesRemoved": true,
+    "isolatedUI": {
+      "pid": 9433,
+      "browserConnected": false,
+      "temporaryChromeFiles": [],
+      "ownedRemoved": true,
+      "scriptExited": true
+    },
+    "formalUI": {
+      "pid": 96826,
+      "browserConnected": false,
+      "temporaryChromeFiles": [],
+      "ownedRemoved": true,
+      "scriptExited": true
+    }
+  },
+  "devSHA": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d",
+  "devTrackedDiffByteIdentical": true,
+  "pluginPackageChanged": false,
+  "dailyPlugin": "0.3.10-local.29-upstream"
+}
