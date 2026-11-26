@@ -381,7 +381,7 @@ function decide(body) {
   // scripts. These run through real DSH tools, inboxes and persistence.
   const flowDelegate = /(?:^|\n)验证协作\s+(\S+)(?:\s+(queue|now|pause|cancel))?$/.exec(userText.trim())
   if (flowDelegate) return [tool('delegate_work', { to: flowDelegate[1], goal: `FLOW2130:${flowDelegate[2] ?? 'now'}`, when: flowDelegate[2] === 'queue' ? 'queue' : 'now' })]
-  if (userText.trim() === 'FLOW2130:foreground') return Object.assign([text('FLOW2130:foreground completed.')], { delay: 8000 })
+  if (/(?:^|\n)FLOW2130:foreground$/.test(userText.trim())) return Object.assign([text('FLOW2130:foreground completed.')], { delay: 8000 })
   const flowNote = /^验证便笺\s+(\S+)$/.exec(userText.trim())
   if (flowNote) return [tool('note_bot', { to: flowNote[1], note: 'FLOW2130:silent' })]
   const flowQuestion = /Question on work ([\w-]+):\nFLOW2130:question/.exec(userText)
@@ -389,7 +389,8 @@ function decide(body) {
   const releasedQuestion = /Work W\d+ needs an answer:\nFLOW2130:question/.test(userText)
   if (releasedQuestion) return [tool('answer_work', { answer: 'FLOW2130:answer' })]
   if (/Answer on work [\w-]+:\nFLOW2130:answer/.test(userText)) {
-    if (messages.some(message => textOf(message.content).includes('FLOW2130:pause'))) return [tool('ask_back', { question: 'FLOW2130:question' })]
+    const latestWork = messages.findLast(message => message.role === 'user' && textOf(message.content).includes('Delegated work'))
+    if (textOf(latestWork?.content).includes('FLOW2130:pause')) return [tool('ask_back', { question: 'FLOW2130:question' })]
     return [text('FLOW2130:verified result for the original caller.')]
   }
   if (userText.includes('Delegated work') && /FLOW2130:(?:now|queue|pause)/.test(userText)) return [tool('ask_back', { question: 'FLOW2130:question' })]
