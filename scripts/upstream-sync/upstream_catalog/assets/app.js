@@ -22,6 +22,9 @@ async function loadMeta() {
   $('context').textContent = `${meta.branch} · 本地 SQLite · 共 ${meta.total} 个 PR`
   const coverage = meta.coverage, panel = $('coverage')
   panel.replaceChildren()
+  const repository = element('p', '上游仓库：')
+  repository.append(element('a', meta.source.canonical_url, { href: meta.source.canonical_url, target: '_blank', rel: 'noopener noreferrer' }), document.createTextNode(` · 上游分支：${meta.source.branch}（upstream/${meta.source.branch}）`))
+  panel.append(repository)
   const date = value => value ? new Date(value).toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }) : '尚未记录'
   if (coverage) {
     panel.append(element('p', `台账覆盖至：${date(coverage.coveredAt)}（Asia/Taipei） · 提交 ${(coverage.checkpoint || '').slice(0, 8)}`))

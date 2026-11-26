@@ -108,3 +108,5 @@ python3 scripts/upstream-sync/upstream-catalog.py list --sort merged
 ```
 
 check-upstream核对远端dev（缺少Git对象时获取），只保存观察，不推进完整盘点，不合并代码。只读页面与inspect不联网；常规sync --fetch也保存远端观察。GET /api/meta追加coverage；PR查询增加pr_merged_at（GitHub合并时间，缺失时回退固定合入提交时间），createdAt/sourceSyncedAt/updated_at含义不变。新增PR导出包含场景、本地差异、验证与用户选择，按仓库ID+PR号去重。
+
+页面顶部直接显示上游仓库完整可点击地址和来源分支，取自已确认来源的canonical_url/branch；链接新窗口打开并带noopener，存储说明继续保留来源详情。
