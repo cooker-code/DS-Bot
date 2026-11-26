@@ -221,8 +221,10 @@ export function install(rt) {
 
   add('answer_work', 'Answer a blocking question on work you delegated. Resume only that work in its recorded conversation.', {
     work_id: workId, answer: { type: 'string', required: true, description: 'Answer to the worker question' },
-  }, async (args, exec) => serial(text(args.work_id), async () => {
-    const { id, work } = locate(exec, args, 'from')
+  }, async (args, exec) => {
+    const { id } = locate(exec, args, 'from')
+    return serial(id, async () => {
+    const work = workFor(exec, id, 'from')
     if (work.state === 'paused' || !work.question || !text(args.answer)) invalid('This work has no unanswered question, or the answer is empty.')
     const question = work.question
     await rt.save({ required: true, mutate() { delete work.question; work.state = 'open'; work.pendingAnswer = true; return () => { work.question = question; work.state = 'need_input'; delete work.pendingAnswer } } })
@@ -240,7 +242,8 @@ export function install(rt) {
       throw error
     }
     return `Answered work ${id}; its original conversation continues.`
-  }))
+    })
+  })
 
   add('cancel_work', 'Cancel only work you delegated. Stop its own active turn, keep a closed receipt, and leave project cards and other conversations unchanged.', {
     target: { type: 'string', description: 'Exact work ID or short reference, e.g. W3' }, work_id: workId, reason: { type: 'string', description: 'Why this work is no longer needed' },

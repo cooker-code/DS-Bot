@@ -623,3 +623,23 @@ test('restart while reading a completed return retains its return identity and n
   assert.equal(returned.source.replyTo,id)
   assert.equal(rt.state.works[id],undefined)
 })
+
+for (const reference of ['implicit','short']) test(`an ${reference} answer shares the UUID lock with cancellation`,async t=>{
+  const host=await bench(t).start(seed())
+  const turn=turnTaker(host.agents,host.emit)
+  const id=delegatedId(await host.tool('delegate_work',{to:'Writer',goal:'Compare records'},'a'))
+  turn.take('b');await host.tool('ask_back',{question:'Which input?'},'b');turn.end('b','Waiting');turn.take('a')
+  let release, entered=false, cancelled=false
+  const gate=new Promise(resolve=>{release=resolve})
+  const deliver=rt.deliver
+  rt.deliver=async args=>{if(args.workAnswer){entered=true;await gate}return deliver(args)}
+  const answering=host.tool('answer_work',{...(reference==='short'?{work_id:rt.state.works[id].ref}:{}),answer:'Use input A'},'a')
+  await settled(()=>entered)
+  const cancelling=host.tool('cancel_work',{work_id:id},'a').then(value=>{cancelled=true;return value})
+  try { await delay(100);assert.equal(cancelled,false,'cancellation must wait for the answer operation on this same UUID') }
+  finally { release() }
+  await Promise.all([answering,cancelling])
+  assert.equal(rt.state.works[id],undefined)
+  assert.equal(rt.state.works['closed:'+id].protocolReceipt.status,'cancelled')
+  assert.equal(host.agentOf('b').inbox.nextTurn.some(message=>message.source.workAnswer),false,'the queued answer is removed by the subsequent cancellation')
+})
