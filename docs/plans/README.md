@@ -36,7 +36,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [本地上游适配](2026-11-25-local-upstream-decisions.md) | 保留并行会话和项目卡；协作完整流程交付条件及.27断点、设置搜索与预览、二开缺陷报告 |
+| [本地上游适配](../../scripts/upstream-sync/plans/2026-11-25-local-upstream-decisions.md) | 保留并行会话和项目卡；协作完整流程交付条件及.27断点、设置搜索与预览、二开缺陷报告 |
 | [DSH 让步总账](2026-10-13-dsh-concessions.md) | 因 DSH 本身的限制而做的妥协。判断「是 DS Bot 的 bug 还是 DSH 的限制」先看这里 |
 | [角色与权限](2026-10-07-roles-and-permissions.md) | 用户、Main Bot、群管理员、普通 Bot 各能做什么；Bot 的权限预设和群的统一权限 |
 | [隐私 Bot](2026-10-27-private-bots.md) | 只有用户能开关；其他 Bot 读不到它的文件夹、记忆和会话，外发由用户批准；独立文件夹、删除后的保护和隔离边界 |
@@ -72,4 +72,4 @@
 | [连接器](2026-11-04-connectors.md) | 通用连接器引擎、OAuth、网关、邮箱 |
 | [功能结单与异步集成](2026-11-21-async-dev-integration.md) | 功能卡独立结单、Git 管理师更新本地 dev、快照回执和中断恢复 |
 
-本地已定设计：[上游增量台账与PR管理页](2026-11-26-upstream-catalog.md)，包含PR台账和社区功能/设计判断入口。[设置功能.29部署](../reviews/2026-11-26-upstream-2028-implementation.md)与[社区设计增量回执](../reviews/2026-11-26-upstream-community-implementation.md)分别记录。
+本地已定设计：[上游增量台账与PR管理页](../../scripts/upstream-sync/plans/2026-11-26-upstream-catalog.md)，包含PR台账和社区功能/设计判断入口。[设置功能.29部署](../../scripts/upstream-sync/reviews/2026-11-26-upstream-2028-implementation.md)与[社区设计增量回执](../../scripts/upstream-sync/reviews/2026-11-26-upstream-community-implementation.md)分别记录。

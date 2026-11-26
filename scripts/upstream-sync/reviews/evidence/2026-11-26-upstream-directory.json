@@ -1,0 +1,160 @@
+{
+  "migration": {
+    "recordedAt": "2026-11-26T14:46:54+08:00",
+    "branch": "chore/upstream-sync-directory",
+    "oldDatabase": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3",
+    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+    "backup": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/backups/2026-11-26-144654-before-directory-move.sqlite3",
+    "historicalBackups": [
+      "2026-11-26-142507-before-community-v2.sqlite3",
+      "2026-11-26-before-catalog-times.sqlite3",
+      "2026-11-26-upstream-2028.sqlite3"
+    ],
+    "tables": {
+      "design_versions": 113,
+      "designs": 43,
+      "events": 534,
+      "metadata": 49,
+      "pr_designs": 192,
+      "preferences": 3,
+      "prs": 265,
+      "sources": 1,
+      "sync_runs": 0
+    },
+    "unchangedTables": [
+      "design_versions",
+      "designs",
+      "events",
+      "pr_designs",
+      "preferences",
+      "sources",
+      "sync_runs"
+    ],
+    "protectedPRFieldsPreserved": true,
+    "rebasedLedgerPRs": [
+      2130
+    ],
+    "oldServicePID": 33111,
+    "oldServiceExited": true,
+    "integrity": "ok",
+    "legacyStorageRetired": true,
+    "retiredFiles": [
+      "upstream.sqlite3-shm",
+      "upstream.sqlite3",
+      "upstream.sqlite3-wal",
+      "2026-11-26-upstream-2028.sqlite3-shm",
+      "2026-11-26-142507-before-community-v2.sqlite3-wal",
+      "2026-11-26-142507-before-community-v2.sqlite3-shm",
+      "2026-11-26-upstream-2028.sqlite3-wal",
+      "2026-11-26-before-catalog-times.sqlite3",
+      "2026-11-26-upstream-2028.sqlite3",
+      "2026-11-26-142507-before-community-v2.sqlite3",
+      "2026-11-26-before-catalog-times.sqlite3-wal",
+      "2026-11-26-before-catalog-times.sqlite3-shm"
+    ]
+  },
+  "http": {
+    "meta": {
+      "schemaVersion": 2,
+      "directCommits": 0,
+      "total": 265,
+      "statuses": {
+        "采用": 95,
+        "需讨论": 5,
+        "暂缓": 108,
+        "跳过": 57
+      },
+      "notWanted": 2,
+      "needsReview": 0,
+      "pendingExport": 0,
+      "source": {
+        "repo_id": 1409013846,
+        "canonical_url": "https://github.com/Fei-Craft/DS-Bot",
+        "branch": "dev",
+        "checkpoint_sha": "bb1b1592472084c32278c12287944ee40b8087c5",
+        "scanned_at": "2026-11-26T12:45:19+08:00"
+      },
+      "branch": "chore/upstream-sync-directory",
+      "repo": "/Users/blank/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-sync-directory",
+      "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+      "groupNames": {
+        "G01": "测试基线、翻译与测试维护",
+        "G02": "进程、请求与界面资源释放",
+        "G03": "索引、统计与 SQLite 保存",
+        "G04": "记忆缓存、预算与写入因果",
+        "G05": "压缩、交接与冷启动上下文",
+        "G06": "群消息去重、历史与成员轮次",
+        "G07": "后台任务底座与恢复",
+        "G08": "群回报、派活树与排队唤醒",
+        "G09": "原生后台命令、前台移交与任务查看",
+        "G10": "IM 来源、重投、表单与图片",
+        "G11": "模型代审与额外工作目录",
+        "G12": "能力包、工具过滤与插件运行时",
+        "G13": "对外 API、MCP 与缺陷报告目标",
+        "G14": "本地多会话、分叉与会话数据",
+        "G15": "输入草稿、定时任务与待处理状态",
+        "G16": "设置导航、搜索与组件入口",
+        "G17": "布局、浮层隔离与客户端性能",
+        "G18": "群头像与图片校验",
+        "G19": "文档/语音服务与内置技能"
+      },
+      "groups": [
+        "G01",
+        "G02",
+        "G03",
+        "G04",
+        "G05",
+        "G06",
+        "G07",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17",
+        "G18",
+        "G19"
+      ]
+    },
+    "export": {
+      "changed": 0
+    },
+    "ledger": "/Users/blank/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-sync-directory/scripts/upstream-sync/upstream-changelog.md",
+    "assetsAndReadAPIs": "passed"
+  },
+  "browser": {
+    "pid": 74629,
+    "checks": [
+      "社区入口、筛选、设计详情使用新分支与新库正常加载",
+      "PR筛选、历史不需要选择及详情保留"
+    ],
+    "pageErrors": [],
+    "remainingChromeFiles": [],
+    "remainingOwnedProcesses": []
+  },
+  "tests": {
+    "suite": "python3 -m unittest discover -s scripts/upstream-sync/tests -v",
+    "passed": 34
+  },
+  "dev": {
+    "head": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d",
+    "headAndTrackedDiffUnchanged": true
+  },
+  "resourceCleanup": {
+    "browserScriptExited": true,
+    "oldServiceExited": true,
+    "ownedChromeProcesses": [],
+    "ownedChromeClones": [],
+    "deliveryServiceKept": "127.0.0.1:4179"
+  },
+  "sourceUnchanged": {
+    "endpoint": "bb1b1592472084c32278c12287944ee40b8087c5",
+    "newPRs": 0,
+    "fetch": false
+  },
+  "pluginUnchanged": "0.3.10-local.29-upstream"
+}

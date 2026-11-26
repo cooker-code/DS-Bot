@@ -5,7 +5,16 @@ description: 盘点 DS Bot upstream 的修复、功能和设计说明，核对�
 
 # 更新上游插件
 
-从仓库根目录读取 [项目规则](../../../AGENTS.md) 和 [同步记录](../../../upstream-changelog.md)。盘点、补记和实施分别按本次委托执行。补记按指定的历史区间取证；只有同步新进展时才刷新 upstream 引用。
+从仓库根目录读取 [项目规则](../../../AGENTS.md) 和 [同步记录](../../../scripts/upstream-sync/upstream-changelog.md)。盘点、补记和实施分别按本次委托执行。补记按指定的历史区间取证；只有同步新进展时才刷新 upstream 引用。
+
+## 同步材料的唯一目录
+
+所有上游同步管理内容统一归入仓库的`scripts/upstream-sync/`，以后新增文件也遵守：命令和预检脚本、网页源码、SQLite及备份、upstream-changelog.md、PR评估、功能/设计说明、同步任务材料、验证报告和证据。不再在根目录、`docs/`或技能的`scripts/`/`references/`新建另一套同步材料。
+
+- **受Git管理的代码和文档**：位于本批专用工作树的`scripts/upstream-sync/`。导出只写这个工作树内的`upstream-changelog.md`，禁止为更新入口写入主目录dev。
+- **跨工作树共享的运行数据**：固定在主工作目录的`scripts/upstream-sync/upstream.sqlite3`与`backups/`，按精确规则忽略；不随新工作树复制新库。备份用`python3 scripts/upstream-sync/upstream-catalog.py backup`，自动在该目录生成带Asia/Taipei时间的文件。
+- `.agents/skills/sync-upstream/SKILL.md`仅保留技能发现入口和约束，其支持脚本/参考资料从上述目录读取。项目通用AGENTS、发布日志仍在既有位置，实际采用的插件源码和上游原始产品设计也沿用模块路径；本条不搬动产品代码。
+- 历史回执中的当时分支、绝对工作树、命令和数据路径是历史事实；当前入口、相对链接及新记录使用新目录。迁移目录不刷新PR时间、状态、选择或完整盘点终点。
 
 ## 来源与本地集成目标
 
@@ -20,7 +29,7 @@ description: 盘点 DS Bot upstream 的修复、功能和设计说明，核对�
 在当前实际工作树运行只读脚本，登记本地 `dev` 提交、分支覆盖关系和所有工作树的未提交改动。
 
 ```sh
-python3 .agents/skills/sync-upstream/scripts/preflight.py
+python3 scripts/upstream-sync/preflight.py
 ```
 
 可用 `--repo <工作树路径>` 指定要检查的检出目录。结果中的 `includedInDev` 是提交祖先关系，`patchesOutsideDev` 补充显示尚未进入 `dev` 的补丁数量；补丁等价和未提交文件仍须按当前内容核对。
@@ -90,27 +99,27 @@ PR 表使用“原因类型”“实际差异与采用范围”“解决方式�
 
 用户需要知道upstream新增或改变了什么功能，并判断是否加入自己的代码。先组织“功能变化→用途和场景→上游阶段与限制→本地差异、采用状态和完整解法→原文/PR证据”；不能只把文件或PR堆在网页上。
 
-社区入口与PR设计详情按[社区功能与设计流程](references/community-designs.md)维护。上游实现阶段与本地PR四状态分开，设计更新PR与实现PR分开；源内容变化后旧说明标重审。没有plan文件的新功能/修复也要可见。初次补齐历史不冒充本批新增。
+社区入口与PR设计详情按[社区功能与设计流程](../../../scripts/upstream-sync/references/community-designs.md)维护。上游实现阶段与本地PR四状态分开，设计更新PR与实现PR分开；源内容变化后旧说明标重审。没有plan文件的新功能/修复也要可见。初次补齐历史不冒充本批新增。
 
 ## 结构化记录与增量查询
 
-**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；upstream-changelog.md是该台账可提交的审计导出。** 数据库通过`git rev-parse --git-common-dir`定位为`upstream-sync/upstream.sqlite3`（本机主库`/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3`），所有专用工作树共用；不是DSH团队数据库，不提交SQLite二进制。
+**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；`scripts/upstream-sync/upstream-changelog.md`是可提交的审计导出。** 数据库固定为主工作目录的`scripts/upstream-sync/upstream.sqlite3`（本机`/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3`）。通过`git worktree list --porcelain -z`取得主工作目录，所有专用工作树共用同一库和`backups/`，不得再放到`.git/`、临时目录或其他自选日用路径。它不是DSH团队数据库，不提交SQLite二进制或事务日志。隔离自动测试可显式使用临时库，结束后清理。
 
-SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明](../../../docs/upstream-catalog.md)。在本批专用工作树先查台账，不再从头重复查所有历史PR：
+SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明](../../../scripts/upstream-sync/README.md)。在本批专用工作树先查台账，不再从头重复查所有历史PR：
 
 ```sh
-python3 scripts/upstream-catalog.py inspect
-python3 scripts/upstream-catalog.py list --q 设置
-python3 scripts/upstream-catalog.py show 2028
+python3 scripts/upstream-sync/upstream-catalog.py inspect
+python3 scripts/upstream-sync/upstream-catalog.py list --q 设置
+python3 scripts/upstream-sync/upstream-catalog.py show 2028
 # 尚无台账时先bootstrap，默认固定为既有完整盘点终点bb1b1592，不能改成未覆盖的新终点。
-python3 scripts/upstream-catalog.py bootstrap
-python3 scripts/upstream-catalog.py metadata
-python3 scripts/upstream-catalog.py serve --port 4179
+python3 scripts/upstream-sync/upstream-catalog.py bootstrap
+python3 scripts/upstream-sync/upstream-catalog.py metadata
+python3 scripts/upstream-sync/upstream-catalog.py serve --port 4179
 # 同步新进展才明确fetch；补记历史时不fetch。
-python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
+python3 scripts/upstream-sync/upstream-catalog.py sync --fetch --to upstream/dev
 ```
 
-结构化事实和用户选择存于公共Git目录，upstream-changelog.md继续作为可提交审计。根据pendingAnalysis为每个新PR补齐功能/场景/效果/原因/方案与验证，用annotate登记；再重跑sync完成对账、export更新记录。不得把“已缓存”当作“已评估/采用”。无新变化不建重复批次；来源错误、历史不连续或写失败不推进游标。设计见[台账设计](../../../docs/plans/2026-11-26-upstream-catalog.md)。
+结构化事实和用户选择存于主目录的`scripts/upstream-sync/`，同目录内的upstream-changelog.md作为可提交审计。根据pendingAnalysis为每个新PR补齐功能/场景/效果/原因/方案与验证，用annotate登记；再重跑sync完成对账、export更新记录。不得把“已缓存”当作“已评估/采用”。无新变化不建重复批次；来源错误、历史不连续或写失败不推进游标。设计见[台账设计](../../../scripts/upstream-sync/plans/2026-11-26-upstream-catalog.md)。
 
 - 首次从既有来源键导入，后续复用缓存的PR正文、合入SHA、文件列表、设计证据、功能说明和本地判断；先查记录，不重复全历史网络检索。
 - 新区间按上次完整盘点终点→本次固定终点补增量，成功对账后才推进游标；失败不跳过。来源历史不连续或本地基线变化时重审受影响项，不能因上游没变就沿用失效的本地结论。
@@ -120,7 +129,7 @@ python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
 ## 每次执行后打开管理网页
 
 - 本技能每次执行结束（包括无新增、只盘点、历史补记和重审），都检查本地管理服务并主动打开`?view=community`页面，不只返回URL。优先用Codex的`open_in_codex`浏览器入口；该入口不可用时用系统浏览器打开实际本地URL。
-- 先读服务`/api/meta`核对数据库、执行工作树和分支；已有匹配服务则复用。尚未启动时，从本批专用工作树运行`python3 scripts/upstream-catalog.py serve --port 4179`并等API可读再打开。端口被其他会话占用时保留它，另选空闲端口并给出实际URL。切换本次自己维护的服务前核对进程归属，不中断其他会话或DSH。
+- 先读服务`/api/meta`核对数据库、执行工作树和分支；已有匹配服务则复用。尚未启动时，从本批专用工作树运行`python3 scripts/upstream-sync/upstream-catalog.py serve --port 4179`并等API可读再打开。端口被其他会话占用时保留它，另选空闲端口并给出实际URL。切换本次自己维护的服务前核对进程归属，不中断其他会话或DSH。
 - 来源写入先经SQLite，再导出去重记录；打开前核对导出状态。遇到待补说明或失败，仍可打开已有页面并解释具体缺口，不能把旧页面当成本次同步成功证据。只改技能/管理页不推进上游区间、不重新安装无变化的DSH插件。
 - 表格必须显示“PR提交时间”和“同步时间”：前者来自GitHub `pullRequest.createdAt`，后者是该PR来源资料实际入库时间；两者均以Asia/Taipei显示。上游合并时间、首次历史记录日期、分析时间、采用/部署时间分别保留，不相互冒充。GitHub时间只查询缓存缺失项；无来源变化、仅改选择/分析时不刷新同步时间。
 - 技能及脚本从其所在的专用工作树解析。主目录仍检出dev时，不假定其旧技能已经包含新流程；交付新版技能的完整路径，未获授权不为更新入口写入dev。
@@ -139,11 +148,11 @@ python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
 
 ## 交付时直接展示社区方向
 
-每次交付先展示本批**社区新增功能与设计变化**，再展示 PR 采用表。用户应仅凭答复就能理解上游在发展什么能力。逐项说明解决的问题、触发或使用方式、主要限制、上游状态（已合入 dev、已发布或仍在计划）及本地状态，并链接固定 SHA 的设计或来源 PR。本地暂缓、跳过的功能同样参与社区方向说明；没有新功能时说明本批修复和维护的主要方向。根目录记录保留完整依据。
+每次交付先展示本批**社区新增功能与设计变化**，再展示 PR 采用表。用户应仅凭答复就能理解上游在发展什么能力。逐项说明解决的问题、触发或使用方式、主要限制、上游状态（已合入 dev、已发布或仍在计划）及本地状态，并链接固定 SHA 的设计或来源 PR。本地暂缓、跳过的功能同样参与社区方向说明；没有新功能时说明本批修复和维护的主要方向。同步目录记录保留完整依据。
 
 每批逐项列全 PR，表中保留 1–10 权重和四种显式状态。**交付表格与当前批次的记录表格，按“采用 → 需讨论 → 暂缓 → 跳过”分组，同状态按权重从高到低排列，同权重按 PR 号升序。** 历史落地片段仍保持一个 PR 键，未完成环节写在同一行。旧批次状态或依据变化时原位补时间和理由。
 
-每个采用项及历史已部署片段都给出与本次包版本对应的验证方法。说明操作入口、必要前提、实际步骤、预期结果、已有自动验证和仍缺的真实环境证据。性能、超时或资源回收修复优先复用隔离测试，界面可观察的功能提供用户能执行的验证步骤。按 [安装、加载与行为验证](references/verification.md) 组织交付，具体用例随本批实际采用内容更新到根目录同步记录。
+每个采用项及历史已部署片段都给出与本次包版本对应的验证方法。说明操作入口、必要前提、实际步骤、预期结果、已有自动验证和仍缺的真实环境证据。性能、超时或资源回收修复优先复用隔离测试，界面可观察的功能提供用户能执行的验证步骤。按 [安装、加载与行为验证](../../../scripts/upstream-sync/references/verification.md) 组织交付，具体用例随本批实际采用内容更新到同步目录记录。
 
 交付还应说明本批分支及工作树、候选提交、是否合回 `dev`（默认未合回）、版本、安装包、已更新 profile、运行加载状态，以及仍未通过的检查。仓库迁名时明确下一次的来源地址。
 

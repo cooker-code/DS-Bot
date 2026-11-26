@@ -105,7 +105,11 @@ dsh plugin --profile desktop --config.registry=https://registry.npmjs.org/ add "
 
 ## 合并上游 DS Bot 仓库更新
 
-盘点或移植 upstream 更新时，使用 [sync-upstream](.agents/skills/sync-upstream/SKILL.md)。逐项维护根目录的 [upstream-changelog.md](upstream-changelog.md)，按来源去重并记时间。每批都核对上游 `docs/plans/` 正文和索引，说明新增功能、设计变更及尚在计划中的行为。
+盘点或移植 upstream 更新时，使用 [sync-upstream](.agents/skills/sync-upstream/SKILL.md)。逐项维护同步目录的 [upstream-changelog.md](scripts/upstream-sync/upstream-changelog.md)，按来源去重并记时间。每批都核对上游 `docs/plans/` 正文和索引，说明新增功能、设计变更及尚在计划中的行为。
+
+**上游同步管理内容统一放在 `scripts/upstream-sync/`。** 该目录拥有台账命令、预检、网页源码、SQLite、备份、同步记录、PR评估、功能设计说明、任务材料及验证证据；以后不得在根目录、`docs/`、`.git/`等位置另建同步材料。技能发现入口仍为 `.agents/skills/sync-upstream/SKILL.md`，支持文件均从同步目录读取。产品源码、上游原始产品设计及项目通用规则和发布日志沿用原模块位置。
+
+受Git管理的文件位于本批专用工作树的 `scripts/upstream-sync/`；SQLite固定为**项目主工作目录**下的 `scripts/upstream-sync/upstream.sqlite3`，备份固定为同目录 `backups/`，所有同步工作树共享，禁止将这些运行数据提交。独立工作树通过Git工作树清单定位主目录，不再使用 `.git/upstream-sync/`。主目录仍在dev时，只允许在精确忽略的同步目录写入这份共享运行数据，不改写dev的代码、文档或同步记录；隔离测试库结束后清理。
 
 **上游同步必须为每个新批次在项目主目录 `.worktree/` 下新建专用分支和独立工作树，禁止在本地 `dev`、`main`、`master` 上移植、合并、提交或写入同步记录。** 本地 `dev` 只读作比较基线；同一未完成批次可续用已登记的专用分支，新批次不得复用已完成分支。验证通过默认仍留在同步分支，只有用户当次明确要求才将指定候选合回 `dev`；“同步上游”“验收通过”或“更新本机插件”均不包含该合并授权。已授权的同步版本可直接从已验证分支打包安装，本节优先于常规功能发版“先合 `dev`”的流程。
 
