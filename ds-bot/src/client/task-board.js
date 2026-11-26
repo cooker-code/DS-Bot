@@ -1,4 +1,4 @@
-import { taskManagementEnabled } from '../shared/task-settings.js'
+import { taskManagementEnabled, TASK_STATUS } from '../shared/task-settings.js'
 // The group task board in the group's details panel: what each member is working on,
 // the latest line of progress, and the history of finished and cancelled work. The
 // board also holds accepted project cards. Users manage the list here.
@@ -10,11 +10,7 @@ import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from './icons.js'
 import { useAnchoredMenu } from './model-menu.js'
 import { t } from './i18n.js'
 
-export const TASK_STATUS = {
-  pending: 'Awaiting intake', clarify: 'Needs clarification', planning: 'Planning', dispatching: 'Dispatching',
-  active: 'In progress', review: 'Awaiting review', human_review: 'Human acceptance', blocked: 'Blocked',
-  failed: 'Failed', done: 'Done', cancelled: 'Cancelled',
-}
+export { TASK_STATUS }
 
 const BOARD_STATES = {
   clarify: 'The task needs more information from you to continue.',
@@ -467,6 +463,7 @@ export const TASK_CSS = `
 .bt-task-checkout-edit{display:grid;gap:4px;margin-top:8px}
 .bt-task-checkout-edit select{max-width:100%;width:100%;min-width:0}
 .bt-project-detail textarea{font-family:ui-monospace,monospace;tab-size:4}
+.bt-task-status-reason{white-space:pre-wrap}
 .bt-task-goal{margin-top:2px;font-size:13px;line-height:18px;color:var(--bt-ink)}
 .bt-task-progress{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
 .bt-task-result{margin-top:2px;font-size:12px;line-height:17px;color:var(--bt-ink-2);white-space:pre-wrap}

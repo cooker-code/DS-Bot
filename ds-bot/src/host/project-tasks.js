@@ -1,6 +1,6 @@
 import { snapshotResultFiles } from './project-result-files.js'
 import { beginValidation, checkpointValidation, validationReceipt } from './project-validation.js'
-import { taskError } from '../shared/task-settings.js'
+import { taskError, editableProjectStatuses } from '../shared/task-settings.js'
 import { assistantId, decidesGitWorkspace, runsProject, projectNotice } from './project-assistant.js'
 // Project cards belong to the group. Keep small assignment records here and resolve
 // the original text and attachments from the group's durable ledger when delivering.
@@ -11,7 +11,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { approveRound, completeRelatedCards, finishSubmittedPlan, requestAcceptance, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
 import { blockRound, checkProjectStart, currentBinding, inspectReplannedWriter, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
-import { codeDelivery, projectStatus, taskPhase } from './project-status.js'
+import { codeDelivery, projectStatus, taskPhase, taskStatusBasis } from './project-status.js'
 import { scopeFields, scopeOf, taskRoom } from './task-routing.js'
 import { taskMessage } from '../shared/task-message.js'
 import { speakerOf } from '../shared/mentions.js'
@@ -64,7 +64,8 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq, docum
     const existing = cardForIntake(room, intakeId)
     if (existing) {
       if (delegatedSeq && delegatedSeq > (existing.delegatedSeq ?? 0)) {
-        const updated = { ...existing, ...(existing.goal === undefined && !existing.plans?.length ? document : {}), delegatedSeq }
+        const updated = { ...existing, ...document, delegatedSeq }
+        if (document) reviseRequirement(room, updated, projectSources(rt, room, existing.intakes, existing.id, delegatedSeq), document.goal, existing)
         delete updated.clarification
         room.projectCards[existing.id] = updated
         return () => { room.projectCards[existing.id] = existing }
@@ -75,7 +76,10 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq, docum
     if (!receipt || room.deletedTaskIntakes?.includes(intakeId)) throw new Error('This intake is unavailable.')
     const previous = { ...receipt }
     const card = intakeCard(room, receipt, field(reason, 'the independently verifiable outcome for this new task', 4000), title)
-    if (delegatedSeq) Object.assign(card, document, { delegatedSeq })
+    if (delegatedSeq) {
+      reviseRequirement(room, card, projectSources(rt, room, card.intakes, card.id, delegatedSeq), document.goal)
+      Object.assign(card, document, { delegatedSeq })
+    }
     return () => {
       delete room.projectCards[card.id]
       delete receipt.reason
@@ -164,14 +168,26 @@ function documentSources(lines) {
   return seqs.length ? { documentSources: seqs } : {}
 }
 
-function requirementHistory(room, card, sources) {
-  if (card.requirementHistory) return card.requirementHistory
-  // Older hosts recorded a user edit and its source messages but did not take snapshots.
-  if (!card.fieldEditTimes?.requirement || typeof card.goal !== 'string') return []
-  const original = sources.find(line => line.intakeId === card.intakes?.[0] && card.requirementSources?.includes(line.seq))
-  if (!original) return []
+export function requirementHistory(room, card, sources) {
+  const history = card.requirementHistory ?? []
+  const original = sources.find(line => line.intakeId === card.intakes?.[0])
+  if (!original) return history
   const text = taskMessage(original.text, room).body
-  return text && text !== card.goal ? [{ text, images: original.images ?? [], ...documentSources([original]) }] : []
+  // The user intake is v1, including cards whose clarified goal predates snapshots.
+  if ((!text && !original.images?.length && !original.files?.length) || text === (history[0]?.text ?? projectRequirement(room, card, sources))) return history
+  return [{ text, images: original.images ?? [], ...documentSources([original]) }, ...history]
+}
+
+function reviseRequirement(room, card, sources, value, previous = card) {
+  const current = projectRequirement(room, previous, sources)
+  if (current === value) return
+  card.requirementHistory = [...requirementHistory(room, previous, sources), {
+    ...documentSources(sources), text: current,
+    images: uniqueImages([...sources.flatMap(line => line.images ?? []), ...(previous.fieldImages?.requirement ?? [])]),
+  }]
+  card.goal = value
+  card.requirementSources = sources.map(line => line.seq)
+  card.updatedAt = Math.max(Date.now(), (previous.updatedAt ?? 0) + 1)
 }
 
 export function projectImages(card, sources) {
@@ -203,7 +219,31 @@ export function projectCardDetail(rt, room, card, taskId = card.id, textOnly = f
     ...(card.plans?.length ? { plans: card.plans.map(plan => ({ ...plan, nodes: nodeViews(card, plan) })) } : {}),
     ...(card.previousReviews?.length ? { previousReviews: card.previousReviews } : {}),
     requirements: sources.map(({ seq, text, images, files }) => ({ seq, text, images, files })),
+    statusHistory: (card.statusHistory ?? []).map(({ basis: _basis, ...change }) => change),
   }
+}
+
+export async function updateProjectTaskStatus(rt, { roomId, taskId, previous, status, reason }) {
+  if (!editableProjectStatuses.includes(status) || typeof previous !== 'string') throw new Error('Choose a valid task status.')
+  reason = field(reason, 'the reason for changing the task status', 2000)
+  await rt.save({ required: true, mutate() {
+    const room = rt.roomOf(roomId)
+    if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
+    if (!taskRoom(room)) throw taskError('TASK_MANAGEMENT_DISABLED')
+    if (typeof taskId !== 'string' || !Object.hasOwn(room.projectCards ?? {}, taskId))
+      throw Object.assign(new Error('No such task'), { code: 'bot/not-found' })
+    const card = room.projectCards[taskId]
+    const current = projectCardSummary(card).status
+    if (current !== previous) throw new Error('The task status changed. Reopen it to edit the latest status.')
+    if (!['blocked', 'failed'].includes(current)) throw new Error('Only blocked or failed tasks can be changed manually.')
+    if (status === current) throw new Error('Choose a different task status.')
+    const at = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)
+    const change = { from: current, status, reason, at, by: 'user', basis: taskStatusBasis(card) }
+    room.projectCards[taskId] = { ...card, updatedAt: at, statusHistory: [...(card.statusHistory ?? []), change] }
+    return () => { room.projectCards[taskId] = card }
+  } })
+  const room = rt.roomOf(roomId)
+  return projectCardDetail(rt, room, room.projectCards[taskId])
 }
 
 export async function updateProjectTaskText(rt, { roomId, taskId, field: key, previous, value, removeImages = [] }, saveImages) {
@@ -301,7 +341,7 @@ export function install(rt) {
       parentTaskId: { type: 'string', description: 'For relate, the existing primary project card in this group. The child keeps its ID and history.' },
       ownerId: { type: 'string', description: 'Group member ID for assign or handoff.' },
       title: { type: 'string', description: 'Short title for a new card.' },
-      plan: { type: 'string', description: 'For first plan and delegation, the clarified requirement as a concise numbered list. For assignment or handoff, instructions for the next owner.' },
+      plan: { type: 'string', description: 'For plan and delegation, the clarified requirement as a concise numbered list. A changed requirement creates its next requirement version; omit on plan-only revisions. For assignment or handoff, instructions for the next owner.' },
       acceptance: { type: 'string', description: 'Concise numbered list of observable conditions the user can verify.' },
       round: { type: 'integer', description: 'Execution round for start, checkpoint, block, submit or handoff. Required for approve and request_acceptance together with taskId, version, node and artifact. Use the submitted node’s round from project_task read.' },
       checking: { type: 'string', description: 'Checkpoint: the acceptance check now in progress.' },
@@ -721,11 +761,14 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       const acceptance = field(args.acceptance ?? card?.acceptance, 'acceptance conditions', 2000)
       if (card && card.plans?.length && (card.title !== title || card.acceptance?.trim() !== acceptance)) throw new Error('This card has different details.')
       card ??= { id: randomUUID(), title, acceptance, intakes: [receipt.id], rounds: [] }
+      if (args.plan !== undefined) {
+        const requirement = field(args.plan, 'the clarified requirement', 4000)
+        const sources = projectSources(rt, room, card.intakes, card.id, source?.intakeSeq)
+        if (card.plans?.at(-1)?.version === args.version && requirement !== projectRequirement(room, card, sources))
+          throw new Error('Save a changed requirement with a new plan version.')
+        reviseRequirement(room, card, sources, requirement)
+      }
       if (!card.plans?.length) {
-        if (card.goal === undefined && args.plan?.trim()) {
-          card.goal = field(args.plan, 'the clarified requirement', 4000)
-          card.requirementSources = projectSources(rt, room, card.intakes, card.id, source?.intakeSeq).map(line => line.seq)
-        }
         card.title = title
         card.acceptance = acceptance
         delete card.clarification

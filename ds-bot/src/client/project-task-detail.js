@@ -6,6 +6,7 @@ import { ChevronLeftIcon, CloseIcon } from './icons.js'
 import { TaskHandoffs } from './task-handoffs.js'
 import { TaskResults } from './task-results.js'
 import { TaskWorkspace } from './task-workspace.js'
+import { TaskStatusEditor } from './task-status-editor.js'
 import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
 import { t } from './i18n.js'
 
@@ -221,6 +222,13 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
       retry(n => n + 1)
     }
   }
+  const saveStatus = async (previous, status, reason) => {
+    try {
+      const saved = await call('update-project-task-status', { roomId: room.id, taskId, previous, status, reason })
+      activeRead.current?.abort()
+      setDetail(current => ({ ...current, ...saved }))
+    } finally { retry(n => n + 1) }
+  }
   readOnly ||= room.taskManagementEnabled === false
   return h(Fragment, null,
     h('div', { className: 'bt-subhead', 'data-move': move },
@@ -239,6 +247,7 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
           h(TaskResults, { key: room.id + taskId, roomId: room.id, taskId, detail }),
           detail.acceptanceRequest ? h(AcceptanceRequest, { key: detail.acceptanceRequest.id, roomId: room.id, card: detail, actions, readOnly }) : null,
           h(ValidationProgress, { detail }),
-          h(TaskWorkspace, { room, card, readOnly }))
+          h(TaskWorkspace, { room, card, readOnly }),
+          h(TaskStatusEditor, { key: room.id + taskId, detail, readOnly, onSave: saveStatus }))
         : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))
 }
