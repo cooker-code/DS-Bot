@@ -18,7 +18,7 @@ export function install(rt) {
     return { options: options.filter(option => option.value !== SESSION_ONLY), defaultPreset }
   }
 
-  const roomOfSession = sessionId => rt.roomOf(rt.groupOwners.get(sessionId)?.roomId)
+  const roomOfSession = sessionId => rt.roomOf(rt.groupOwners.get(sessionId)?.roomId) ?? rt.protocolRoomOf?.(sessionId)
 
   // `name` may be a function: it is read once the agent resolves, so a change asked
   // for while the resolve ran wins over the one still being applied.

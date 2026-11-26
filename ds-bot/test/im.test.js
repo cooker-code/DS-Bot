@@ -97,6 +97,7 @@ async function start({ platform = 'telegram', adapter, seed, services = {} } = {
     llm: { listProviders: () => [] },
     workspaceRegistry: { get: () => undefined, resolveByPath: async () => undefined, create: async () => ({ id: 'w1' }), archiveSession: async () => {} },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       resolveAgent: async sessionId => ({ agent: agentOf(sessionId) }),
       selectModel: async () => {},
@@ -1777,6 +1778,7 @@ async function startSwitchHarness(t, { tokens = new Map([['a', 1_000]]), cwd = (
       archiveSession: async () => {},
     },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       create: async () => {
         if (createGate) await createGate()
@@ -2462,4 +2464,49 @@ test('a failed update keeps the network reason and redacts a secret as it appear
     assert.ok(!error.message.includes('new%2Btok%2F1'), 'the encoded token is redacted')
     return true
   })
+})
+
+test('delegated work restores its original IM chat after another chat used the same caller session; unpaired origins stay blocked', async t => {
+  const s=await start()
+  t.after(s.stop)
+  const conn=await add(s)
+  const settings=s.rt.state.im.connections[conn.id]
+  settings.paired.push({id:'u1',name:'First',at:1},{id:'u2',name:'Second',at:1})
+  await s.rt.save()
+  await dm(s,'u1','Delegate a comparison')
+  s.imTurn('a')
+  const run=(name,args,id)=>s.rt.teamTools.find(tool=>tool.name===name).execute(args,{agent:{id}})
+  const receipt=await run('delegate_work',{to:'Writer',goal:'Compare the two records'},'a')
+  const id=/work_id: ([\w-]+)/.exec(receipt)[1]
+  assert.equal(s.rt.state.works[id].imOrigin.chatKey,'dm-u1')
+  s.emitEvent('a','turn/end',{turn:1,reason:{kind:'completed'}})
+  // A different IM conversation uses the same front chat before the work returns.
+  await dm(s,'u2','An unrelated message')
+  s.imTurn('a')
+  s.emitEvent('a','turn/end',{turn:2,reason:{kind:'completed'}})
+  const incoming=s.agentOf('b').lastFollowup
+  s.emitEvent('b','turn/start',{turn:1})
+  s.emitEvent('b','user/message',incoming)
+  s.emitEvent('b','assistant/message',{message:{content:[{type:'text',text:'A verified comparison result.'}]}})
+  s.emitEvent('b','turn/end',{turn:1,reason:{kind:'completed'}})
+  for(let i=0;i<100&&!s.agentOf('a').lastFollowup?.source?.protocolReturn;i++) await delay(5)
+  const returned=s.agentOf('a').lastFollowup
+  assert.equal(returned.source.protocolReturn,id)
+  assert.ok(!JSON.stringify(returned.source).includes('dm-u1'),'private IM address stays out of the Session source')
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:3})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'Here is the original comparison.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.at(-1).chat.key,'dm-u1')
+  assert.equal(s.fake.sent.some(message=>message.chat.key==='dm-u2'),false)
+  s.emitEvent('a','turn/end',{turn:3,reason:{kind:'completed'}})
+  settings.paired=settings.paired.filter(user=>user.id!=='u1')
+  await s.rt.save()
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:4})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'A stale receipt must not leave the app.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.length,0)
 })

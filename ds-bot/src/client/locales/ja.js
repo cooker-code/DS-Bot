@@ -1,6 +1,17 @@
 // Japanese (ja) localization for DS Bot client and DSH settings namespaces.
 
 export const JA = {
+  "Delegated work": "委任した作業",
+  "Group paused": "グループを一時停止中",
+  "Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.": "Bot間の自動引き継ぎが確認地点に達しました。続行する場合は再開してください。",
+  "Asked for clarification": "確認を依頼しました",
+  "Answered delegated work": "委任した作業に回答しました",
+  "Cancelled delegated work": "委任した作業をキャンセルしました",
+  "Work paused": "作業を一時停止中",
+  "Waiting for an answer": "回答待ち",
+  "Answer": "回答",
+  "Cancel work": "作業をキャンセル",
+
   "Overview": "概要",
   "Search settings": "設定を検索",
   "Settings results": "設定の検索結果",

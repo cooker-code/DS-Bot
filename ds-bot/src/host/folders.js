@@ -27,8 +27,8 @@ export function install(rt) {
   // A member's own pick inside one group, made with working_directory there: a path,
   // or null for the team workspace, which a missing entry would read as the Bot's
   // folder. A group's folder outranks it; without one the Bot's folder is the default.
-  const workDirOf = ({ botId, roomId } = {}) => {
-    const room = rt.roomOf(roomId)
+  const workDirOf = ({ botId, roomId, workRoomId } = {}) => {
+    const room = rt.roomOf(roomId ?? workRoomId)
     if (botId !== undefined && Object.hasOwn(memberSettings(room), botId) && memberSettings(room)[botId].override) return room.memberDirs?.[botId] ?? undefined
     if (room?.workDir !== undefined) return room.workDir
     if (room !== undefined && botId !== undefined && Object.hasOwn(room.memberDirs ?? {}, botId)) return room.memberDirs[botId] ?? undefined

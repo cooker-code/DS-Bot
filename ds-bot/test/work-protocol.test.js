@@ -2,7 +2,7 @@ import { SOURCE_KIND } from '../src/host/constants.js'
 // Waits a Bot gave up: one hand-off that will not come back is closed with an explicit
 // result, so the work above it goes on instead of waiting forever.
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -46,8 +46,8 @@ async function startHost(home, team, options = {}) {
         id: sessionId,
         calls,
         status: 'idle',
-        followup(message) { calls.push(['followup', message]) },
-        steer(message) { calls.push(['steer', message]) },
+        followup(message) { calls.push(['followup', message]); this.inbox.nextTurn.push(message) },
+        steer(message) { calls.push(['steer', message]); this.inbox.nextStep.push(message) },
         inject(message) { calls.push(['inject', message]) },
         cancel(cause) { calls.push(['cancel', cause]) },
         async whenIdle() {},
@@ -79,7 +79,7 @@ async function startHost(home, team, options = {}) {
       create: async () => ({ sessionId: 's1' }),
       resolveAgent: async sessionId => ({ agent: agentOf(sessionId) }),
       selectModel: async () => {},
-      page: async () => ({ records: [], hasMore: false }),
+      page: options.page ?? (async () => ({ records: [], hasMore: false })),
       ...(options.inspect === undefined ? {} : { inspect: options.inspect }),
     },
     sessionTitle: { rename: async () => {} },
@@ -138,6 +138,7 @@ const settled = async (check) => {
 function turnTaker(agents, emit) {
   const turns = new Map()
   const open = (id, message) => {
+    agents.get(id)?.inbox.remove(message.id)
     turns.set(id, (turns.get(id) ?? 0) + 1)
     emit(id, 'turn/start', { turn: turns.get(id) })
     emit(id, 'user/message', { content: message.content, source: message.source })
@@ -425,4 +426,200 @@ test('legacy child handoffs inherit protocol cancellation without changing stand
   await delay(10)
   assert.equal(callsOf(host.agents, 'b').filter(([,m]) => m?.source?.role === 'reply').length, 0)
   assert.equal(callsOf(host.agents, 'a').length, 0)
+})
+
+test('restart resumes active protocol work once in its original background thread and leaves waiting/paused work parked', async t => {
+  const bed = bench(t)
+  const first = await bed.start(seed())
+  const turn = turnTaker(first.agents, first.emit)
+  turn.userTurn('b', 'Foreground draft')
+  const active = delegatedId(await first.tool('delegate_work', { to: 'Writer', goal: 'Background work' }, 'a'))
+  const sid = rt.state.works[active].toSession
+  turn.take(sid)
+  const waiting = delegatedId(await first.tool('delegate_work', { to: 'Tester', goal: 'Ask a question' }, 'a'))
+  turn.take('c')
+  await first.tool('ask_back', { question: 'Which input?' }, 'c')
+  turn.end('c', 'Waiting')
+  const paused = delegatedId(await first.tool('delegate_work', { to: 'Editor', goal: 'Paused task' }, 'a'))
+  await rt.pauseProtocolWork(paused, 'delegate', 'User checkpoint')
+  await first.call('set-prefs', {})
+  await settled(() => { try { return JSON.parse(readFileSync(join(bed.home, 'inflight.json'), 'utf8')).turns[sid]?.trigger?.workProtocol } catch { return false } })
+  await first.stop()
+  const second = await bed.start()
+  await delay(3300)
+  const sends = callsOf(second.agents, sid).filter(([kind]) => kind === 'followup')
+  assert.equal(sends.length, 1)
+  assert.equal(sends[0][1].source.exchangeId, active)
+  assert.equal(sends[0][1].source.workProtocol, true)
+  assert.equal(callsOf(second.agents, 'b').length, 1, 'the unrelated interrupted foreground also resumes in its own thread')
+  assert.equal(callsOf(second.agents, 'b')[0][1].source.role, 'resume')
+  assert.notEqual(callsOf(second.agents, 'b')[0][1].source.exchangeId, active)
+  assert.equal(callsOf(second.agents, 'c').length, 0)
+  assert.equal(callsOf(second.agents, 'd').length, 0)
+  assert.equal(rt.state.works[waiting].state, 'need_input')
+  assert.equal(rt.state.works[paused].state, 'paused')
+})
+
+test('a failed final return survives SQLite restart and is delivered without running the worker again', async t => {
+  const bed = bench(t)
+  const first = await bed.start(seed())
+  const turn = turnTaker(first.agents, first.emit)
+  const id = delegatedId(await first.tool('delegate_work', { to: 'Writer', goal: 'Prepare evidence' }, 'a'))
+  turn.take('b')
+  const deliver = rt.deliver
+  rt.deliver = async args => { if (args.role === 'reply') throw new Error('Return temporarily unavailable'); return deliver(args) }
+  turn.end('b', 'Evidence is ready and verified.')
+  await settled(() => rt.state.workOutbox?.['result-' + id] && !rt.state.works[id])
+  await first.call('set-prefs', {})
+  await first.stop()
+  const second = await bed.start()
+  await settled(() => callsOf(second.agents, 'a').some(([kind, message]) => kind === 'followup' && message.source.replyTo === id))
+  assert.equal(callsOf(second.agents, 'a').filter(([kind]) => kind === 'followup').length, 1)
+  assert.equal(callsOf(second.agents, 'b').length, 0)
+  await settled(() => Object.keys(rt.state.workOutbox).length === 0)
+  assert.equal(Object.keys(rt.state.workOutbox).length, 0)
+})
+
+test('useful two-step text work continues; repeated zero-work returns pause and real CLI work resets the pair', async t => {
+  const host = await bench(t).start(seed())
+  const turn = turnTaker(host.agents, host.emit)
+  const run = async n => {
+    const id = delegatedId(await host.tool('delegate_work', { to: 'Writer', goal: `Compare section ${n}` }, 'a'))
+    turn.take('b')
+    turn.end('b', `Section ${n} introduces a different parameter and updates the example.`)
+    await settled(() => !rt.state.works[id])
+    return id
+  }
+  await run(1)
+  await run(2)
+  assert.equal(Object.values(rt.state.works).filter(work => work.protocol && work.state === 'paused').length, 0)
+  await run(3)
+  await run(4)
+  const paused = delegatedId(await host.tool('delegate_work', { to: 'Writer', goal: 'Repeat analysis' }, 'a'))
+  assert.equal(rt.state.works[paused].state, 'paused')
+  await host.call('resume-work', { id: paused })
+  turn.take('b')
+  rt.noteProtocolActivity('b', 'shell')
+  turn.end('b', 'Verified by running the command.')
+  await settled(() => !rt.state.works[paused])
+  const next = delegatedId(await host.tool('delegate_work', { to: 'Writer', goal: 'Continue useful work' }, 'a'))
+  assert.equal(rt.state.works[next].state, 'open')
+})
+
+test('crash after a flushed final result but before clearing outbox reuses its stable delivery identity',async t=>{
+  const bed=bench(t)
+  const host=await bed.start(seed())
+  const turn=turnTaker(host.agents,host.emit)
+  const id=delegatedId(await host.tool('delegate_work',{to:'Writer',goal:'Compare records'},'a'))
+  const original=structuredClone(rt.state.works[id])
+  turn.take('b')
+  turn.end('b','The two records differ in the date field.')
+  await settled(()=>!Object.keys(rt.state.workOutbox??{}).length&&!rt.state.works[id])
+  const returned=callsOf(host.agents,'a').find(([kind,message])=>kind==='followup'&&message.source.replyTo===id)[1]
+  assert.equal(returned.source.protocolDeliveryId,'result-'+id)
+  // Durable state at the exact crash window: Session flush succeeded and its
+  // protocolSends entry is gone, but the old workOutbox row still exists.
+  rt.state.workOutbox['result-'+id]={id,work:original,text:'The two records differ in the date field.'}
+  await host.call('set-prefs',{})
+  await host.stop()
+  const events=[{type:'user/message',seq:1,data:{source:returned.source,content:returned.content}}]
+  const second=await bed.start(undefined,{page:async({address})=>({records:address.sessionId==='a'?events.map(event=>({event})):[],hasMore:false})})
+  await settled(()=>!Object.keys(rt.state.workOutbox??{}).length)
+  assert.equal(callsOf(second.agents,'a').filter(([kind])=>kind==='followup').length,0,'already-flushed result is not delivered again')
+})
+
+test('an immediate answer cannot close the worker old question turn before the answer is taken',async t=>{
+  const host=await bench(t).start(seed())
+  const turn=turnTaker(host.agents,host.emit)
+  const id=delegatedId(await host.tool('delegate_work',{to:'Writer',goal:'Compare two records'},'a'))
+  turn.take('b')
+  await host.tool('ask_back',{question:'Which input?'},'b')
+  turn.take('a')
+  await host.tool('answer_work',{answer:'Input A'},'a')
+  assert.equal(rt.state.works[id].pendingAnswer,true)
+  turn.end('b','Waiting for the caller')
+  assert.equal(rt.state.works[id].protocol,true,'the old turn cannot complete an answered but unread work')
+  assert.equal(callsOf(host.agents,'a').filter(([,message])=>message?.source?.replyTo===id).length,0)
+  turn.take('b')
+  assert.equal(rt.state.works[id].pendingAnswer,undefined)
+  turn.end('b','Input A differs in the timestamp.')
+  await settled(()=>!rt.state.works[id]&&!Object.keys(rt.state.workOutbox??{}).length)
+  assert.equal(callsOf(host.agents,'a').filter(([,message])=>message?.source?.replyTo===id).length,1)
+})
+
+test('a silent child result still releases its parent wait without an ACK loop',async t=>{
+  const host=await bench(t).start(seed())
+  const turn=turnTaker(host.agents,host.emit)
+  const parent=delegatedId(await host.tool('delegate_work',{to:'Writer',goal:'Collect a check'},'a'))
+  turn.take('b')
+  const child=delegatedId(await host.tool('delegate_work',{to:'Tester',goal:'Check the records'},'b'))
+  turn.end('b','Waiting for the check')
+  turn.take('c');turn.end('c','[PASS]')
+  await settled(()=>callsOf(host.agents,'b').some(([,message])=>message?.source?.replyTo===child))
+  const resumed=turn.take('b')
+  assert.equal(resumed.source.work,parent)
+  assert.equal(rt.state.works[parent].open.length,0)
+  turn.end('b','The checker had no additional evidence; the original comparison is ready.')
+  await settled(()=>!rt.state.works[parent]&&!Object.keys(rt.state.workOutbox??{}).length)
+  assert.equal(callsOf(host.agents,'a').filter(([,message])=>message?.source?.replyTo===parent).length,1)
+})
+
+test('restart while the caller is answering preserves its question identity and unblocks the original work',async t=>{
+  const bed=bench(t)
+  const first=await bed.start(seed())
+  const turn=turnTaker(first.agents,first.emit)
+  const id=delegatedId(await first.tool('delegate_work',{to:'Writer',goal:'Compare records'},'a'))
+  turn.take('b');await first.tool('ask_back',{question:'Which record?'},'b');turn.end('b','Waiting')
+  turn.take('a')
+  await first.call('set-prefs',{})
+  await delay(15)
+  await first.stop()
+  const second=await bed.start()
+  await delay(3300)
+  const question=callsOf(second.agents,'a').find(([kind])=>kind==='followup')?.[1]
+  assert.equal(question.source.workQuestion,id)
+  assert.equal(callsOf(second.agents,'b').length,0)
+  const resumed=turnTaker(second.agents,second.emit)
+  resumed.take('a');await second.tool('answer_work',{answer:'The first record'},'a')
+  resumed.take('b');resumed.end('b','The first record was compared.')
+  await settled(()=>!rt.state.works[id]&&!Object.keys(rt.state.workOutbox??{}).length)
+  assert.equal(callsOf(second.agents,'a').filter(([,message])=>message?.source?.replyTo===id).length,1)
+})
+
+test('restart with an answer queued resumes only that answer and never duplicates the old worker question turn',async t=>{
+  const bed=bench(t)
+  const first=await bed.start(seed())
+  const turn=turnTaker(first.agents,first.emit)
+  const id=delegatedId(await first.tool('delegate_work',{to:'Writer',goal:'Compare records'},'a'))
+  turn.take('b');await first.tool('ask_back',{question:'Which record?'},'b')
+  turn.take('a');await first.tool('answer_work',{answer:'Use record A'},'a')
+  assert.equal(rt.state.works[id].pendingAnswer,true)
+  await first.call('set-prefs',{});await delay(15);await first.stop()
+  const second=await bed.start()
+  await delay(3300)
+  const sends=callsOf(second.agents,'b').filter(([kind])=>kind==='followup')
+  assert.equal(sends.length,1)
+  assert.equal(sends[0][1].source.workAnswer,true)
+  assert.match(textOf(sends[0][1].content),/Use record A/)
+  const resumed=turnTaker(second.agents,second.emit)
+  resumed.take('b');resumed.end('b','Record A was compared.')
+  await settled(()=>!rt.state.works[id]&&!Object.keys(rt.state.workOutbox??{}).length)
+})
+
+test('restart while reading a completed return retains its return identity and never reruns the worker',async t=>{
+  const bed=bench(t)
+  const first=await bed.start(seed())
+  const turn=turnTaker(first.agents,first.emit)
+  const id=delegatedId(await first.tool('delegate_work',{to:'Writer',goal:'Compare records'},'a'))
+  turn.take('b');turn.end('b','The records differ in their date fields.')
+  await settled(()=>callsOf(first.agents,'a').some(([,message])=>message?.source?.protocolReturn===id)&&!Object.keys(rt.state.workOutbox??{}).length)
+  turn.take('a')
+  await first.call('set-prefs',{});await delay(15);await first.stop()
+  const second=await bed.start()
+  await delay(3300)
+  assert.equal(callsOf(second.agents,'b').length,0)
+  const returned=callsOf(second.agents,'a').find(([kind])=>kind==='followup')?.[1]
+  assert.equal(returned.source.protocolReturn,id)
+  assert.equal(returned.source.replyTo,id)
+  assert.equal(rt.state.works[id],undefined)
 })

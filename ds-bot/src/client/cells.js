@@ -742,6 +742,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
     : (body ?? h(CellEmpty))
 
   function triggerBody() {
+    if (source.silent === true) return null
     if (source.kind === 'bot') {
       // A part opens with its handoff package, so the earlier parts go right above it.
       if (source.handoff === true) return h(EarlierParts, { sessionId, roster, actions })
@@ -1172,7 +1173,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
 // The calls ToolCell draws. A PTC program (`run_code`) dispatches the real tools as
 // its sub-calls, so a call draws by its own name wherever it sits in the tree.
 const isComputerCall = name => name === 'cua'
-const DRAWN = new Set(['delegate_work', 'note_bot', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
+const DRAWN = new Set(['ask_back', 'answer_work', 'cancel_work', 'delegate_work', 'note_bot', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
 // Calls whose card a dock above the composer carries when the call is not drawn.
 const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'browser_handoff', 'computer_handoff'])
 
@@ -1209,6 +1210,12 @@ function renderCall(call, { turn, sessionId, roster, actions, useUi, findBot, he
   const { text: arg, value: argValue } = toolArgs(call)
   const self = roster.byId[sessionId]
   switch (tool) {
+    case 'ask_back':
+    case 'answer_work':
+    case 'cancel_work': {
+      const label = tool === 'ask_back' ? t('Asked for clarification') : tool === 'answer_work' ? t('Answered delegated work') : t('Cancelled delegated work')
+      return h('div', { className: 'bt-event', role: done && call.isError ? 'alert' : undefined }, `${label} · ${arg('work_id') ?? arg('target') ?? ''}`, arg('question') ? ` · ${arg('question')}` : '')
+    }
     case 'delegate_work':
     case 'note_bot':
     case 'message_bot': {

@@ -322,6 +322,7 @@ export function install(rt) {
       const session = exec.agent?.id
       const actor = rt.selfOf(session)
       const source = rt.live.get(session)?.info
+      if (source?.workProtocol && rt.protocolCancelled?.(rt.workOf(source)) && !['list', 'read', 'context'].includes(args.action)) throw new Error('This delegated work was cancelled; it cannot submit or change a project card.')
       const id = args.taskId?.toLowerCase() ?? source?.taskId
       const boundRoom = rt.groupOwners.get(session)?.roomId ?? source?.roomId
       const room = rt.roomOf(boundRoom ?? args.roomId) ?? (!boundRoom && !args.roomId ? projectRoomForCard(rt, id) : undefined)
@@ -808,7 +809,9 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (card.workspace) next.workspace = card.workspace
       card.rounds.push(next)
     } else {
-      if (!round.dispatchId || actor !== round.ownerId || source?.exchangeId !== round.dispatchId || (card.plans && source.taskId !== card.id)) throw new Error('Only the owner in the dispatched execution can confirm or submit it.')
+      const protocol = rt.state.works?.[rt.workOf?.(source)]
+      const executionId = protocol?.protocol && protocol.to === actor && protocol.taskId === card.id ? protocol.dispatchId : source?.exchangeId
+      if (!round.dispatchId || actor !== round.ownerId || executionId !== round.dispatchId || (card.plans && source.taskId !== card.id)) throw new Error('Only the owner in the dispatched execution can confirm or submit it.')
       const binding = round.planNode
       if (binding && (card.completedWithTaskId || binding.supersededBy || binding.block)) {
         if (args.action === 'block' && !binding.supersededBy && args.reason === binding.block.reason) return JSON.stringify(projectCardSummary(card))

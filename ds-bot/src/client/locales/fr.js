@@ -1,6 +1,17 @@
 // French (fr) localization for DS Bot client and DSH settings namespaces.
 
 export const FR = {
+  "Delegated work": "Travail délégué",
+  "Group paused": "Groupe en pause",
+  "Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.": "Les Bots ont atteint un point de contrôle des transmissions automatiques. Continuez quand vous souhaitez reprendre.",
+  "Asked for clarification": "Clarification demandée",
+  "Answered delegated work": "Réponse au travail délégué",
+  "Cancelled delegated work": "Travail délégué annulé",
+  "Work paused": "Travail en pause",
+  "Waiting for an answer": "En attente de réponse",
+  "Answer": "Répondre",
+  "Cancel work": "Annuler le travail",
+
   "Overview": "Vue d’ensemble",
   "Search settings": "Rechercher dans les réglages",
   "Settings results": "Résultats des réglages",

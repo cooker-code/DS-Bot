@@ -189,7 +189,7 @@ function decide(body) {
   }
 
   // A stopped call's result can share a message with the next group turn, which wins.
-  const fresh = textBlocks(last?.content).some(value => value.trimStart().startsWith('[Group chat'))
+  const fresh = textBlocks(last?.content).some(value => value.trimStart().startsWith('[Group chat') || /Answer on work [\w-]+:|Question on work [\w-]+:|Work W\d+ needs an answer:|FLOW2130:verified result/.test(value))
   const result = fresh ? undefined : blocks.find(block => block.type === 'tool_result')
   if (result) {
     const resultText = typeof result.content === 'string' ? result.content : textOf(result.content)
@@ -320,6 +320,11 @@ function decide(body) {
         const name = used.input.name
         return [text(`${name} 已就位。`), tool('message_bot', { to: name, message: `用户刚让我建了你。请用三条要点回我：你打算先做什么、需要用户提供什么、第一周节奏。没有的写“尚未聊过”。` })]
       }
+      case 'delegate_work':
+      case 'ask_back':
+      case 'answer_work':
+      case 'cancel_work':
+      case 'note_bot': return [text('[PASS]')]
       case 'message_bot': return [text(used.input.reply_to === 'user' ? `去 ${used.input.to} 的对话框看它说吧。` : '我已经把需求转过去了，有结果我马上告诉你。')]
       // The user's answer can ride in the same message as the card's tool result.
       case 'ask_user': if (textOf(last.content).trim() === '') return [text('')]
@@ -372,6 +377,26 @@ function decide(body) {
   const userText = textOf(last?.content)
     .replace(/^Recent public conversation \(context only\): .*$/gm, '')
     .replace(/\s*<system-reminder>\s*Updated instructions from:[\s\S]*$/, '').trim()
+  // Explicit work lifecycle fixtures; the normal smoke scenarios keep their own
+  // scripts. These run through real DSH tools, inboxes and persistence.
+  const flowDelegate = /(?:^|\n)验证协作\s+(\S+)(?:\s+(queue|now|pause|cancel))?$/.exec(userText.trim())
+  if (flowDelegate) return [tool('delegate_work', { to: flowDelegate[1], goal: `FLOW2130:${flowDelegate[2] ?? 'now'}`, when: flowDelegate[2] === 'queue' ? 'queue' : 'now' })]
+  if (userText.trim() === 'FLOW2130:foreground') return Object.assign([text('FLOW2130:foreground completed.')], { delay: 8000 })
+  const flowNote = /^验证便笺\s+(\S+)$/.exec(userText.trim())
+  if (flowNote) return [tool('note_bot', { to: flowNote[1], note: 'FLOW2130:silent' })]
+  const flowQuestion = /Question on work ([\w-]+):\nFLOW2130:question/.exec(userText)
+  if (flowQuestion) return [tool('answer_work', { work_id: flowQuestion[1], answer: 'FLOW2130:answer' })]
+  const releasedQuestion = /Work W\d+ needs an answer:\nFLOW2130:question/.test(userText)
+  if (releasedQuestion) return [tool('answer_work', { answer: 'FLOW2130:answer' })]
+  if (/Answer on work [\w-]+:\nFLOW2130:answer/.test(userText)) {
+    if (messages.some(message => textOf(message.content).includes('FLOW2130:pause'))) return [tool('ask_back', { question: 'FLOW2130:question' })]
+    return [text('FLOW2130:verified result for the original caller.')]
+  }
+  if (userText.includes('Delegated work') && /FLOW2130:(?:now|queue|pause)/.test(userText)) return [tool('ask_back', { question: 'FLOW2130:question' })]
+  if (userText.includes('Delegated work') && userText.includes('FLOW2130:cancel')) return Object.assign([text('FLOW2130:late result that must be suppressed.')], { delay: 8000 })
+  if (/\[Reply from/.test(userText) && userText.includes('FLOW2130:verified result')) return [text('FLOW2130:final receipt with verified evidence.')]
+
+
   // "撑爆": the provider rejects the request as past its window.
   if (userText.startsWith('撑爆')) return 'overflow'
   // A file in the message (a long Bot message, a file the user sent): DSH gives its saved

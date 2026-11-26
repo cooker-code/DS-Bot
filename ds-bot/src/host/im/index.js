@@ -1591,6 +1591,9 @@ export function install(rt) {
     }
     if (event.type === 'user/message') {
       const source = event.data?.source
+      if (source?.silent) return
+      const delegatedOrigin = source?.protocolReturn ? rt.state.works?.['closed:' + source.protocolReturn]?.protocolReceipt?.imOrigin
+        : source?.workQuestion ? rt.state.works?.[source.workQuestion]?.imOrigin : undefined
       // A clock snapshot accompanies the prompt without adding a speaker.
       if (isClock(source)) return
       const imOrigin = source?.imOrigin
@@ -1598,7 +1601,9 @@ export function install(rt) {
       // A late member result or part-switch handoff continues the work the chat asked for;
       // any other first message starts a fresh turn, which clears the previous turn's origin.
       if (pendingReset.delete(session.id) && !(typeof imOrigin === 'string' || (source?.kind === SOURCE_KIND && source.role === 'post'))) resetOrigin(session.id)
-      if (typeof imOrigin === 'string') {
+      if (delegatedOrigin) {
+        claimOrigin(session.id, delegatedOrigin.connId, delegatedOrigin.chatKey, delegatedOrigin.senderId, delegatedOrigin.binding)
+      } else if (typeof imOrigin === 'string') {
         const resumed = resumedOrigins.get(imOrigin)
         resumedOrigins.delete(imOrigin)
         if (resumed === undefined) dropOrigin(session.id)
@@ -1723,6 +1728,10 @@ export function install(rt) {
     validate()
     return runners.get(target.id).handle.sendFile({ key: target.chatKey, kind: target.kind, title: target.title }, { ...file, validate })
   }
-  Object.assign(rt, { imView, imStatusView, imViaView, imEndpoint, holdImOrigin, peekImOrigin, dropImOrigin, imDocumentTarget, imSendDocument })
+  Object.assign(rt, { captureWorkImOrigin: sid => {
+    const room = rt.roomOf(rt.groupOwners.get(sid)?.roomId)
+    const carrier = room ? room.sessionId ?? room.id : sid
+    return originOf(carrier) && !mixed.has(carrier) ? structuredClone(origins.get(carrier)) : undefined
+  }, imView, imStatusView, imViaView, imEndpoint, holdImOrigin, peekImOrigin, dropImOrigin, imDocumentTarget, imSendDocument })
   installDocumentTool(rt)
 }

@@ -1636,14 +1636,14 @@ test('a late member that passes on the promise retry still hands the work back (
 // Progress-based loop guard: consecutive 0-tool ack/repetitive relays pause after 6
 // turns and park the next call in room.paused, whereas tool calls reset the counter.
 // #872: the parked calls wait for the user, not for the next round of any kind.
-test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only when the user writes', async (t) => {
+test('consecutive 0-tool ack ping-pong relays pause after 2 turns and go on only when the user writes', async (t) => {
   const host = await start(t)
   const first = host.round('c1', host.say('@Chief 开始'))
   await settle(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
   host.finish('ga', '@Writer 收到，辛苦了')
 
-  for (let step = 1; step <= 6; step += 1) {
+  for (let step = 1; step <= 2; step += 1) {
     const isWriter = step % 2 === 1
     const sessionId = isWriter ? 'gb' : 'ga'
     const target = isWriter ? '@Chief' : '@Writer'
@@ -1659,17 +1659,17 @@ test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only
   const saved = () => savedTeam(host.home).rooms.r1
   assert.deepEqual(saved().paused.map(entry => [entry.id, entry.idle]), [['b', true]])
   assert.match(await host.tool('read_group_chat', { group: 'Ops' }, 'a'),
-    /\[Paused: Chief and Writer went back and forth 6 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
+    /\[Paused: Chief and Writer went back and forth 2 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
 
   // A Bot's quiet late result opens a round, which leaves the parked call alone.
   const second = host.round('c2', { content: [{ type: 'text', text: '[Group post from Tester]\n测试跑完了' }], source: { kind: 'bot', form: 'relay', role: 'post', exchangeId: 'x2', senderSessionId: 'c', senderName: 'Tester', roomId: 'r1', late: true, quiet: true } })
   await settle(() => second() !== undefined)
-  assert.equal(host.agentOf('gb').calls.length, 3)
+  assert.equal(host.agentOf('gb').calls.length, 1)
   assert.equal(saved().paused.length, 1)
 
   // The user's message brings the parked call back with the admin.
   const third = host.round('c3', host.say('好了，说正事'))
-  await settle(() => host.agentOf('gb').calls.length === 4 && host.agentOf('ga').calls.length === 5)
+  await settle(() => host.agentOf('gb').calls.length === 2 && host.agentOf('ga').calls.length === 3)
   assert.match(text(host.begin('gb')), /Chief mentioned you/)
   host.finish('gb', '')
   host.begin('ga')

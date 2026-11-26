@@ -102,7 +102,7 @@ export function install(rt) {
   // The work a turn does: the request it answers, or the work a result that came back
   // (or a turn picked up again) goes on with.
   const workOf = info => (info === undefined ? undefined
-    : info.role === 'request' && info.audience !== 'user' ? info.exchangeId : info.work)
+    : info.role === 'request' && (info.workProtocol || info.audience !== 'user') ? info.exchangeId : info.work)
 
   // `parent`: the work the sender was doing when it sent this one. `child`: the
   // session id of the subagent a run of this work belongs to — the run, not the
@@ -237,7 +237,7 @@ export function install(rt) {
   }
 
   const owns = (botId, workId) => workId !== undefined && works()[workId]?.to === botId
-  const waits = workId => Boolean(works()[workId]?.question) || (works()[workId]?.open.length ?? 0) > 0
+  const waits = workId => Boolean(works()[workId]?.question || works()[workId]?.pendingAnswer || works()[workId]?.state === 'paused') || (works()[workId]?.open.length ?? 0) > 0
   function hold(workId, text) {
     const work = works()[workId]
     if (work === undefined || text === '') return

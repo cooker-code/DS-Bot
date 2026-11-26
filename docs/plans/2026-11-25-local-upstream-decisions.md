@@ -1,7 +1,7 @@
 # 本地上游适配：并行会话、派活、设置与报告
 
 - 日期：2026-11-25
-- 状态：完整流程为交付前提；.27-upstream 的协作实现仍有断点，未通过完整功能验收。实际复核见 [2130报告](../reviews/2026-11-26-upstream-2130-complete-flow.md)。
+- 状态：.27 的历史断点保留；本轮 .28 已完整实施，候选正在独立验收和部署验证。原始复核见 [2130报告](../reviews/2026-11-26-upstream-2130-complete-flow.md)。
 - 相关：[并行会话](2026-11-13-parallel-sessions.md)、[项目任务](2026-11-19-project-task-dispatch.md)、[派活协议 PR](https://github.com/Fei-Craft/DS-Bot/pull/2130)、[设置 PR](https://github.com/Fei-Craft/DS-Bot/pull/2028)、[报告 PR](https://github.com/Fei-Craft/DS-Bot/pull/1942)
 
 ## 为什么
@@ -49,3 +49,22 @@
 - 2026-11-25：按用户批注明确保留并行会话，批准拆分派活工具、设置概览/搜索/预览及二开仓库报告；说明图片现状和未定导航。
 
 - 2026-11-26：按用户要求改为完整业务流程交付，明确原卡与work/后台身份、追问/取消/恢复及暂停继续条件；补记.27实际断点，暂停把半套实现作为可交付新功能。
+
+
+## 2026-11-26：完整协作流程的本地适配
+
+本轮在 `chore/upstream-2130-complete` 单独实施；`dev@7b9a4fa8` 保持只读。先前 .27 的历史部分采用事实保留，新候选版本为 `0.3.10-local.28-upstream`，必须完成独立验收后才安装。
+
+| 环节 | 本地行为与完整性条件 |
+| --- | --- |
+| 正式派工 | `delegate_work(card_round)` 复用原项目派工校验、请求去重和附件，再登记同一 dispatchId 的 work；项目 UUID、派工轮、收件会话分别保存。 |
+| 并行执行 | 忙碌时 now 用已有 openParts 机制开独立会话，queue 仍入原会话队列。原前台、手工新建/切换保留；群工作目录、模型与权限跟随该独立执行。 |
+| 追问与答复 | work 进入 need_input，答复回原执行。保存 pendingAnswer，避免答复很快到达、旧追问回合尚未结束时误结案。短 W 编号与旧 UUID 都可定位。 |
+| 委托树回传 | 子工作回到父工作后，正式 owner 仍可按原 dispatchId 提交；子 Bot 无权提交父轮。协作关闭只生成结果凭据，不代替 project_task submit/approve。 |
+| 检查点 | 连续追问暂停；同一配对四次无外部工具自动交接形成返工检查点，ACK 立即受保护。这是自动链需用户确认，不是断言文本没有价值；两步纯文本、正常 fanout 和真实工具工作仍可继续。群内按有向边成环、两次客套/状态帖或四次无工具接力暂停；元工具不能绕过。 |
+| 用户控制 | 输入框上方与原 Bot 间对话弹层均显示暂停/待答复，支持 Continue、Answer、Cancel；群 Continue 释放原 parked calls，不另造项目需求。 |
+| 静默与取消 | 便笺、取消、停止通知等到空闲才 inject，保留 silent 标记，不开回合、不生成消息泡或未读提示。取消关闭精确子树，清理 worker/caller 队列，抑制迟到回传，原卡只允许通过原恢复或新派工继续。 |
+| 重启与存储 | 沿用 split SQLite extra_json 保存 works、workOutbox、protocolSends、silentNotes、pairLoops；完成凭据与完整结果同批保存，稳定 result-workId 去重。inflight 保留协议、父轮、原 part、追问/答复和回传身份；等待与暂停不自动执行，已完成/取消不重复派工。 |
+| 换段与 IM | 换段后更新活动派工的执行会话、保留原 work 身份；IM 返回原请求 chat，并重新核对当前配对/绑定。聊天地址保存在私有 work 数据，不写公开 source 或状态列表。 |
+
+上游 PR2130 的设计正文变更为 `2026-10-07-group-chat.md` 和 `2026-10-16-bot-handoffs.md` 的 2026-11-23 条目；没有索引、重命名或删除变更。上游根 CHANGELOG 在该 PR 没有变更，本地按实际功能补记。上游工具替换方案在本地适配为新工具优先、旧 message_bot 保持可用；PR2039/2042 删除会话方案继续跳过，移动端/独立 App/Docker 不在插件范围。

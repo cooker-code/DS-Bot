@@ -82,3 +82,19 @@
 `work-protocol.js` 在既有团队工具中注册五项：`delegate_work(to,goal,request_id?,taskId?,card_round?)`、`ask_back(work_id?,question)`、`answer_work(work_id,answer)`、`cancel_work(work_id,reason?)`、`note_bot(to,message)`。它们不是新增 HTTP endpoint，使用当前 Bot 的工具身份、隐私保护与团队写锁。正式 card_round 派发转交现有 message_bot；其他委托存入团队基础 SQLite 的 works_json，带原调用/收件线程、taskId 和 dispatchId。追问保持 open，答复续原线程，最终回复自动返回；已取消回执禁止迟到回传。确定投递失败回滚等待，已入队后保存结果不明保留身份且不自动重发。note_bot 只注入消息和写账本，不启动模型。项目卡提交/复核/批准不变。
 
 `issue-report.js` 的 `prepare_ds_bot_issue(title,what,steps,diagnostics?)` 只准备脱敏草稿，需配合 show_view 的 report_issue 和用户确认；目标固定 cooker-code/DS-Bot。GitHub 连接器有写权限时才发布，没有时生成该仓库人工草稿链接。公开请求不允许调用者覆盖 API 目标。图片由用户在 GitHub 页面手动附加，接口不接收二进制上传。相关设计与验证见根目录 upstream-changelog.md。
+
+
+## 委托工作生命周期控制
+
+这些写入口沿用 `/api/bot` 的宿主认证、团队写锁和只读保护，不改变项目卡审批。`state.work.delegated[]` 返回 `id/ref/from/to/sessionId/toSession/roomId/taskId/dispatchId/status/goal/question/reason`，status 为 open、need_input、paused；已结束工作不再出现在此列表。完整正文只在团队存储保留，IM 路由信息不进入列表或会话事件。
+
+| 操作 | 业务与输入 | 服务和成功值 |
+| --- | --- | --- |
+| `answer-work` | `{id,answer}`，id 来自 delegated 列表，只答复 need_input 工作；空答和 paused 拒绝。 | `answerDelegatedWork` → 原 caller/worker 会话，返回原工具回执字符串。原 work 回到 open；同卡 taskId 和 dispatchId 不变。 |
+| `resume-work` | `{id}`，只继续 paused 工作。 | `resumePausedWork` 返回 true；追问暂停转 need_input 并把原问题交回 caller；委托暂停转 open 并投递原目标。重复 Continue 报错，不再发一次。 |
+| `cancel-work` | `{id,reason?}`，取消该 work 及其子树。 | `cancelDelegatedWork` 返回取消回执字符串。保存有界 cancelled receipt，移除精确 inbox/停止精确 active，迟到结果和项目提交被拒绝；其他卡与手动会话继续。 |
+| `resume-room-pause` | `{roomId}`，用户确认继续无进展暂停的群。 | `resumeRoomPause` 返回 true；通过现有群输入链路继续 parked calls。不是新建或删除项目卡。 |
+
+状态使用现有 split SQLite 的 `team.extra_json`（works、pairLoops、workOutbox、protocolSends、silentNotes）和 Bot openParts；没有改动项目卡 schema。`inflight.json` 同时保存 workProtocol、parentExchangeId、senderPart、workQuestion、workAnswer、protocolReturn、protocolDeliveryId。便笺只在空闲时 inject，source.silent 不构成恢复工作或未读提醒。结果 outbox 在 work 关闭时保存完整正文，恢复时按 protocolDeliveryId 对 receiving inbox/事件日志去重。
+
+回读：`python3 .agents/skills/ds-bot-doc/scripts/request.py state --desktop --jq '.work.delegated'`。仅在已授权目标实例验证，不将测试指向日用 profile；测试使用隔离目录和模拟模型。

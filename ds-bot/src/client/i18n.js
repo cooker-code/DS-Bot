@@ -11,6 +11,16 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  'Delegated work': '委托工作',
+  'Group paused': '群聊已暂停',
+  'Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.': 'Bot 的自动交接已到确认点。需要时可继续。',
+  'Asked for clarification': '请求澄清',
+  'Answered delegated work': '答复委托工作',
+  'Cancelled delegated work': '取消委托工作',
+  'Work paused': '工作已暂停',
+  'Waiting for an answer': '等待答复',
+  'Answer': '答复',
+  'Cancel work': '取消工作',
   "Overview": "概览",
   "Search settings": "搜索设置",
   "Settings results": "设置搜索结果",

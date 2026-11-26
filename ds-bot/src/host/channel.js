@@ -188,7 +188,7 @@ export function install(rt) {
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
       .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined)
       .map(sessionId => [sessionId, true])),
-    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
+    work: { delegated: rt.protocolWorksView?.() ?? [], bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
     learning: rt.learningView(),
@@ -645,6 +645,18 @@ export function install(rt) {
           return ok(await rt.updateBot(body.id, body))
         // Give up one wait for a hand-off that will not come back: only that sub-work
         // closes, with an explicit result for the work above it.
+        case 'resume-room-pause':
+          await rt.load()
+          return ok(await rt.resumeRoomPause(String(body.roomId ?? '')))
+        case 'answer-work':
+          await rt.load()
+          return ok(await rt.answerDelegatedWork(String(body.id ?? ''), String(body.answer ?? '')))
+        case 'resume-work':
+          await rt.load()
+          return ok(await rt.resumePausedWork(String(body.id ?? '')))
+        case 'cancel-work':
+          await rt.load()
+          return ok(await rt.cancelDelegatedWork(String(body.id ?? ''), String(body.reason ?? 'Cancelled by the user.')))
         case 'abandon-work':
           await rt.load()
           if (rt.abandonWork?.(String(body.id ?? '')) !== true) return fail('That wait is no longer open', 'bot/stale')

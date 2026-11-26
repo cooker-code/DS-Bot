@@ -6,6 +6,16 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### v0.3.10.28-upstream — complete collaboration candidate (2026-11-26)
+
+- Connect formal project dispatch and auxiliary delegation to one work lifecycle. Clarifications, answers and child results retain their original card, dispatch and conversation; only the original project owner submits, and project approval stays separate.
+- Run immediate work for a busy Bot in an independent local thread, preserving its foreground and manually managed parallel conversations. Queued work waits in its original conversation; working folder, model and permission policies follow the execution.
+- Add clarification and automatic-handoff checkpoints, directed group-loop protection, and Continue/Answer/Cancel controls in the existing dock and Bot exchange. Metadata tools cannot evade the guard; useful short text workflows and real tool work continue.
+- Buffer silent notes, cancellation and stop reasons until idle. Stop exactly the cancelled subtree, suppress late deliveries/submissions, and keep unrelated cards and sessions running.
+- Persist complete result returns with stable delivery identities and preserve protocol, card and part metadata across SQLite restart and conversation rollover. IM results return to their original chat only while pairing and binding remain valid.
+
+Source: [PR #2130](https://github.com/Fei-Craft/DS-Bot/pull/2130). Candidate verification and deployment status are tracked in [upstream-changelog.md](upstream-changelog.md). Local dev is unchanged.
+
 ### v0.3.10.27-upstream — local collaboration and settings (2026-11-25)
 
 2026-11-26 review: the collaboration adaptation below is incomplete. Formal project delegation cannot use the new ask/cancel path, and silent buffering and restart metadata need correction. Historical installation is retained; this is not evidence of a fully validated Call & Return workflow. See the [complete-flow audit](docs/reviews/2026-11-26-upstream-2130-complete-flow.md).

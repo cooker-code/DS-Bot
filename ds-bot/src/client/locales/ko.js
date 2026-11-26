@@ -1,6 +1,17 @@
 // Korean (ko) localization for DS Bot client and DSH settings namespaces.
 
 export const KO = {
+  "Delegated work": "위임한 작업",
+  "Group paused": "그룹 일시 중지",
+  "Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.": "Bot 간 자동 전달이 확인 지점에 도달했습니다. 계속하려면 재개하세요.",
+  "Asked for clarification": "설명 요청함",
+  "Answered delegated work": "위임한 작업에 답변함",
+  "Cancelled delegated work": "위임한 작업을 취소함",
+  "Work paused": "작업 일시 중지",
+  "Waiting for an answer": "답변 대기 중",
+  "Answer": "답변",
+  "Cancel work": "작업 취소",
+
   "Overview": "개요",
   "Search settings": "설정 검색",
   "Settings results": "설정 검색 결과",

@@ -2,6 +2,18 @@
 
 来源仓库为 [Fei-Craft/DS-Bot](https://github.com/Fei-Craft/DS-Bot)，原名 Fei2411/DS-Bot，GitHub 仓库 ID 为 `1409013846`（2026-11-25 核实）。迁名前后沿用同一来源键。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
 
+
+## 2026-11-26 · PR2130 完整适配（候选验证，尚未部署）
+
+记录时间 **2026-11-26 11:05 +0800（Asia/Taipei）**。新批次分支 `chore/upstream-2130-complete`，工作树 `.worktree/chore%2Fupstream-2130-complete`，从 `docs/upstream-2130-complete-flow@4ad540b1` 续接 `dev-upsteam@fc06b57d` 的应用候选及复核文档。本地 `dev@7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d` 只读，未合回。来源仍固定为 PR2130 合入点 `94aa5a451f5746e5917132e9012013e3962cb0aa` / 历史终点 `bb1b1592472084c32278c12287944ee40b8087c5`，没有 fetch 或推进上游盘点终点。
+
+社区方向：上游把 Bot 通讯改为异步 Call & Return，以 work 身份组织派活、追问、答复、自动回传和静默取消；无工具自动链在检查点交还用户，群内识别有向成环，减少 ACK 回环和空泡。已合入上游 dev。本地保留旧 message_bot、手动并行会话和项目卡验收，完整适配实现见 [本地设计](docs/plans/2026-11-25-local-upstream-decisions.md#2026-11-26完整协作流程的本地适配)。
+
+上游本 PR 的 plan 正文变化覆盖 [群聊设计](https://github.com/Fei-Craft/DS-Bot/blob/94aa5a451f5746e5917132e9012013e3962cb0aa/docs/plans/2026-10-07-group-chat.md) 和 [Bot 交接设计](https://github.com/Fei-Craft/DS-Bot/blob/94aa5a451f5746e5917132e9012013e3962cb0aa/docs/plans/2026-10-16-bot-handoffs.md) 的 2026-11-23 条目；无 plan 索引、重命名、删除变化，根 CHANGELOG 本 PR 无差异。本地根 CHANGELOG 根据实际适配补写，不把尚在计划的其他功能称为采用。
+
+当前仅是源码候选 `0.3.10-local.28-upstream`：正式派工、两卡并行、父子委托、换段、追问/答复、暂停/继续、取消树、静默、SQLite/重启/IM 路由均已实现；全量回归 3465 项中 3459 通过，6 个原有基线失败保留，新增及受影响模块另行补验。独立验收和最终隔离宿主验证完成后才安装，本批尚未更新日用 profile。PR 唯一来源行仍如实保留 .27 的历史部分采用，完成后在原行更新状态和时间；未新增第二个 PR 键。
+
+
 ## 2026-11-26 · PR2130完整流程复核（未继续合并或部署）
 
 记录时间 **2026-11-26 10:03 +0800（Asia/Taipei）**。本轮只审查此前部分采用的 [PR #2130：Bot协作生命周期](https://github.com/Fei-Craft/DS-Bot/pull/2130)，固定上游合入点94aa5a45及历史终点bb1b1592，未刷新upstream。应用基线仍为dev-upsteam@fc06b57d，审查从规则分支2d65e37f另建docs/upstream-2130-complete-flow，目录位于主项目 `.worktree/`。没有合回dev、修改运行代码、回退或更新DSH插件。

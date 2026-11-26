@@ -704,7 +704,7 @@ export function install(rt) {
     const routes = [{ provider: route.provider, model: route.model, ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}) }]
     if (forSwitch) {
       const bot = rt.selfOf(session.id) === undefined ? undefined : rt.botOf(rt.selfOf(session.id))
-      const ref = bot === undefined ? undefined : await Promise.resolve(rt.desiredModel?.(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId))).catch(() => undefined)
+      const ref = bot === undefined ? undefined : await Promise.resolve(rt.desiredModel?.(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId) ?? rt.protocolRoomOf?.(session.id))).catch(() => undefined)
       const wanted = splitRef(ref)
       if (wanted !== undefined && routes.every(one => one.provider !== wanted.provider || one.model !== wanted.model)) routes.push(wanted)
     }
@@ -990,7 +990,7 @@ export function install(rt) {
 
   const placeOf = (sessionId) => {
     const botId = rt.chatOwners.get(sessionId)
-    if (botId !== undefined) return { botId }
+    if (botId !== undefined) return { botId, ...(rt.protocolRoomOf?.(sessionId) ? { workRoomId: rt.protocolRoomOf(sessionId).id } : {}) }
     const owner = rt.groupOwners.get(sessionId)
     if (owner !== undefined) return { botId: owner.botId, roomId: owner.roomId }
     const roomId = rt.roomOwners.get(sessionId)
@@ -1223,7 +1223,7 @@ export function install(rt) {
   // earlier part's route. That route is what its last request used, which misses a model
   // the user picked since. A group's own Session has no Bot: see selectRoomSession.
   async function freshRoute(bot, session) {
-    const ref = await rt.desiredModel(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId))
+    const ref = await rt.desiredModel(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId) ?? rt.protocolRoomOf?.(session.id))
     if (ref !== undefined) return { ref, effort: await rt.desiredEffort(bot, ref) }
     const route = session.requestHeader()?.config
     return route?.provider && route?.model ? { ref: `${route.provider}/${route.model}`, effort: route.reasoningEffort } : undefined
@@ -1334,7 +1334,7 @@ export function install(rt) {
     if (bot === undefined) await rt.selectRoomSession(freshId)
     const picked = bot === undefined ? undefined : await freshRoute(bot, session)
     if (picked !== undefined && !await selectRoute({ name }, freshId, picked) && job.engine) engineRetry.set(freshId, Date.now() + FOLDER_RETRY_MS)
-    if (bot !== undefined) await rt.applyPermission(bot, freshId, room)
+    if (bot !== undefined) await rt.applyPermission(bot, freshId, room ?? rt.protocolRoomOf?.(agent.id))
       .catch(error => rt.warn('ds-bot: permission for the fresh part of %s not applied: %s', name, error))
     // The fresh part took several awaits: a Bot or group deleted meanwhile, a member that
     // left, or a part that is no longer the current one gets no fresh part.
@@ -1380,6 +1380,7 @@ export function install(rt) {
         delete state.views[agent.id]
       }
     }
+    rt.advanceProtocolPart?.(agent.id, freshId)
     await rt.save()
     // A model the user picked until now went to the earlier part, which was still the
     // Bot's; from here on a change goes to the fresh one.
@@ -1924,6 +1925,7 @@ export function install(rt) {
       }
       if (event.type !== 'user/message') continue
       const source = event.data?.source
+      if (source?.silent) continue
       if (source?.kind === 'user') {
         const content = Array.isArray(event.data.content) ? event.data.content : []
         const imageRefs = content.filter(block => block?.type === 'image' && block.attachment !== undefined)
@@ -2182,13 +2184,13 @@ export function install(rt) {
     return true
   }
 
-  async function makeBlankPart(bot, agent) {
-    const dir = rt.workDirOf({ botId: bot.id }) ?? rt.sessionFolder(agent.session)
-    const freshId = await rt.createSession(bot.name, { dir })
+  async function makeBlankPart(bot, agent, room) {
+    const dir = rt.workDirOf({ botId: bot.id, roomId: room?.id }) ?? rt.sessionFolder(agent.session)
+    const freshId = await rt.createSession(bot.name, { dir, groupMember: room !== undefined })
     try {
       const picked = await freshRoute(bot, agent.session)
       if (picked !== undefined) await selectRoute(bot, freshId, picked)
-      await rt.applyPermission(bot, freshId, undefined)
+      await rt.applyPermission(bot, freshId, room)
       return { freshId, picked }
     } catch (error) {
       await ctx.workspaceRegistry.archiveSession(freshId, { stopActivity: true })
@@ -2249,5 +2251,5 @@ export function install(rt) {
   }
   const deleteParts = (bot, ids) => deleteChatSessions(rt, bot, ids, switches, makeBlankPart)
 
-  Object.assign(rt, { editSessionList, deleteParts, clock, partsOf, partsOfThread, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, applySteps, followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
+  Object.assign(rt, { editSessionList, deleteParts, makeWorkPart: makeBlankPart, clock, partsOf, partsOfThread, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, applySteps, followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
 }
