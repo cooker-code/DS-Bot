@@ -12,4 +12,4 @@
 
 [使用说明](../README.md) · [验证记录](evidence/2026-11-26-upstream-tools-dev.json) · [实际页面](evidence/2026-11-26-upstream-tools-dev.png)。
 
-原有未提交内容处理：.github/pull_request_template.md、CONTRIBUTING.md、CONTRIBUTING.zh.md逐字恢复；AGENTS非同步段两处修改（功能验收后另行授权集成、中文提交规范）原文恢复并仍未提交。旧同步skill/verification/265项ledger由新版承接，过时版本不覆盖新315项审计；七文件原始字节与完整patch保留在`/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/backups/2026-11-26-154644-before-dev-tools-integration`，另保留Git stash `f7ae67868176a1adeba34d1d6727dfbee0dc0923`，未丢弃。用户已有未跟踪文件与工作树不动。
+原有未提交内容处理：.github/pull_request_template.md、CONTRIBUTING.md、CONTRIBUTING.zh.md逐字恢复；AGENTS非同步段两处修改（功能验收后另行授权集成、中文提交规范）原文恢复并仍未提交。旧同步skill/verification/265项ledger由新版承接，过时版本不覆盖新315项审计；七文件原始字节与完整patch保留在`<repo>/scripts/upstream-sync/backups/2026-11-26-154644-before-dev-tools-integration`，另保留Git stash `f7ae67868176a1adeba34d1d6727dfbee0dc0923`，未丢弃。用户已有未跟踪文件与工作树不动。

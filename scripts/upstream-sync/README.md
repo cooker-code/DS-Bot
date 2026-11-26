@@ -114,7 +114,7 @@ check-upstream核对远端dev（缺少Git对象时获取），只保存观察，
 ## 下次打开管理页
 
 ```sh
-cd /Users/blank/wangliang/gitcode/DS-Bot
+cd "$(git rev-parse --show-toplevel)"
 python3 scripts/upstream-sync/upstream-catalog.py serve --port 4179
 ```
 

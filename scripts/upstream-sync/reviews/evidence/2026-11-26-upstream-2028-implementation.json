@@ -137,7 +137,7 @@
     "apiNamesExactlyOnce": 188
   },
   "catalog": {
-    "database": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3",
+    "database": "<repo>/.git/upstream-sync/upstream.sqlite3",
     "total": 265,
     "statuses": {
       "采用": 95,

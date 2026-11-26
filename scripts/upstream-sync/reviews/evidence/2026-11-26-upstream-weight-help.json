@@ -12,7 +12,7 @@
   "deployment": {
     "url": "http://127.0.0.1:4179",
     "branch": "chore/upstream-weight-help",
-    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+    "database": "<repo>/scripts/upstream-sync/upstream.sqlite3",
     "assetsMatchCandidate": true,
     "previewStopped": true,
     "devUnchanged": true,

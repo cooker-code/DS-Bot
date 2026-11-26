@@ -109,7 +109,7 @@ PR 表使用“原因类型”“实际差异与采用范围”“解决方式�
 
 ## 结构化记录与增量查询
 
-**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；`scripts/upstream-sync/upstream-changelog.md`是可提交的审计导出。** 数据库固定为主工作目录的`scripts/upstream-sync/upstream.sqlite3`（本机`/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3`）。通过`git worktree list --porcelain -z`取得主工作目录，所有专用工作树共用同一库和`backups/`，不得再放到`.git/`、临时目录或其他自选日用路径。它不是DSH团队数据库，不提交SQLite二进制或事务日志。隔离自动测试可显式使用临时库，结束后清理。
+**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；`scripts/upstream-sync/upstream-changelog.md`是可提交的审计导出。** 数据库固定为主工作目录的`scripts/upstream-sync/upstream.sqlite3`（本机`<repo>/scripts/upstream-sync/upstream.sqlite3`）。通过`git worktree list --porcelain -z`取得主工作目录，所有专用工作树共用同一库和`backups/`，不得再放到`.git/`、临时目录或其他自选日用路径。它不是DSH团队数据库，不提交SQLite二进制或事务日志。隔离自动测试可显式使用临时库，结束后清理。
 
 SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明](../../../scripts/upstream-sync/README.md)。在本批专用工作树先查台账，不再从头重复查所有历史PR：
 

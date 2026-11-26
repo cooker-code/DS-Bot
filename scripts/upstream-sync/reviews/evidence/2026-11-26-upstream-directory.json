@@ -2,9 +2,9 @@
   "migration": {
     "recordedAt": "2026-11-26T14:46:54+08:00",
     "branch": "chore/upstream-sync-directory",
-    "oldDatabase": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3",
-    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
-    "backup": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/backups/2026-11-26-144654-before-directory-move.sqlite3",
+    "oldDatabase": "<repo>/.git/upstream-sync/upstream.sqlite3",
+    "database": "<repo>/scripts/upstream-sync/upstream.sqlite3",
+    "backup": "<repo>/scripts/upstream-sync/backups/2026-11-26-144654-before-directory-move.sqlite3",
     "historicalBackups": [
       "2026-11-26-142507-before-community-v2.sqlite3",
       "2026-11-26-before-catalog-times.sqlite3",
@@ -75,8 +75,8 @@
         "scanned_at": "2026-11-26T12:45:19+08:00"
       },
       "branch": "chore/upstream-sync-directory",
-      "repo": "/Users/blank/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-sync-directory",
-      "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+      "repo": "<repo>/.worktree/chore%2Fupstream-sync-directory",
+      "database": "<repo>/scripts/upstream-sync/upstream.sqlite3",
       "groupNames": {
         "G01": "测试基线、翻译与测试维护",
         "G02": "进程、请求与界面资源释放",
@@ -123,7 +123,7 @@
     "export": {
       "changed": 0
     },
-    "ledger": "/Users/blank/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-sync-directory/scripts/upstream-sync/upstream-changelog.md",
+    "ledger": "<repo>/.worktree/chore%2Fupstream-sync-directory/scripts/upstream-sync/upstream-changelog.md",
     "assetsAndReadAPIs": "passed"
   },
   "browser": {

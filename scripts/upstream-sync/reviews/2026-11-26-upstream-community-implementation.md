@@ -24,9 +24,9 @@
 
 ## SQLite与接口
 
-正式库为`/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3`，与日用DSH团队数据库独立。新增designs、design_versions、pr_designs，当前43主题/索引记录、113个正文版本、192条带角色PR关系。旧版本解释保存在按设计/内容版本关联的评估元数据中，当前说明和旧源不匹配时标待重审。
+正式库为`<repo>/.git/upstream-sync/upstream.sqlite3`，与日用DSH团队数据库独立。新增designs、design_versions、pr_designs，当前43主题/索引记录、113个正文版本、192条带角色PR关系。旧版本解释保存在按设计/内容版本关联的评估元数据中，当前说明和旧源不匹配时标待重审。
 
-升级前一致备份：`/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/backups/2026-11-26-142507-before-community-v2.sqlite3`。主库旧五类记录逐行一致；备份命令使用只读连接，已实测不会在备份前触发升级。升级后应使用本批/后继分支的新版工具；旧v1工具不支持v2，回滚前停管理服务并从一致备份恢复。
+升级前一致备份：`<repo>/.git/upstream-sync/backups/2026-11-26-142507-before-community-v2.sqlite3`。主库旧五类记录逐行一致；备份命令使用只读连接，已实测不会在备份前触发升级。升级后应使用本批/后继分支的新版工具；旧v1工具不支持v2，回滚前停管理服务并从一致备份恢复。
 
 GET /api/community用于说明/筛选，GET /api/design/id用于完整主题，GET /api/pr/N增加关联设计；保留回环允许路径、同源写校验与参数化查询。原文与差异作为文本展示。CLI增加community-sync、community、design、design-annotate；普通sync将设计和PR及成功游标放入同一事务，pendingDesigns必须补完整说明，不能只改标题消掉重审。
 

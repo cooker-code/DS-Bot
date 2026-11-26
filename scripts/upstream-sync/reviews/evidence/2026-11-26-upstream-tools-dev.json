@@ -20,14 +20,14 @@
   },
   "deployment": {
     "url": "http://127.0.0.1:4179",
-    "repo": "/Users/blank/wangliang/gitcode/DS-Bot",
+    "repo": "<repo>",
     "branchInternal": "dev",
     "canExport": false,
     "previewStopped": true,
     "applicationTreeUnchangedFrom": "b36afbaf"
   },
   "originalChanges": {
-    "backup": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/backups/2026-11-26-154644-before-dev-tools-integration",
+    "backup": "<repo>/scripts/upstream-sync/backups/2026-11-26-154644-before-dev-tools-integration",
     "gitStash": "f7ae67868176a1adeba34d1d6727dfbee0dc0923",
     "contributionFilesRestoredByteForByte": true,
     "nonSyncAgentsHunksRestored": 2,

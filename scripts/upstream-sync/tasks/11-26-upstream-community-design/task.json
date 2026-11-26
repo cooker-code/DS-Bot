@@ -14,7 +14,7 @@
   "completedAt": "2026-11-26T14:33:28+08:00",
   "branch": "chore/upstream-community-design",
   "base_branch": "chore/upstream-catalog-group-names",
-  "worktree_path": "/Users/blank/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-community-design",
+  "worktree_path": "<repo>/.worktree/chore%2Fupstream-community-design",
   "commit": "0df9784deb12c34ae853d422184f4ec8639280c1",
   "pr_url": null,
   "subtasks": [],

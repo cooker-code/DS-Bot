@@ -37,7 +37,7 @@
   "deployment": {
     "url": "http://127.0.0.1:4179",
     "branch": "chore/upstream-incremental-1126",
-    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+    "database": "<repo>/scripts/upstream-sync/upstream.sqlite3",
     "assetsMatch": true,
     "previewExited": true,
     "previewPort": 4186,

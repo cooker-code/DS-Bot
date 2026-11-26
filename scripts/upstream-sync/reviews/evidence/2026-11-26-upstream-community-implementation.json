@@ -60,7 +60,7 @@
   "deployment": {
     "oldOwnedPID": 86208,
     "oldServiceExited": true,
-    "backup": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/backups/2026-11-26-142507-before-community-v2.sqlite3",
+    "backup": "<repo>/.git/upstream-sync/backups/2026-11-26-142507-before-community-v2.sqlite3",
     "dailyDSHStopped": false,
     "schemaVersion": 2,
     "oldTablesIdentical": {

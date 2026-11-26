@@ -20,7 +20,7 @@
 
 独立本地管理页用于上游决策，插件内设置页承接PR2028。管理页不进入聊天和项目卡界面。只用Python标准库提供回环HTTP服务并读写SQLite，HTML经有限JSON接口查询和保存，浏览器不直接执行SQL。
 
-数据库固定在项目主工作目录的`scripts/upstream-sync/upstream.sqlite3`，本机为`/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3`。通过`git worktree list --porcelain -z`定位主目录，所有专用工作树共用同一台账和`backups/`，不随分支丢失标记。受Git管理的工具、文档与审计导出位于本批工作树的同名目录，主目录dev仅接受精确忽略的共享运行数据，不改代码和文档。不提交SQLite二进制及事务日志，备份使用SQLite一致性接口；它与DSH团队库独立。该路径约定于2026-11-26目录迁移时更新，替代原.git/upstream-sync。
+数据库固定在项目主工作目录的`scripts/upstream-sync/upstream.sqlite3`，本机为`<repo>/scripts/upstream-sync/upstream.sqlite3`。通过`git worktree list --porcelain -z`定位主目录，所有专用工作树共用同一台账和`backups/`，不随分支丢失标记。受Git管理的工具、文档与审计导出位于本批工作树的同名目录，主目录dev仅接受精确忽略的共享运行数据，不改代码和文档。不提交SQLite二进制及事务日志，备份使用SQLite一致性接口；它与DSH团队库独立。该路径约定于2026-11-26目录迁移时更新，替代原.git/upstream-sync。
 
 ### 首次导入与增量
 
