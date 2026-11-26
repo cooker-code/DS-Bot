@@ -109,11 +109,15 @@ test('a Bot retries the malformed stream and completes on the next response', as
 for (const [finishReason, message] of [
   ['MALFORMED_FUNCTION_CALL', 'Provider stopped with: MALFORMED_FUNCTION_CALL'],
   ['UNEXPECTED_TOOL_CALL', 'Provider stopped with: UNEXPECTED_TOOL_CALL'],
-  ['MALFORMED_RESPONSE', 'Unhandled stop reason: MALFORMED_RESPONSE'],
+  ['MALFORMED_RESPONSE', /^(?:Unhandled stop reason|Provider stopped with): MALFORMED_RESPONSE$/],
 ]) {
   test(`a Bot retries a Gemini ${finishReason} stop and completes on the next response`, async t => {
     const unrecovered = await boot(t, false, gemini(finishReason))
-    assert.deepEqual(unrecovered.failures, [{ code: 'PI_AI_ERROR', message }])
+    if (message instanceof RegExp) {
+      assert.equal(unrecovered.failures.length, 1)
+      assert.equal(unrecovered.failures[0].code, 'PI_AI_ERROR')
+      assert.match(unrecovered.failures[0].message, message)
+    } else assert.deepEqual(unrecovered.failures, [{ code: 'PI_AI_ERROR', message }])
     const result = await boot(t, true, gemini(finishReason))
     assert.equal(result.attempts, 2)
     assert.equal(result.events.findLast(event => event.type === 'turn/end').data.reason.kind, 'completed')
@@ -186,6 +190,7 @@ test('only Gemini malformed stops among PI_AI_ERROR failures consume malformed r
   }
   assert.equal(warnings.length, 0)
   assert.deepEqual(await run({ ...p, failure: { code: 'PI_AI_ERROR', message: 'Unhandled stop reason: MALFORMED_RESPONSE' } }, next), { kind: 'retry' })
+  assert.deepEqual(await run({ ...p, step: 2, failure: { code: 'PI_AI_ERROR', message: 'Provider stopped with: MALFORMED_RESPONSE' } }, next), { kind: 'retry' })
 })
 
 test('Gemini malformed stops leave the retry to a policy that already retries PI_AI_ERROR', async () => {
