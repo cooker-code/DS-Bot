@@ -1,0 +1,12 @@
+{
+  "pid": 99352,
+  "checks": [
+    "社区/PR表头与最低最高权重旁共4个问号；口径显示正确",
+    "悬停、键盘聚焦、点击、Escape、点击外部及两类说明互斥",
+    "窄屏浮层完整位于视口，筛选值保留"
+  ],
+  "pageErrors": [],
+  "remainingChromeFiles": [],
+  "remainingOwnedProcesses": [],
+  "scriptExited": true
+}

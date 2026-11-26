@@ -133,33 +133,36 @@ async function start() {
 }
 void start()
 
-const dependencyHelp = $('dependency-help')
-const helpTriggers = [...document.querySelectorAll('[data-dependency-help]')]
+const helpPopovers = [...document.querySelectorAll('.help-popover')]
+let helpPopover
+const helpTriggers = [...document.querySelectorAll('[data-help]')]
 let helpAnchor, helpPinned = false, helpTimer
 function positionHelp() {
-  if (dependencyHelp.hidden || !helpAnchor) return
-  const anchor = helpAnchor.getBoundingClientRect(), box = dependencyHelp.getBoundingClientRect()
-  dependencyHelp.style.left = Math.max(12, Math.min(anchor.left, innerWidth - box.width - 12)) + 'px'
-  dependencyHelp.style.top = Math.max(12, Math.min(anchor.bottom + 8, innerHeight - box.height - 12)) + 'px'
+  if (!helpPopover || helpPopover.hidden || !helpAnchor) return
+  const anchor = helpAnchor.getBoundingClientRect(), box = helpPopover.getBoundingClientRect()
+  helpPopover.style.left = Math.max(12, Math.min(anchor.left, innerWidth - box.width - 12)) + 'px'
+  helpPopover.style.top = Math.max(12, Math.min(anchor.bottom + 8, innerHeight - box.height - 12)) + 'px'
 }
 function closeHelp() {
   clearTimeout(helpTimer)
-  dependencyHelp.hidden = true
+  for (const popover of helpPopovers) popover.hidden = true
   for (const trigger of helpTriggers) trigger.setAttribute('aria-expanded', 'false')
   helpAnchor = null; helpPinned = false
 }
 function showHelp(trigger) {
   clearTimeout(helpTimer)
   if (helpAnchor !== trigger) helpPinned = false
+  for (const popover of helpPopovers) popover.hidden = true
+  helpPopover = $(trigger.dataset.help)
   helpAnchor = trigger
   for (const other of helpTriggers) other.setAttribute('aria-expanded', String(other === trigger))
-  dependencyHelp.hidden = false
+  helpPopover.hidden = false
   positionHelp()
 }
 function leaveHelp() {
   clearTimeout(helpTimer)
   helpTimer = setTimeout(() => {
-    if (!helpPinned && !dependencyHelp.matches(':hover') && document.activeElement !== helpAnchor) closeHelp()
+    if (!helpPinned && !helpPopover?.matches(':hover') && document.activeElement !== helpAnchor) closeHelp()
   }, 100)
 }
 for (const trigger of helpTriggers) {
@@ -171,13 +174,15 @@ for (const trigger of helpTriggers) {
     else { showHelp(trigger);helpPinned = true }
   })
 }
-dependencyHelp.addEventListener('pointerenter', () => clearTimeout(helpTimer))
-dependencyHelp.addEventListener('pointerleave', leaveHelp)
+for (const popover of helpPopovers) {
+  popover.addEventListener('pointerenter', () => clearTimeout(helpTimer))
+  popover.addEventListener('pointerleave', leaveHelp)
+}
 document.addEventListener('click', event => {
-  if (!event.target.closest('[data-dependency-help]') && !dependencyHelp.contains(event.target)) closeHelp()
+  if (!event.target.closest('[data-help]') && !helpPopover?.contains(event.target)) closeHelp()
 })
 document.addEventListener('focusin', event => {
-  if (helpAnchor && event.target !== helpAnchor && !dependencyHelp.contains(event.target)) closeHelp()
+  if (helpAnchor && event.target !== helpAnchor && !helpPopover?.contains(event.target)) closeHelp()
 })
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeHelp() })
 window.addEventListener('resize', positionHelp)
