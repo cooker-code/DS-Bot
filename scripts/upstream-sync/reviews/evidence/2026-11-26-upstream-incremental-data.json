@@ -26,5 +26,27 @@
     "unseenDirectCommits": 0,
     "unseenCommits": 0,
     "error": null
+  },
+  "independentReview": {
+    "candidate": "63c20b8a59eca74c62cd09b2bca4aff50d604488",
+    "result": "passed",
+    "tests": 37,
+    "recordedAt": "2026-11-26T15:27:09+08:00",
+    "PRDesignRelationsVerified": 224
+  },
+  "deployment": {
+    "url": "http://127.0.0.1:4179",
+    "branch": "chore/upstream-incremental-1126",
+    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+    "assetsMatch": true,
+    "previewExited": true,
+    "previewPort": 4186,
+    "devTrackedDiffUnchanged": true,
+    "devHeadBefore": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d",
+    "devHeadAfter": "9783ec5bfed1f5fd2975aaf0cea4ad1c15a4495a",
+    "externalDevMerge": "feat/task-requirement-status",
+    "upstreamCandidateNotInDev": true,
+    "devTouchedByThisTask": false,
+    "runningDSHUntouchedByThisTask": true
   }
 }
