@@ -125,3 +125,53 @@ async function start() {
   } catch (error) { message(error.message, true) }
 }
 void start()
+
+const dependencyHelp = $('dependency-help')
+const helpTriggers = [...document.querySelectorAll('[data-dependency-help]')]
+let helpAnchor, helpPinned = false, helpTimer
+function positionHelp() {
+  if (dependencyHelp.hidden || !helpAnchor) return
+  const anchor = helpAnchor.getBoundingClientRect(), box = dependencyHelp.getBoundingClientRect()
+  dependencyHelp.style.left = Math.max(12, Math.min(anchor.left, innerWidth - box.width - 12)) + 'px'
+  dependencyHelp.style.top = Math.max(12, Math.min(anchor.bottom + 8, innerHeight - box.height - 12)) + 'px'
+}
+function closeHelp() {
+  clearTimeout(helpTimer)
+  dependencyHelp.hidden = true
+  for (const trigger of helpTriggers) trigger.setAttribute('aria-expanded', 'false')
+  helpAnchor = null; helpPinned = false
+}
+function showHelp(trigger) {
+  clearTimeout(helpTimer)
+  if (helpAnchor !== trigger) helpPinned = false
+  helpAnchor = trigger
+  for (const other of helpTriggers) other.setAttribute('aria-expanded', String(other === trigger))
+  dependencyHelp.hidden = false
+  positionHelp()
+}
+function leaveHelp() {
+  clearTimeout(helpTimer)
+  helpTimer = setTimeout(() => {
+    if (!helpPinned && !dependencyHelp.matches(':hover') && document.activeElement !== helpAnchor) closeHelp()
+  }, 100)
+}
+for (const trigger of helpTriggers) {
+  trigger.addEventListener('pointerenter', () => { if (!helpPinned) showHelp(trigger) })
+  trigger.addEventListener('pointerleave', leaveHelp)
+  trigger.addEventListener('focus', () => showHelp(trigger))
+  trigger.addEventListener('click', () => {
+    if (helpPinned && helpAnchor === trigger) closeHelp()
+    else { showHelp(trigger);helpPinned = true }
+  })
+}
+dependencyHelp.addEventListener('pointerenter', () => clearTimeout(helpTimer))
+dependencyHelp.addEventListener('pointerleave', leaveHelp)
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-dependency-help]') && !dependencyHelp.contains(event.target)) closeHelp()
+})
+document.addEventListener('focusin', event => {
+  if (helpAnchor && event.target !== helpAnchor && !dependencyHelp.contains(event.target)) closeHelp()
+})
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeHelp() })
+window.addEventListener('resize', positionHelp)
+window.addEventListener('scroll', positionHelp, true)
