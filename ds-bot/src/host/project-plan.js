@@ -213,7 +213,7 @@ export function completeRelatedCards(cards) {
   const done = new Set()
   for (const id of children.keys()) {
     const card = cards[id]
-    if (card?.completedWithTaskId || (card?.plans?.length && plannedSummary(card).status === 'done')) done.add(id)
+    if (card && (card.plans?.length ? plannedSummary(card).status : taskPhase(card, projectStatus(card.rounds?.at(-1)))) === 'done') done.add(id)
   }
   let changed = false
   for (const parent of done) {

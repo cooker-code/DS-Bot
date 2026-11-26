@@ -19,7 +19,24 @@ export function codeDelivery(card, round, node) {
 }
 
 // Only task-level phases are exposed on the board and in tasks.status.
+export function taskStatusBasis(card) {
+  const review = card.humanReview
+  return JSON.stringify([card.plans?.at(-1)?.version, card.clarification,
+    review && [review.id, review.version, review.status, review.decidedAt], card.completedWithTaskId,
+    (card.rounds ?? []).map(round => {
+      const block = round.planNode?.block
+      return [projectStatus(round), round.assignedAt, round.sentAt, round.startedAt, round.submittedAt, round.failedAt,
+        block && [block.at, block.resolvedAt, block.cause, block.reason], round.planNode?.acceptedAt, round.planNode?.supersededBy]
+    })])
+}
+
 export function taskPhase(card, phase, awaitingCode = false) {
+  const change = card.statusHistory?.at(-1)
+  if (change?.basis === taskStatusBasis(card)) return change.status
+  return automaticTaskPhase(card, phase, awaitingCode)
+}
+
+function automaticTaskPhase(card, phase, awaitingCode) {
   if (card.completedWithTaskId || phase === 'verified') return 'done'
   if (card.clarification) return 'clarify'
   if (Array.isArray(card.plans) && !card.plans.length) return 'planning'

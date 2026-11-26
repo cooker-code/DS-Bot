@@ -11,7 +11,7 @@ import { memberSettings } from './team-storage/member-settings.js'
 import { isIntakeReceipt, taskCaption, taskMessage } from '../shared/task-message.js'
 import { branchReport, selectTaskWorkspace, taskWorkspaceChoices, setProjectWorkspacePolicy, workspaceDecisions, workspaceSummary } from './project-branches.js'
 import { finishSubmittedPlan, completeRelatedCards } from './project-plan.js'
-import { setPredecessor, decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText } from './project-tasks.js'
+import { setPredecessor, decideAcceptance, pendingIntakes, projectCardDetail, projectCardSummary, readProjectImage, updateProjectTaskText, updateProjectTaskStatus } from './project-tasks.js'
 import { readTaskReference } from './task-reference.js'
 import { deleteBoardTasks } from './tasks.js'
 import { fileDownload } from './file-download.js'
@@ -579,6 +579,9 @@ export function install(rt) {
         case 'select-task-workspace':
           await rt.load()
           return ok(await selectTaskWorkspace(rt, body))
+        case 'update-project-task-status':
+          await rt.load()
+          return ok(await updateProjectTaskStatus(rt, body))
         case 'update-project-task-text': {
           await rt.load()
           const ids = body.addImages ?? []
