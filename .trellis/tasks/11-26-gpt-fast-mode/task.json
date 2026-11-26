@@ -3,7 +3,7 @@
   "name": "gpt-fast-mode",
   "title": "GPT 模型 Fast 开关",
   "description": "通过 DS Bot 本机转发为 API GPT 模型提供 Fast 开关，不修改 DSH 源码或安装文件，验收后合并 dev",
-  "status": "reviewing",
+  "status": "completed",
   "dev_type": "fullstack",
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "wangliangbj01",
   "assignee": "wangliangbj01",
   "createdAt": "2026-11-26",
-  "completedAt": null,
+  "completedAt": "2026-11-26",
   "branch": "feat/gpt-fast-mode",
   "base_branch": "dev",
   "worktree_path": null,
@@ -21,7 +21,7 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "独立只读验收通过；原有会话压缩冒烟失败在 dev 基线复现，最终 Fast 专用冒烟与重启通过。",
+  "notes": "产品候选通过独立只读验收；已合入本地 dev。原有会话压缩冒烟失败在 dev 基线复现，Fast 专用冒烟与重启通过。未推送、打包或日用安装。",
   "meta": {
     "planning_contract_version": "2",
     "ui": "true",
@@ -33,6 +33,7 @@
     "security_compatibility_rollout_change": "true",
     "technical_tradeoff": "true",
     "planning_tier": "complex",
-    "approval": "用户在本会话明确批准此前提出的方案并要求实现和合并 dev"
+    "approval": "用户在本会话明确批准此前提出的方案并要求实现和合并 dev",
+    "merge_commit": "e12156bce652150b877bce90202ad46a96943cec"
   }
 }
