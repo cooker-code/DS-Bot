@@ -68,7 +68,7 @@ try {
     await page.addLocatorHandler(page.getByRole('dialog').getByRole('button', { name: 'Continue', exact: true }), async locator => locator.click())
     await page.goto(login)
     await page.locator('.bt-row, .bt-tile').first().waitFor({ timeout: 60_000 })
-    await page.getByRole('button', { name: 'Account', exact: true }).first().click()
+    await page.locator('.bt-leftcol').getByRole('button', { name: 'Account', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Settings', exact: true }).click()
     await page.locator('.bt-settings-nav .bt-settings-item').filter({ hasText: /^Models$/ }).click()
     await page.locator('.bt-secret-summary').filter({ hasText: 'Fast test' }).click()
@@ -76,7 +76,7 @@ try {
     assert.equal(await toggle.getAttribute('aria-checked'), 'false')
     await toggle.click()
     await until(async () => await toggle.getAttribute('aria-checked') === 'true', 'Fast switch enabled')
-    await page.locator('.bt-provider[data-open]').filter({ hasText: 'Fast test' }).screenshot({ path: resolve(output, 'fast-on.png') })
+    await page.locator('.bt-provider[data-open]').filter({ hasText: 'Fast test' }).locator('.bt-secret-edit-block').filter({ hasText: 'GPT Fast mode' }).screenshot({ path: resolve(output, 'fast-on.png') })
     assert.equal(await page.locator('.bt-provider[data-open]').filter({ hasText: 'Fast test' }).getByRole('switch').count(), 2)
     console.log('ok: real Models page enables only the selected GPT switch')
   } else await api('provider-model-fast', { provider: 'fast-fixture', model: 'gpt-fast-fixture', enabled: true })
@@ -90,7 +90,7 @@ try {
   if (toggle) {
     await toggle.click()
     await until(async () => await toggle.getAttribute('aria-checked') === 'false', 'Fast switch disabled')
-    await toggle.page().locator('.bt-provider[data-open]').filter({ hasText: 'Fast test' }).screenshot({ path: resolve(output, 'fast-off.png') })
+    await toggle.page().locator('.bt-provider[data-open]').filter({ hasText: 'Fast test' }).locator('.bt-secret-edit-block').filter({ hasText: 'GPT Fast mode' }).screenshot({ path: resolve(output, 'fast-off.png') })
     await toggle.page().reload()
     await toggle.page().locator('.bt-row, .bt-tile').first().waitFor()
   } else await api('provider-model-fast', { provider: 'fast-fixture', model: 'gpt-fast-fixture', enabled: false })
@@ -104,6 +104,9 @@ try {
   const refreshed = await api('provider-models', { provider: 'fast-fixture' })
   assert.ok(refreshed.some(model => model.id === 'gpt-fast-fixture'))
   console.log('ok: model discovery still uses the original gateway')
+} catch (error) {
+  if (output && context?.pages()[0]) await context.pages()[0].screenshot({ path: resolve(output, 'diagnostic.png') }).catch(() => {})
+  throw error
 } finally {
   try {
     try { await context?.close() } finally {

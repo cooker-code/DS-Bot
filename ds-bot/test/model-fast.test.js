@@ -38,6 +38,7 @@ function fixture(t, url, { saved = {}, inherited = false, api = 'openai-response
   let revision = 0
   const writes = []
   const effects = []
+  const syncListeners = new Set()
   const faults = { save: false, settings: false, readOnly: false }
   const models = [{ id: 'gpt-fixture', name: 'GPT Fixture' }, { id: 'openai/gpt-other', name: 'Other GPT' }, { id: 'claude-fixture', name: 'Claude' }]
   const settings = {
@@ -61,6 +62,7 @@ function fixture(t, url, { saved = {}, inherited = false, api = 'openai-response
     load: async () => {},
     readOnly: () => faults.readOnly ? 'another writer' : undefined,
     dropCatalog() {},
+    onStoreSynced(listener) { syncListeners.add(listener); return () => syncListeners.delete(listener) },
     warn() {},
     async save({ mutate }) {
       const undo = mutate()
@@ -80,10 +82,10 @@ function fixture(t, url, { saved = {}, inherited = false, api = 'openai-response
   let disposed = false
   const close = async () => { if (!disposed) { disposed = true; for (const fn of effects) await fn() } }
   t.after(close)
-  return { rt, models, faults, user, settings, writes, close, durable: () => durable }
+  return { rt, models, faults, user, settings, writes, close, sync: () => Promise.all([...syncListeners].map(fn => fn())), durable: () => durable }
 }
 const select = (rt, enabled, model = 'gpt-fixture') => rt.setModelFast({ provider: 'relay', model, enabled })
-const send = (url, body) => fetch(url + '/responses', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer fixture-key' }, body: JSON.stringify(body) })
+const send = (url, body, headers = {}) => fetch(url + '/responses', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer fixture-key', ...headers }, body: JSON.stringify(body) })
 
 test('GPT IDs include namespaced models without matching unrelated names', () => {
   assert.ok(isGptModel('gpt-fixture'))
@@ -98,19 +100,19 @@ test('relay writes Fast only for selected models and preserves request content a
   const relayURL = f.user.providers.relay.baseURL
   assert.notEqual(relayURL, url)
   const body = { model: 'gpt-fixture', reasoning: { effort: 'high' }, input: [{ type: 'input_image', image_url: 'data:image/png;base64,AA==' }], tools: [{ type: 'function', name: 'check' }] }
-  const response = await send(relayURL, body)
+  const response = await send(relayURL, body, { 'OpenAI-Service-Tier': 'ultrafast' })
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('x-request-id'), 'fixture-request')
   assert.equal(await response.text(), 'data: {"delta":"first"}\n\ndata: [DONE]\n\n')
   assert.deepEqual(calls[0].body, { ...body, service_tier: 'fast' })
   assert.equal(calls[0].headers.authorization, 'Bearer fixture-key')
-  await (await send(relayURL, { model: 'openai/gpt-other', service_tier: 'flex' })).text()
-  assert.equal(calls.at(-1).body.service_tier, 'flex')
+  assert.equal(calls[0].headers['openai-service-tier'], 'fast')
+  await (await send(relayURL, { model: 'openai/gpt-other', service_tier: 'ultrafast' }, { 'OpenAI-Service-Tier': 'ultrafast' })).text()
+  assert.equal(calls.at(-1).body.service_tier, 'ultrafast')
+  assert.equal(calls.at(-1).headers['openai-service-tier'], 'ultrafast')
   await select(f.rt, false)
   assert.equal(f.user.providers.relay.baseURL, url)
-  // Calls prepared before the switch may still reach the relay; they pass through.
-  await (await send(relayURL, { model: 'gpt-fixture' })).text()
-  assert.equal(Object.hasOwn(calls.at(-1).body, 'service_tier'), false)
+  await assert.rejects(send(relayURL, { model: 'gpt-fixture' }))
 })
 
 test('model switches are serialized and remain independent', async (t) => {
@@ -196,6 +198,85 @@ test('changing the upstream externally is preserved when Fast is disabled or the
   assert.equal(f.user.providers.relay.baseURL, 'https://new.example/v1')
 })
 
+test('both saved Fast choices can be disabled after an external endpoint change', async (t) => {
+  const { url } = await gateway(t)
+  const f = fixture(t, url)
+  await select(f.rt, true)
+  await select(f.rt, true, 'openai/gpt-other')
+  const oldURL = f.user.providers.relay.baseURL
+  f.user.providers.relay.baseURL = 'https://new.example/v1'
+  await select(f.rt, false)
+  await select(f.rt, false, 'openai/gpt-other')
+  assert.equal(f.user.providers.relay.baseURL, 'https://new.example/v1')
+  assert.deepEqual(f.rt.state.modelFast, {})
+  await assert.rejects(send(oldURL, { model: 'gpt-fixture' }))
+})
+
+test('shutdown restores this runtime mount after losing the team lock', async (t) => {
+  const { url } = await gateway(t)
+  const f = fixture(t, url)
+  await select(f.rt, true)
+  const oldURL = f.user.providers.relay.baseURL
+  f.faults.readOnly = true
+  await f.close()
+  assert.equal(f.user.providers.relay.baseURL, url)
+  await assert.rejects(send(oldURL, { model: 'gpt-fixture' }))
+})
+
+test('a read-only startup leaves another runtime endpoint untouched', async (t) => {
+  const { url } = await gateway(t)
+  const saved = { modelFast: { relay: { upstream: url, originalBaseURL: url, relayURL: 'http://127.0.0.1:1/fixture', models: ['gpt-fixture'] } } }
+  const f = fixture(t, url, { saved })
+  f.user.providers.relay.baseURL = saved.modelFast.relay.relayURL
+  f.faults.readOnly = true
+  await f.rt.modelFastView('relay', f.models)
+  await f.close()
+  assert.equal(f.user.providers.relay.baseURL, saved.modelFast.relay.relayURL)
+  assert.equal(f.writes.length, 0)
+})
+
+test('failed startup after an external endpoint change still allows each saved choice to be disabled', async (t) => {
+  const { url } = await gateway(t)
+  const saved = { modelFast: { relay: { upstream: url, originalBaseURL: url, relayURL: 'http://127.0.0.1:1/fixture', models: ['gpt-fixture', 'openai/gpt-other'] } } }
+  const f = fixture(t, url, { saved })
+  f.user.providers.relay.baseURL = 'https://new.example/v1'
+  assert.match((await f.rt.modelFastView('relay', f.models)).error, /reconnect/)
+  await select(f.rt, false)
+  assert.match((await f.rt.modelFastView('relay', f.models)).error, /reconnect/)
+  await select(f.rt, false, 'openai/gpt-other')
+  assert.deepEqual(f.rt.state.modelFast, {})
+  assert.equal((await f.rt.modelFastView('relay', f.models)).error, undefined)
+  assert.equal(f.user.providers.relay.baseURL, 'https://new.example/v1')
+  assert.equal(f.writes.length, 0)
+})
+
+test('turning Fast off drains an existing response and releases the old listener before reuse', async (t) => {
+  let finish
+  const url = await server(t, async (req, res) => {
+    req.resume()
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.write('data: first\n\n')
+    finish = () => res.end('data: last\n\n')
+  })
+  const f = fixture(t, url)
+  await select(f.rt, true)
+  const oldURL = f.user.providers.relay.baseURL
+  const response = await send(oldURL, { model: 'gpt-fixture' })
+  const reader = response.body.getReader()
+  await reader.read()
+  await select(f.rt, false)
+  await assert.rejects(send(oldURL, { model: 'gpt-fixture' }))
+  finish()
+  const tail = await reader.read()
+  assert.match(new TextDecoder().decode(tail.value), /last/)
+  assert.equal((await reader.read()).done, true)
+  await select(f.rt, true)
+  const secondURL = f.user.providers.relay.baseURL
+  assert.notEqual(secondURL, oldURL)
+  await select(f.rt, false)
+  await assert.rejects(send(secondURL, { model: 'gpt-fixture' }))
+})
+
 test('relay preserves Chat Completions errors and model discovery, rejects unknown mounts and redirects', async (t) => {
   const seen = []
   const url = await server(t, async (req, res) => {
@@ -250,4 +331,104 @@ test('Fast routing records survive the real SQLite team storage boundary', async
   const modelFast = { relay: { upstream: 'https://gateway.example/v1', originalBaseURL: 'https://gateway.example/v1', relayURL: 'http://127.0.0.1:1/fixture', models: ['gpt-fixture'] } }
   await storage.write({ version: 1, bots: {}, rooms: {}, modelFast }, () => {})
   assert.deepEqual(storage.read().modelFast, modelFast)
+})
+
+test('retiring the last Fast mount closes its owned upstream keep-alive connection', async (t) => {
+  const connections = new Set()
+  let connected
+  const connection = new Promise(resolve => { connected = resolve })
+  const srv = createServer(async (req, res) => {
+    req.resume()
+    res.end('done')
+  })
+  srv.on('connection', socket => {
+    connections.add(socket)
+    socket.once('close', () => connections.delete(socket))
+    connected(socket)
+  })
+  srv.listen(0, '127.0.0.1')
+  await once(srv, 'listening')
+  t.after(async () => { const done = new Promise(resolve => srv.close(resolve)); srv.closeAllConnections(); await done })
+  const relay = await createFastRelay()
+  t.after(() => relay.close())
+  const mount = relay.mount(`http://127.0.0.1:${srv.address().port}/v1`, ['gpt-fixture'])
+  await (await send(mount.url, { model: 'gpt-fixture' })).text()
+  const socket = await connection
+  const closed = once(socket, 'close')
+  relay.unmount(mount.url)
+  await relay.drain()
+  await closed
+  assert.equal(connections.size, 0)
+})
+
+test('taking over the team lock reconnects saved Fast without opening Models', async (t) => {
+  const { url, calls } = await gateway(t)
+  const saved = { modelFast: { relay: { upstream: url, originalBaseURL: url, relayURL: 'http://127.0.0.1:1/fixture', models: ['gpt-fixture'] } } }
+  const f = fixture(t, url, { saved })
+  f.faults.readOnly = true
+  await f.rt.modelFastView('relay', f.models)
+  assert.equal(f.writes.length, 0)
+  f.faults.readOnly = false
+  await f.sync()
+  const relayURL = f.user.providers.relay.baseURL
+  await (await send(relayURL, { model: 'gpt-fixture' })).text()
+  assert.equal(calls[0].body.service_tier, 'fast')
+  const count = f.writes.length
+  await f.sync()
+  assert.equal(f.writes.length, count, 'unchanged sync must not rebuild the route')
+  f.faults.readOnly = true
+  await f.sync()
+  assert.equal(f.user.providers.relay.baseURL, url)
+  await assert.rejects(send(relayURL, { model: 'gpt-fixture' }))
+})
+
+test('adopting cleared Fast settings restores and retires the owned route', async (t) => {
+  const { url } = await gateway(t)
+  const f = fixture(t, url)
+  await select(f.rt, true)
+  const relayURL = f.user.providers.relay.baseURL
+  f.rt.state.modelFast = {}
+  await f.sync()
+  assert.equal(f.user.providers.relay.baseURL, url)
+  await assert.rejects(send(relayURL, { model: 'gpt-fixture' }))
+  const saved = { modelFast: { relay: { upstream: url, originalBaseURL: url, relayURL, models: ['gpt-fixture'] } } }
+  const failed = fixture(t, url, { saved })
+  failed.user.providers.relay.baseURL = 'https://new.example/v1'
+  assert.match((await failed.rt.modelFastView('relay', failed.models)).error, /reconnect/)
+  failed.rt.state.modelFast = {}
+  await failed.sync()
+  assert.equal((await failed.rt.modelFastView('relay', failed.models)).error, undefined)
+})
+
+test('switching away from the supported protocol restores the endpoint and reports the saved preference', async (t) => {
+  const { url } = await gateway(t)
+  const f = fixture(t, url)
+  await select(f.rt, true)
+  const relayURL = f.user.providers.relay.baseURL
+  f.user.providers.relay.api = 'anthropic-messages'
+  await f.sync()
+  assert.equal(f.user.providers.relay.baseURL, url)
+  assert.match((await f.rt.modelFastView('relay', f.models)).error, /reconnect/)
+  await assert.rejects(send(relayURL, { model: 'gpt-fixture' }))
+  await select(f.rt, false)
+  assert.equal(await f.rt.modelFastView('relay', f.models), undefined)
+})
+
+test('unchanged state notifications do not wait behind an unrelated slow Fast operation', async (t) => {
+  const { url } = await gateway(t)
+  const f = fixture(t, url)
+  await f.rt.modelFastView('relay', f.models)
+  let release, entered
+  const gate = new Promise(resolve => { release = resolve })
+  const started = new Promise(resolve => { entered = resolve })
+  f.rt.ctx.llm.listModels = () => { entered(); return gate }
+  const enabling = select(f.rt, true)
+  await started
+  try {
+    let synced = false
+    const notifying = f.sync().then(() => { synced = true })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(synced, true)
+    await notifying
+  } finally { release(f.models); await enabling }
 })

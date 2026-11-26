@@ -169,6 +169,7 @@ export function install(rt) {
   // own Models page. Explicit user settings win per field.
   let repairing = Promise.resolve()
   async function ensureCustomCompat() {
+    await rt.load?.()
     const found = seams()
     if (found === undefined) return
     const section = sections(found.settings).get(PI_AI)
@@ -381,6 +382,7 @@ export function install(rt) {
   // reference, headers and compatibility settings stay as they are; a Bot's model
   // choice is not touched here.
   async function saveProviderModels(body) {
+    await repairing
     const { settings } = usable()
     const provider = String(body.provider ?? '').trim()
     if (provider === '') throw invalid('Choose a provider')

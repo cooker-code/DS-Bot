@@ -1,8 +1,8 @@
 // Keep service-tier selection in the plugin. DSH still owns request conversion,
 // credentials and response parsing; the loopback relay changes only service_tier.
 import { randomBytes } from 'node:crypto'
-import { createServer, request as httpRequest } from 'node:http'
-import { request as httpsRequest } from 'node:https'
+import { Agent as HttpAgent, createServer, request as httpRequest } from 'node:http'
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https'
 import { pipeline } from 'node:stream'
 import { serviceOf } from './services.js'
 
@@ -32,6 +32,9 @@ function endpoint(value) {
 export async function createFastRelay() {
   const routes = new Map()
   const upstreams = new Set()
+  const sockets = new Set()
+  const httpAgent = new HttpAgent({ keepAlive: true })
+  const httpsAgent = new HttpsAgent({ keepAlive: true })
   const fail = (res, status, message) => {
     if (res.destroyed) return
     if (res.headersSent) { res.destroy(); return }
@@ -47,7 +50,9 @@ export async function createFastRelay() {
       fail(res, 404, 'Unknown Fast mode relay request.')
       return
     }
+    const fastModels = route.models
     let body
+    let fast = false
     try {
       if (req.method === 'POST') {
         const chunks = []
@@ -59,7 +64,8 @@ export async function createFastRelay() {
         }
         const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
         if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid body')
-        if (route.models.includes(parsed.model)) parsed.service_tier = 'fast'
+        fast = fastModels.includes(parsed.model)
+        if (fast) parsed.service_tier = 'fast'
         body = JSON.stringify(parsed)
       }
     } catch {
@@ -69,9 +75,10 @@ export async function createFastRelay() {
     if (res.destroyed) return
     const target = new URL(route.upstream + suffix + path.search)
     const headers = headersOf(req.headers)
+    if (fast && Object.hasOwn(headers, 'openai-service-tier')) headers['openai-service-tier'] = 'fast'
     if (body !== undefined) headers['content-length'] = Buffer.byteLength(body)
     const send = target.protocol === 'https:' ? httpsRequest : httpRequest
-    const upstream = send(target, { method: req.method, headers }, (response) => {
+    const upstream = send(target, { method: req.method, headers, agent: target.protocol === 'https:' ? httpsAgent : httpAgent }, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400) {
         response.resume()
         fail(res, 502, 'The model provider redirected the request. Configure its final API endpoint.')
@@ -80,10 +87,15 @@ export async function createFastRelay() {
       res.writeHead(response.statusCode, headersOf(response.headers))
       pipeline(response, res, () => {})
     })
+    upstream.on('socket', (socket) => {
+      if (sockets.has(socket)) return
+      sockets.add(socket)
+      socket.once('close', () => sockets.delete(socket))
+    })
     upstreams.add(upstream)
     upstream.on('close', () => upstreams.delete(upstream))
     upstream.on('error', () => fail(res, 502, 'Could not reach the model provider through the Fast mode relay.'))
-    upstream.setTimeout(300_000, () => upstream.destroy())
+    upstream.setTimeout(route.idleTimeoutMs, () => upstream.destroy())
     res.on('close', () => upstream.destroy())
     upstream.end(body)
   })
@@ -92,16 +104,29 @@ export async function createFastRelay() {
     server.listen(0, '127.0.0.1', () => { server.removeListener('error', reject); resolve() })
   })
   const origin = `http://127.0.0.1:${server.address().port}`
+  let drained
+  const drain = () => {
+    drained ??= new Promise(resolve => server.close(() => {
+      const closed = [...sockets].map(socket => new Promise(resolve => socket.once('close', resolve)))
+      httpAgent.destroy()
+      httpsAgent.destroy()
+      void Promise.all(closed).then(resolve)
+    }))
+    server.closeIdleConnections()
+    return drained
+  }
   return {
-    mount(upstream, models) {
+    mount(upstream, models, idleTimeoutMs = 300_000) {
       const token = randomBytes(24).toString('hex')
-      const route = { upstream: endpoint(upstream), models: [...models] }
+      const route = { upstream: endpoint(upstream), models: [...models], idleTimeoutMs }
       routes.set(token, route)
       return { url: `${origin}/${token}`, route }
     },
+    unmount(url) { routes.delete(new URL(url).pathname.slice(1)) },
+    drain,
     async close() {
       for (const upstream of upstreams) upstream.destroy()
-      const closed = new Promise(resolve => server.close(resolve))
+      const closed = drain()
       server.closeAllConnections()
       await closed
     },
@@ -114,7 +139,10 @@ export function install(rt) {
   let closing = false
   let changing = Promise.resolve()
   let startupError
+  const reconnectErrors = new Map()
   const active = new Map()
+  const retiring = new Set()
+  let lastSync
   const records = () => state.modelFast ?? {}
   const settings = () => serviceOf(ctx, 'settings')
   function source(provider) {
@@ -145,6 +173,13 @@ export function install(rt) {
     changing = next.catch(() => {})
     return next
   }
+  function retireUnused() {
+    if (!relay || active.size > 0) return
+    const previous = relay
+    relay = undefined
+    retiring.add(previous)
+    void previous.drain().then(() => retiring.delete(previous))
+  }
   async function connect(provider, record) {
     const src = source(provider)
     if (!eligible(provider, src)) throw invalid('Fast mode is only available for GPT models on OpenAI API routes.')
@@ -152,26 +187,70 @@ export function install(rt) {
     if (!managedURL(record, src.profile.baseURL) && src.profile.baseURL !== record.originalBaseURL && src.profile.baseURL !== record.upstream)
       throw invalid('The provider endpoint changed. Turn Fast mode off before enabling it again.')
     relay ??= await createFastRelay()
-    const mounted = relay.mount(record.upstream, record.models)
+    const mounted = relay.mount(record.upstream, record.models, src.profile.streamIdleTimeoutMs)
     const next = { ...record, ...(record.relayURL ? { previousRelayURL: record.relayURL } : {}), relayURL: mounted.url }
     const before = records()
     // Save the recovery information before pointing DSH at a process-local port.
-    await persist({ ...before, [provider]: next })
-    try { await writeURL(src, mounted.url) }
-    catch (error) { await persist(before); throw error }
-    active.set(provider, mounted)
+    try {
+      await persist({ ...before, [provider]: next })
+      try { await writeURL(src, mounted.url) }
+      catch (error) { await persist(before); throw error }
+    } catch (error) {
+      relay.unmount(mounted.url)
+      retireUnused()
+      throw error
+    }
+    active.set(provider, { ...mounted, originalBaseURL: record.originalBaseURL })
+  }
+  async function release(provider, mounted) {
+    const src = source(provider)
+    if (src?.profile?.baseURL === mounted.url) await writeURL(src, mounted.originalBaseURL)
+    relay.unmount(mounted.url)
+    active.delete(provider)
+  }
+  const syncSignature = () => JSON.stringify([
+    Boolean(rt.readOnly?.()), records(),
+    [...new Set([...active.keys(), ...Object.keys(records())])].map((provider) => {
+      const profile = source(provider)?.profile
+      return [provider, profile?.baseURL, profile?.api, profile?.transport, profile?.streamIdleTimeoutMs]
+    }),
+  ])
+  async function reconcile() {
+    if (closing || syncSignature() === lastSync) return
+    const writer = !rt.readOnly?.()
+    for (const provider of reconnectErrors.keys()) if (!own(records(), provider)) reconnectErrors.delete(provider)
+    for (const [provider, mounted] of active) {
+      const record = own(records(), provider)
+      const src = source(provider)
+      if (!writer || !record || record.relayURL !== mounted.url || src?.profile?.baseURL !== mounted.url || !eligible(provider, src)) {
+        try { await release(provider, mounted) }
+        catch { reconnectErrors.set(provider, 'Fast mode could not reconnect. Turn it off and enable it again in Models.') }
+      }
+    }
+    if (writer) for (const [provider, record] of Object.entries(records())) {
+      const mounted = active.get(provider)
+      if (mounted) {
+        mounted.route.models = [...record.models]
+        mounted.route.idleTimeoutMs = source(provider)?.profile?.streamIdleTimeoutMs ?? 300_000
+        continue
+      }
+      try { await connect(provider, record); reconnectErrors.delete(provider) }
+      catch { reconnectErrors.set(provider, 'Fast mode could not reconnect. Turn it off and enable it again in Models.') }
+    }
+    retireUnused()
+    lastSync = syncSignature()
   }
   const ready = queue(async () => {
     await rt.load?.()
     await rt.providerRoutesReady?.()
-    if (rt.readOnly?.() || closing) return
-    for (const [provider, record] of Object.entries(records())) {
-      try { await connect(provider, record) }
-      catch { startupError = 'Fast mode could not reconnect. Turn it off and enable it again in Models.' }
-    }
+    await reconcile()
   })
   // Install is synchronous; startup failures are reported by the Models page.
   ready.catch(() => { startupError = 'Fast mode could not reconnect. Turn it off and enable it again in Models.' })
+  ctx.effect(() => rt.onStoreSynced?.(() => {
+    if (closing || syncSignature() === lastSync) return
+    return queue(reconcile)
+  }), 'ds-bot: Fast ownership changes')
 
   rt.modelFastView = async (provider, models) => {
     await ready.catch(() => {})
@@ -180,7 +259,8 @@ export function install(rt) {
     const candidates = models.filter(model => isGptModel(model.id))
     for (const id of record?.models ?? []) if (!candidates.some(model => model.id === id)) candidates.push({ id, name: id })
     if (!candidates.length && !record) return undefined
-    return { models: candidates.map(model => ({ id: model.id, name: model.name, enabled: record?.models.includes(model.id) === true })), ...(startupError ? { error: startupError } : {}) }
+    const error = reconnectErrors.get(provider) ?? startupError
+    return { models: candidates.map(model => ({ id: model.id, name: model.name, enabled: record?.models.includes(model.id) === true })), ...(error ? { error } : {}) }
   }
   rt.setModelFast = body => queue(async () => {
     await rt.load?.()
@@ -208,12 +288,14 @@ export function install(rt) {
         throw error
       }
       const mounted = active.get(provider)
-      if (mounted) mounted.route.models = []
+      if (mounted) relay.unmount(mounted.url)
       active.delete(provider)
-    } else if (old && active.has(provider)) {
-      if (src.profile.baseURL !== old.relayURL) throw invalid('The provider endpoint changed. Turn Fast mode off before enabling it again.')
+      retireUnused()
+    } else if (old && (active.has(provider) || !enabled)) {
+      if (enabled && src.profile.baseURL !== old.relayURL) throw invalid('The provider endpoint changed. Turn Fast mode off before enabling it again.')
       await persist({ ...records(), [provider]: { ...old, models: [...models] } })
-      active.get(provider).route.models = [...models]
+      const mounted = active.get(provider)
+      if (mounted) mounted.route.models = [...models]
     } else {
       const record = old ? { ...old, models: [...models] } : {
         upstream: endpoint(src.profile.baseURL ?? src.entry.defaultBaseURL),
@@ -223,6 +305,8 @@ export function install(rt) {
       await connect(provider, record)
     }
     startupError = undefined
+    if (active.has(provider) || models.size === 0) reconnectErrors.delete(provider)
+    lastSync = syncSignature()
   })
   rt.forgetModelFast = async provider => {
     const record = own(records(), provider)
@@ -233,13 +317,15 @@ export function install(rt) {
     closing = true
     await changing
     try {
-      if (!rt.readOnly?.()) for (const [provider, record] of Object.entries(records())) {
+      // Releasing this runtime's own endpoint is still necessary after losing
+      // the team lock. A read-only startup never adds anything to active.
+      for (const [provider, mounted] of active) {
         const src = source(provider)
-        if (managedURL(record, src?.profile?.baseURL)) {
-          try { await writeURL(src, record.originalBaseURL) }
+        if (src?.profile?.baseURL === mounted.url) {
+          try { await writeURL(src, mounted.originalBaseURL) }
           catch { rt.warn?.('ds-bot: restore the provider endpoint in Models before disabling the plugin') }
         }
       }
-    } finally { await relay?.close() }
+    } finally { await Promise.all([relay, ...retiring].filter(Boolean).map(server => server.close())) }
   }, 'ds-bot: GPT Fast relay')
 }
