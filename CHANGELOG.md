@@ -6,6 +6,8 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### 2026-11-26 — upstream catalog timestamps and skill entry
 
+- Explain dependency groups with circular question-mark help in both the filter and table header. Hover, click or keyboard focus opens the explanation; Escape or an outside click dismisses it.
+
 - Show each PR's GitHub creation time and latest source-data import time in the catalog table and details, using Asia/Taipei. Cache missing timestamps once; decisions and repeated checks keep source sync times unchanged.
 - Require the sync-upstream workflow to save structured records in SQLite and open its verified local management page after every execution. Keep the read-only dev checkout separate from the updated skill worktree.
 

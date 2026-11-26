@@ -3,6 +3,12 @@
 来源仓库为 [Fei-Craft/DS-Bot](https://github.com/Fei-Craft/DS-Bot)，原名 Fei2411/DS-Bot，GitHub 仓库 ID 为 `1409013846`（2026-11-25 核实）。迁名前后沿用同一来源键。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
 
 
+## 2026-11-26 · 依赖组问号说明（仅管理页）
+
+记录时间 **2026-11-26 13:39 +0800（Asia/Taipei）**。新分支`chore/upstream-catalog-help`，工作树`.worktree/chore%2Fupstream-catalog-help`，从76eed3d0创建；dev提交与执行前tracked diff保持不变，未合回。筛选栏及表头“依赖组”后增加圆圈问号，解释同功能/配套适配或验证的分组，以G16举例，明确同组不等于必须全合。支持悬停、点击、键盘聚焦、Esc/外部关闭，390px和原筛选真实检查通过，无pageerror；候选96aee9f7独立只读复核通过。正式4179管理服务已更新，临时预览与测试浏览器/进程已清理，日用DSH未中断。
+
+仅3个网页assets文件，无数据库/插件包变化，不重新安装DSH。未fetch、新增上游区间或更改采用结果；265来源及113待处理保持。[交互与清理证据](docs/reviews/evidence/2026-11-26-upstream-catalog-help.json)、[页面截图](docs/reviews/evidence/2026-11-26-upstream-catalog-help.png)。
+
 ## 2026-11-26 · 台账时间列与技能网页入口（无上游代码移植）
 
 记录时间 **2026-11-26 13:33 +0800（Asia/Taipei）**。新分支`chore/upstream-catalog-times`，工作树`.worktree/chore%2Fupstream-catalog-times`，从上一批已验证`951b169e`创建；dev仍只读，未合回。未fetch或扩大上游区间，仍固定bb1b1592；本批无上游设计文档变更，也没有新增采用PR。265项状态仍为采用95、需讨论5、暂缓108、跳过57，待处理113。

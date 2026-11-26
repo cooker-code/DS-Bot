@@ -1,0 +1,45 @@
+{
+  "candidate": "96aee9f7f17a232321ddbdf0b80dd38bb2ea3f01",
+  "base": "76eed3d0fcd237094c45c2ff5f771d4c51732c6a",
+  "browser": {
+    "pid": 82693,
+    "questionMarks": 2,
+    "hover": true,
+    "hoverPanel": true,
+    "clickToggle": true,
+    "outsideDismiss": true,
+    "keyboardFocus": true,
+    "enter": true,
+    "escape": true,
+    "narrow390": true,
+    "filterUnchanged": true,
+    "formalChoicesNotWritten": true,
+    "pageErrors": []
+  },
+  "cleanup": {
+    "4179": {
+      "oldOwnedPID": 80764,
+      "exited": true
+    },
+    "4182": {
+      "oldOwnedPID": 82282,
+      "exited": true
+    },
+    "browser": {
+      "pid": 82693,
+      "browserConnected": false,
+      "temporaryChromeFiles": [],
+      "ownedRemoved": true,
+      "scriptExited": true
+    },
+    "dailyDSHStopped": false,
+    "deliveryURL": "http://127.0.0.1:4179",
+    "deliveryBranch": "chore/upstream-catalog-help",
+    "intentionalDeliveryService": true
+  },
+  "independentReadOnlyReview": "passed",
+  "nodeSyntax": "passed",
+  "diffCheck": "passed",
+  "devTrackedDiffByteIdentical": true,
+  "devSHA": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d"
+}
