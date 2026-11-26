@@ -11,6 +11,17 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "GPT Fast mode": "GPT 快速模式",
+  "Fast mode for {name}": "{name} 的快速模式",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "为使用此供应商及模型的所有请求申请加速，会增加费用。供应商仍可能按标准档位处理。关闭后恢复供应商默认行为。",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "快速模式未能重新连接，请在模型设置中关闭后重新开启。",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "快速模式仅适用于通过 OpenAI API 协议接入的 GPT 模型。",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "供应商地址已更改，请先关闭快速模式再重新开启。",
+  "Change Fast mode in the host that owns this team.": "请在持有本团队写锁的宿主中修改快速模式。",
+  "Choose a GPT model and a Fast mode switch value.": "请选择 GPT 模型并指定快速模式开关值。",
+  "The GPT model is no longer available.": "该 GPT 模型已不可用。",
+  "Fast mode requires an HTTP API endpoint.": "快速模式需要 HTTP API 地址。",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "快速模式需要不含凭据、查询参数或片段的 HTTP API 地址。",
   "Prompts": "提示词",
   "Task message explanations": "任务人话解释",
   "Plain-language prompt": "人话提示词",

@@ -12979,6 +12979,17 @@ var DSH_DE = {
 // src/client/i18n.js
 var NAMESPACE = "ds-bot";
 var ZH = {
+  "GPT Fast mode": "GPT 快速模式",
+  "Fast mode for {name}": "{name} 的快速模式",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "为使用此供应商及模型的所有请求申请加速，会增加费用。供应商仍可能按标准档位处理。关闭后恢复供应商默认行为。",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "快速模式未能重新连接，请在模型设置中关闭后重新开启。",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "快速模式仅适用于通过 OpenAI API 协议接入的 GPT 模型。",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "供应商地址已更改，请先关闭快速模式再重新开启。",
+  "Change Fast mode in the host that owns this team.": "请在持有本团队写锁的宿主中修改快速模式。",
+  "Choose a GPT model and a Fast mode switch value.": "请选择 GPT 模型并指定快速模式开关值。",
+  "The GPT model is no longer available.": "该 GPT 模型已不可用。",
+  "Fast mode requires an HTTP API endpoint.": "快速模式需要 HTTP API 地址。",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "快速模式需要不含凭据、查询参数或片段的 HTTP API 地址。",
   "Prompts": "提示词",
   "Task message explanations": "任务人话解释",
   "Plain-language prompt": "人话提示词",
@@ -15742,6 +15753,7 @@ function teamActions({ call: call2, after, partFor, mainView, show: show2, roste
     addProvider: (body) => after(call2("provider-add", body)),
     providerModels: (body) => call2("provider-models", body),
     saveProviderModels: (body) => call2("provider-models-save", body),
+    setProviderModelFast: (body) => call2("provider-model-fast", body),
     removeProvider: (provider) => after(call2("provider-remove", { provider })),
     // After a failed turn: the Bot answers the user's last unanswered message, which is never sent again.
     resume: (botId, target) => {
@@ -37504,6 +37516,8 @@ function ProviderRow({ provider, apply: apply2, actions, roster, revision, open,
   const [refreshError, setRefreshError] = (0, import_react50.useState)("");
   const [draft, setDraft] = (0, import_react50.useState)(null);
   const [confirmRemove, setConfirmRemove] = (0, import_react50.useState)(false);
+  const [fastBusy, setFastBusy] = (0, import_react50.useState)(false);
+  const [fastError, setFastError] = (0, import_react50.useState)("");
   (0, import_react50.useEffect)(() => {
     if (open) return;
     setConfirm(false);
@@ -37511,6 +37525,15 @@ function ProviderRow({ provider, apply: apply2, actions, roster, revision, open,
     setRefreshError("");
     setConfirmRemove(false);
   }, [open]);
+  const setFast = (model, enabled) => {
+    if (fastBusy) return;
+    setFastBusy(true);
+    setFastError("");
+    void apply2(translated(actions.setProviderModelFast({ provider: provider.id, model, enabled })).catch((error) => {
+      setFastError(error.message);
+      throw error;
+    })).finally(() => setFastBusy(false));
+  };
   const state = keyState(provider.key);
   const shown = provider.models.slice(0, SHOWN_MODELS);
   const hint = provider.error ?? (provider.models.length === 0 ? t("No models") : t("{count} models", { count: provider.models.length }));
@@ -37602,6 +37625,19 @@ function ProviderRow({ provider, apply: apply2, actions, roster, revision, open,
       provider.key?.writable ? (0, import_react50.createElement)(KeyEditor, { provider, apply: apply2, actions }) : null,
       provider.key && !provider.key.writable ? (0, import_react50.createElement)("div", { className: "bt-set-hint" }, t("This key comes from outside DS Bot, such as an environment variable, and cannot be changed here.")) : null,
       modelsBlock,
+      provider.fast?.models?.length > 0 ? (0, import_react50.createElement)(
+        "div",
+        { className: "bt-secret-edit-block" },
+        (0, import_react50.createElement)("div", { className: "bt-secret-edit-label" }, t("GPT Fast mode")),
+        (0, import_react50.createElement)("p", { className: "bt-set-hint" }, t("Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.")),
+        provider.fast.models.map((model) => (0, import_react50.createElement)(
+          "div",
+          { key: model.id, className: "bt-set-row bt-provider-fast" },
+          (0, import_react50.createElement)("span", { className: "bt-set-copy", title: model.id }, model.name),
+          (0, import_react50.createElement)(Switch, { label: t("Fast mode for {name}", { name: model.name }), on: model.enabled, disabled: fastBusy, onChange: (enabled) => setFast(model.id, enabled) })
+        )),
+        fastError || provider.fast.error ? (0, import_react50.createElement)("div", { className: "bt-set-hint", "data-error": "", role: "alert" }, fastError || hostText(provider.fast.error)) : null
+      ) : null,
       provider.removable ? (0, import_react50.createElement)(
         "div",
         { className: "bt-secret-row-actions" },
@@ -37855,6 +37891,8 @@ var PROVIDERS_CSS = `
 .bt-provider-state[data-state=missing]::before{background:var(--bt-danger)}
 .bt-provider .bt-secret-field{align-items:center;gap:8px}
 .bt-provider .bt-secret-field>svg,.bt-provider-form .bt-secret-field>svg{flex:none;color:var(--bt-ink-3)}
+.bt-provider-fast{padding:8px 0;gap:12px}
+.bt-provider-fast .bt-set-copy{overflow-wrap:anywhere}
 .bt-provider-models{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .bt-provider-models .bt-tag{max-width:220px}
 .bt-provider-add{gap:12px;animation:bt-q-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing} backwards,bt-veil-in .2s ease-out backwards}

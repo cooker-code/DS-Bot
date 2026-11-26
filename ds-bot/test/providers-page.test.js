@@ -68,7 +68,7 @@ test('provider styles are included in the sheets shared by Bot mode and Agent-mo
 const expandDraft = (node) => {
   if (Array.isArray(node)) return node.flatMap(expandDraft)
   if (node === null || typeof node !== 'object') return node
-  if (typeof node.type === 'function' && node.type.name === 'ModelDraft') return expandDraft(node.type(node.props))
+  if (typeof node.type === 'function' && ['ModelDraft', 'Switch'].includes(node.type.name)) return expandDraft(node.type(node.props))
   return { ...node, props: { ...node.props, children: expandDraft(node.props?.children) } }
 }
 const textOf = (node) => {
@@ -283,4 +283,33 @@ test('fallback after reordering follows the configured default, not the old effe
   assert.equal(fallbacksFor(saved, draft, roster).switching[0].target.ref, 'relay/b')
   roster.profileDefaultModel = 'relay/a'
   assert.equal(fallbacksFor(saved, draft, roster).switching[0].target.name, 'Renamed A')
+})
+
+
+test('GPT Fast switches save the exact model, stay disabled while saving and retain state on failure', async () => {
+  cells.length = 0
+  prevDeps.length = 0
+  const item = { ...provider(), fast: { models: [{ id: 'gpt-fixture', name: 'GPT Fixture', enabled: false }] } }
+  const view = row({ provider: item })
+  let finish
+  const calls = []
+  view.acts.setProviderModelFast = body => { calls.push(body); return new Promise(resolve => { finish = resolve }) }
+  const findSwitch = tree => buttons(ui(tree)).find(node => node.props.role === 'switch')
+  assert.equal(findSwitch(view.tree).props['aria-checked'], false)
+  assert.match(textOf(view.tree), /extra cost/)
+  findSwitch(view.tree).props.onClick()
+  view.tree = view.rerender()
+  assert.equal(findSwitch(view.tree).props.disabled, true)
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ provider: 'relay', model: 'gpt-fixture', enabled: true }])
+  finish({ providers: [] })
+  await settle(); await settle()
+  view.tree = view.rerender({ provider: { ...item, fast: { models: [{ ...item.fast.models[0], enabled: true }] } } })
+  assert.equal(findSwitch(view.tree).props['aria-checked'], true)
+  view.acts.setProviderModelFast = async () => { throw new Error('fixture save failed') }
+  findSwitch(view.tree).props.onClick()
+  await settle(); await settle()
+  view.tree = view.rerender({ provider: { ...item, fast: { models: [{ ...item.fast.models[0], enabled: true }] } } })
+  assert.equal(findSwitch(view.tree).props['aria-checked'], true)
+  assert.equal(findSwitch(view.tree).props.disabled, false)
+  assert.match(textOf(view.tree), /fixture save failed/)
 })

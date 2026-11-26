@@ -176,6 +176,8 @@ export function install(rt) {
     if (!userProviders || typeof userProviders !== 'object') return
     const ops = []
     for (const [id, profile] of Object.entries(userProviders)) {
+      const fast = rt.state.modelFast?.[id]
+      if (fast && [fast.relayURL, fast.previousRelayURL].includes(profile.baseURL)) continue
       const nextCompat = compatForRoute(id, profile)
       if (nextCompat !== undefined) ops.push({ op: 'set', path: ['providers', id, 'compat'], value: nextCompat })
     }
@@ -255,6 +257,7 @@ export function install(rt) {
         id: entry.provider,
         name: entry.displayName,
         models,
+        ...(rt.modelFastView ? { fast: await rt.modelFastView(entry.provider, models) } : {}),
         declaredModels: declared,
         refreshable,
         key: ref === undefined ? null : { configured: info?.configured === true, writable: info?.writable !== false },
@@ -410,6 +413,8 @@ export function install(rt) {
     })
     if (new Set(models.map(model => model.id)).size !== models.length) throw invalid('Two models have the same id')
     await settings.mutate(PI_AI, [{ op: 'set', path: [...entry.settingsPath, 'models'], value: models }], section?.revision)
+    for (const model of (rt.state.modelFast?.[provider]?.models ?? []).filter(id => !models.some(model => model.id === id)))
+      await rt.setModelFast({ provider, model, enabled: false })
     rt.dropCatalog()
     return providersView()
   }
@@ -423,9 +428,11 @@ export function install(rt) {
     const entry = entryOf(provider)
     if (entry === undefined || entry.settingsNs !== PI_AI || profileOf(entry, map) === undefined) throw invalid(`${provider} is not set up`)
     if (profileOf(entry, map, 'user') === undefined || profileOf(entry, map, 'base') !== undefined) throw invalid(`${provider} comes with this setup and cannot be removed`)
-    const ref = refOf(profileOf(entry, map))
+    await rt.forgetModelFast?.(provider)
+    const current = sections(settings)
+    const ref = refOf(profileOf(entry, current))
     const shared = [...keyRefs()].some(([other, otherRef]) => other !== provider && otherRef === ref)
-    await settings.mutate(PI_AI, [{ op: 'unset', path: entry.settingsPath }], map.get(PI_AI)?.revision)
+    await settings.mutate(PI_AI, [{ op: 'unset', path: entry.settingsPath }], current.get(PI_AI)?.revision)
     if (ref === keyRefFor(provider) && !shared) {
       const info = await credentials.describe(ref)
       if (info.configured && info.writable) await credentials.unset(ref)
@@ -434,5 +441,5 @@ export function install(rt) {
     return providersView()
   }
 
-  Object.assign(rt, { keyRefs, missingKeys, providersView, setProviderKey, clearProviderKey, addProvider, discoverModels, saveProviderModels, removeProvider })
+  Object.assign(rt, { providerRoutesReady: repairRoutes, keyRefs, missingKeys, providersView, setProviderKey, clearProviderKey, addProvider, discoverModels, saveProviderModels, removeProvider })
 }
