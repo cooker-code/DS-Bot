@@ -1,7 +1,7 @@
 # PR #2014：来源 IM 群问题卡与本地项目澄清适配
 
 - 来源：[Fei-Craft/DS-Bot PR #2014](https://github.com/Fei-Craft/DS-Bot/pull/2014)，固定合入 SHA `4654410575232af9e9461e982a61063d732c9fb3`。
-- 本地比较基线：`ec64d5e07b3c13c8857a29b9242e71146384b9e2`。本次专用适配工作树为 `chore/upstream-2014-task-questions`；验证后的改动按用户同次授权纳入 `feat/task-plan-questions`。未合回 dev、未安装、未推送。
+- 功能代码候选：`e516aa13`；独立适配中间提交：`aceae7d5`。本地比较基线：`ec64d5e07b3c13c8857a29b9242e71146384b9e2`。本次专用适配工作树为 `chore/upstream-2014-task-questions`；验证后的改动按用户同次授权纳入 `feat/task-plan-questions`。未合回 dev、未安装、未推送。
 - 处理：暂缓 → 采用（已验证的功能候选，尚未部署）；保留既有历史与用户选择。此次只处理该 PR，不刷新完整上游盘点区间。来源地址继续为 https://github.com/Fei-Craft/DS-Bot.git。
 
 ## 功能与差异

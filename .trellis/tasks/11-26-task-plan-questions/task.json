@@ -15,7 +15,7 @@
   "branch": "feat/task-plan-questions",
   "base_branch": "dev",
   "worktree_path": null,
-  "commit": null,
+  "commit": "e516aa13fb55146645319e536e6372ca2136db26",
   "pr_url": null,
   "subtasks": [],
   "children": [],

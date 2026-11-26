@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "entry": "prototype/index.html",
-  "preview": "prototype/preview.png",
-  "artifact_digest": null,
-  "status": "pending_user_approval",
-  "approved_digest": null,
-  "approval_evidence": null
-}
