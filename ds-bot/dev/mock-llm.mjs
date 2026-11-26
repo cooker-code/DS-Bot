@@ -189,7 +189,7 @@ function decide(body) {
   }
 
   // A stopped call's result can share a message with the next group turn, which wins.
-  const fresh = textBlocks(last?.content).some(value => value.trimStart().startsWith('[Group chat') || /Answer on work [\w-]+:|Question on work [\w-]+:|Work W\d+ needs an answer:|FLOW2130:verified result/.test(value))
+  const fresh = textBlocks(last?.content).some(value => value.trimStart().startsWith('[Group chat') || /Answer on work [\w-]+:|Question on work [\w-]+:|Work W\d+ needs an answer:|FLOW2130:verified result|FLOW2130:foreground|验证协作|验证便笺/.test(value))
   const result = fresh ? undefined : blocks.find(block => block.type === 'tool_result')
   if (result) {
     const resultText = typeof result.content === 'string' ? result.content : textOf(result.content)
