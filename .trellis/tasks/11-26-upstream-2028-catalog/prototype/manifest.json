@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "entry": "prototype/brief.md",
-  "preview": "prototype/brief.md",
-  "status": "approved",
-  "artifact_digest": "sha256:6b3cdfcc7e35de065729cf46bccecaaf96058287cd4b7fe888be40a464a78955",
-  "approved_digest": "sha256:6b3cdfcc7e35de065729cf46bccecaaf96058287cd4b7fe888be40a464a78955",
-  "approval_evidence": "2026-11-26用户明确批准上一轮SQLite＋HTML与PR2028文字交互方案继续实施；文字布局批准，不代表最终截图或用户验收。"
-}
