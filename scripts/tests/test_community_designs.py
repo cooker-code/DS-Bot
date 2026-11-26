@@ -75,6 +75,7 @@ class CommunityTests(unittest.TestCase):
     def test_index_is_not_a_feature_and_doc_only_change_is_not_adoption(self):
         sha=self.plan(path='docs/plans/README.md',body='# 设计目录');result=self.apply(sha)
         self.assertEqual(result['pendingDesigns'],[]);self.assertEqual(community.list_entries(self.store,{'kind':'design'})['total'],0)
+        self.assertTrue(any(r['key']=='pr:1' for r in community.list_entries(self.store,{'kind':'pr'})['rows']))
         path=self.repo/'docs/plans/doc-only.md';path.write_text('# 群目标\n调整说明');self.git('add','.');self.git('commit','-m','Docs only')
         identity=self.apply(self.git('rev-parse','HEAD'),2)['changedDesigns'][0]
         self.assertEqual(sum(community.design_detail(self.store,identity)['counts'].values()),0)
@@ -87,6 +88,46 @@ class CommunityTests(unittest.TestCase):
         bundle=community.prepare(self.store,self.repo,items,end,True);self.assertEqual(bundle['documents'],[])
         with self.store.db:self.assertEqual(community.apply(self.store,bundle)['changedDesigns'],[])
         self.assertEqual([tuple(r) for r in self.store.db.execute('SELECT * FROM designs')],before)
+    def test_unchanged_blob_rename_keeps_every_fixed_source_link_valid(self):
+        from urllib.parse import unquote
+        first=self.plan();self.git('mv','docs/plans/feature.md','docs/plans/renamed.md');self.git('commit','-m','Rename unchanged design');end=self.git('rev-parse','HEAD')
+        items=[(1,snapshot(self.repo,first)),(2,snapshot(self.repo,end))]
+        with self.store.db:community.apply(self.store,community.prepare(self.store,self.repo,items,end,True))
+        identity=self.store.db.execute('SELECT id FROM designs').fetchone()[0]
+        current=community.design_detail(self.store,identity)
+        links=[current['url']]+[r['pr_url'] for n in (1,2) for r in community.for_pr(self.store,n)]
+        for url in links:
+            sha,path=unquote(url.split('/blob/',1)[1]).split('/',1)
+            self.assertEqual(self.git('rev-parse',sha+':'+path),current['blob_sha'])
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM designs').fetchone()[0],1)
+
+    def test_direct_design_commit_waits_for_both_reviews(self):
+        path=self.repo/'docs/plans/direct.md';path.parent.mkdir(parents=True);path.write_text('# 新功能设计\n直接提交说明')
+        self.git('add','.');self.git('commit','-m','Add a direct design change');end=self.git('rev-parse','HEAD')
+        result=sync(self.store,self.repo,end);identity=result['pendingDesigns'][0]
+        self.assertFalse(result['checkpointAdvanced']);self.assertEqual(result['directCommits'],[end])
+        records=self.store.meta('direct_commits');records[end].update(reviewed=True,status='暂缓',purpose='新增设计',reason='待本地适配',solution='保持原逻辑并评估')
+        with self.store.db:self.store.set_meta('direct_commits',records)
+        self.assertFalse(sync(self.store,self.repo,end)['checkpointAdvanced'])
+        community.annotate(self.store,identity,{**NOTE,'upstream_stage':'设计/计划','stage_evidence':'仅设计提交，尚无实现PR'})
+        self.assertTrue(sync(self.store,self.repo,end)['checkpointAdvanced'])
+        self.assertEqual(community.design_detail(self.store,identity)['relatedPRs'],[])
+    def test_failed_schema_upgrade_rolls_back_without_changing_v1_data(self):
+        target=Path(self.tmp.name)/'failed-v1.sqlite3';self.store.backup(target)
+        raw=sqlite3.connect(target)
+        try:raw.executescript('DROP TABLE pr_designs;DROP TABLE design_versions;DROP TABLE designs;PRAGMA user_version=1;')
+        finally:raw.close()
+        original=Path.read_text
+        def read(path,*args,**kwargs):return 'CREATE TABLE broken(;' if path.name=='community-schema.sql' else original(path,*args,**kwargs)
+        with patch('upstream_catalog.store.Path.read_text',read):
+            with self.assertRaises(CatalogError):Store(target)
+        raw=sqlite3.connect(target)
+        try:
+            self.assertEqual(raw.execute('PRAGMA user_version').fetchone()[0],1)
+            self.assertEqual(raw.execute('SELECT count(*) FROM prs').fetchone()[0],2)
+            self.assertEqual(raw.execute("SELECT count(*) FROM sqlite_master WHERE name='broken'").fetchone()[0],0)
+        finally:raw.close()
+
     def test_schema_v1_upgrade_preserves_existing_rows_and_choices(self):
         self.store.preference(1,0,'保留选择',0);target=Path(self.tmp.name)/'v1.sqlite3';self.store.backup(target)
         raw=sqlite3.connect(target)

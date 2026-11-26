@@ -110,6 +110,7 @@ async function showDetail(number, focus = false) {
     for (const item of row.history.slice(0, 20)) events.append(element('li', `${item.recorded_at} · ${item.actor} · ${item.kind}`))
     contents.push(events)
     $('detail').replaceChildren(...contents)
+    $('detail').scrollTop = 0
     if (focus && matchMedia('(max-width:1000px)').matches) $('detail').scrollIntoView({ block: 'start', behavior: 'smooth' })
     await loadRows()
   } catch (error) { message(error.message, true) }
@@ -311,6 +312,8 @@ async function showCommunityEntry(entry) {
     } else {
       section.append(relationSection('本地 PR 判断与选择入口', [row], '暂无记录'), renderPRDesigns(row, JSON.parse(row.upstream_json || '{}')))
     }
+    section.scrollTop = 0
+    if (innerWidth <= 1000) section.scrollIntoView({ block: 'start' })
     const url = new URL(location.href);url.searchParams.set('entry', key);history.replaceState(null, '', url)
     for (const tr of $('community-rows').children) tr.toggleAttribute('data-selected', tr.dataset.entryKey === key)
   } catch (error) { $('community-notice').textContent = error.message }

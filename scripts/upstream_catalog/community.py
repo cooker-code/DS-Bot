@@ -97,7 +97,7 @@ def apply(store, bundle):
             identity = cursor.lastrowid;changed.add(identity)
         else:
             identity = old['id']
-            if data['is_current'] and (old['path'],old['blob_sha'],old['document_state']) != (path,blob,state):
+            if data['is_current'] and (old['path'],old['blob_sha'],old['document_state'],old['source_sha']) != (path,blob,state,data['source_sha']):
                 store.db.execute('UPDATE designs SET path=?,title=?,document_state=?,blob_sha=?,source_sha=?,changed_at=?,synced_at=?,needs_review=1 WHERE id=?',(path,_title(data['body'],path),state,blob,data['source_sha'],data['changed_at'],now(),identity));changed.add(identity)
         touched.add(identity)
         store.db.execute('INSERT OR IGNORE INTO design_versions VALUES(?,?,?,?,?,?)',(identity,blob,data['source_sha'],data['path'],data['body'],now()))
@@ -222,6 +222,6 @@ def for_pr(store, number):
         record=dict(row)
         if any(r['id']==record['id'] for r in out):continue
         version=store.db.execute('SELECT source_sha,path,body FROM design_versions WHERE design_id=? AND blob_sha=?',(record['id'],record['pr_blob_sha'])).fetchone()
-        record.update(key='design:'+str(record['id']),url=_url(record['source_sha'],record['path']),pr_url=_url(version['source_sha'],record['pr_path']) if version else None,pr_body=version['body'] if version else '',effective_stage='待核实' if record['needs_review'] else record['upstream_stage'])
+        record.update(key='design:'+str(record['id']),url=_url(record['source_sha'],record['path']),pr_url=(_url(version['source_sha'],version['path']) if record['change_kind'] in ('D','related') else _url(record['pr_source_sha'],record['pr_path'])) if version else None,pr_body=version['body'] if version else '',effective_stage='待核实' if record['needs_review'] else record['upstream_stage'])
         out.append(record)
     return out
