@@ -106,6 +106,17 @@ def complete_metadata(store, repo):
     return {'updatedPRs':changed, 'githubPRsRead':len(numbers)}
 
 
+def group_names(repo):
+    """Display names follow the same review document as PR group membership."""
+    file = Path(repo) / 'docs/upstream-remaining-review.md'
+    if not file.exists():return {}
+    names = {}
+    for line in file.read_text().splitlines():
+        match = re.match(r'^### (G\d+)\s+([^（(]+)',line)
+        if match:names[match[1]] = match[2].strip()
+    return names
+
+
 def groups(repo):
     file = Path(repo) / 'docs/upstream-remaining-review.md'
     out = {};group = None

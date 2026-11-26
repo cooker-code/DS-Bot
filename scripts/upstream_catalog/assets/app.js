@@ -16,6 +16,7 @@ async function request(url, body) {
   if (!response.ok) throw new Error(data.error || `请求失败 (${response.status})`)
   return data
 }
+const groupLabel = group => group ? `${group} · ${meta?.groupNames?.[group] || '名称待补齐'}` : '—'
 async function loadMeta() {
   meta = await request('/api/meta')
   $('context').textContent = `${meta.branch} · 本地 SQLite · 共 ${meta.total} 个 PR`
@@ -23,7 +24,7 @@ async function loadMeta() {
   $('pending').textContent = meta.pendingExport ? `${meta.pendingExport} 次变更待更新记录` : '同步记录已对齐'
   $('export').disabled = !meta.pendingExport
   $('storage').textContent = `来源：${meta.source.canonical_url} / ${meta.source.branch}；完整盘点终点：${meta.source.checkpoint_sha || '尚未建立'}。数据库：${meta.database}。执行工作树：${meta.repo}。`
-  if ($('group').options.length === 1) for (const group of meta.groups) $('group').append(element('option', group, { value: group }))
+  if ($('group').options.length === 1) for (const group of meta.groups) $('group').append(element('option', groupLabel(group), { value: group }))
 }
 function parameters() {
   const query = new URLSearchParams({ offset, limit: 50 })
@@ -54,7 +55,7 @@ async function loadRows() {
       const title = element('td', row.title);title.append(element('span', row.purpose || '功能说明尚待补齐', { class: 'purpose' }))
       if (row.needs_review) title.append(element('span', '需重新评估', { class: 'stale' }))
       const status = element('td');status.append(element('span', row.status, { class: 'status', 'data-status': row.status }))
-      tr.append(number, title, status, element('td', row.wanted === 0 ? '不需要' : row.wanted === 1 ? '需要' : '待评估'), element('td', row.weight), element('td', row.dependency_group || '—'))
+      tr.append(number, title, status, element('td', row.wanted === 0 ? '不需要' : row.wanted === 1 ? '需要' : '待评估'), element('td', row.weight), element('td', groupLabel(row.dependency_group), { class: 'dependency-group' }))
       for (const value of [row.pr_created_at, row.synced_at]) { const cell = element('td');cell.append(timestamp(value));tr.append(cell) }
       return tr
     })
@@ -73,7 +74,7 @@ async function showDetail(number, focus = false) {
     const row = await request('/api/pr/' + number)
     if (selected !== number) return
     const head = element('div', null, { class: 'detail-head' })
-    const titles = element('div');titles.append(element('a', `PR #${number} ↗`, { href: row.url, target: '_blank', rel: 'noopener noreferrer' }), element('h2', row.title), element('p', `${row.status} · 权重 ${row.weight} · ${row.dependency_group || '未分组'}`))
+    const titles = element('div');titles.append(element('a', `PR #${number} ↗`, { href: row.url, target: '_blank', rel: 'noopener noreferrer' }), element('h2', row.title), element('p', `${row.status} · 权重 ${row.weight} · ${row.dependency_group ? groupLabel(row.dependency_group) : '未分组'}`))
     const close = element('button', '关闭', { class: 'secondary' });close.addEventListener('click', () => { selected = null; $('detail').replaceChildren(element('p', '选择一项 PR，查看功能和本地差异。')); loadRows() })
     const dates = element('p', null, { class: 'detail-dates' });dates.append(element('span', 'PR 提交时间（Asia/Taipei）'), timestamp(row.pr_created_at), element('span', '来源同步时间（Asia/Taipei）'), timestamp(row.synced_at));titles.append(dates)
     head.append(titles, close)

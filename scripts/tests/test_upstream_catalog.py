@@ -270,6 +270,9 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(copy.db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
 
     def test_http_real_reads_writes_origin_and_allowlist(self):
+        docs=self.repo/'docs';docs.mkdir()
+        (docs/'upstream-remaining-review.md').write_text('### G01 测试基线、翻译与测试维护（6 个 PR）\n### G16 设置导航、搜索与组件入口（历史5个PR，当前待处理4个）\n')
+        with self.store.db:self.store.db.execute("UPDATE prs SET dependency_group='G16' WHERE number=2")
         host = server(self.repo,self.path,0)
         thread = threading.Thread(target=host.serve_forever);thread.start()
         origin = f'http://127.0.0.1:{host.server_port}'
@@ -279,6 +282,12 @@ class CatalogTests(unittest.TestCase):
             req = urllib.request.Request(origin+path,data=None if body is None else json.dumps(body).encode(),headers=headers)
             with urllib.request.urlopen(req,timeout=5) as response:return response.status,response.read()
         try:
+            metadata=json.loads(call('/api/meta')[1])
+            self.assertEqual(metadata['groupNames'],{'G01':'测试基线、翻译与测试维护','G16':'设置导航、搜索与组件入口'})
+            self.assertEqual(metadata['groups'],['G16'])
+            filtered=json.loads(call('/api/prs?group=G16')[1])
+            self.assertEqual(filtered['total'],1)
+            self.assertEqual(filtered['rows'][0]['dependency_group'],'G16')
             self.assertEqual(json.loads(call('/api/prs?status='+urllib.parse.quote('暂缓'))[1])['total'],1)
             with self.assertRaises(urllib.error.HTTPError) as error:call('/api/preference',{'number':2,'wanted':0,'revision':0})
             self.assertEqual(error.exception.code,403);error.exception.close()

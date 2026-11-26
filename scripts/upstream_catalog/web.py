@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from .store import Store, CatalogError, Conflict
-from .source import branch, writable
+from .source import branch, writable, group_names
 
 ASSETS = Path(__file__).parent / 'assets'
 
@@ -39,7 +39,7 @@ def server(repo, database, port):
                     return self.send(200, file.read_bytes(), (mimetypes.guess_type(str(file))[0] or 'text/plain') + '; charset=utf-8')
                 with Store(database, readonly=True) as db:
                     if url.path == '/api/meta':
-                        result = db.stats();result.update(branch=branch(repo), repo=str(repo), database=str(database), groups=[r[0] for r in db.db.execute('SELECT DISTINCT dependency_group FROM prs WHERE dependency_group IS NOT NULL ORDER BY dependency_group')])
+                        result = db.stats();result.update(branch=branch(repo), repo=str(repo), database=str(database), groupNames=group_names(repo), groups=[r[0] for r in db.db.execute('SELECT DISTINCT dependency_group FROM prs WHERE dependency_group IS NOT NULL ORDER BY dependency_group')])
                         return self.send(200, result)
                     if url.path == '/api/prs':return self.send(200, db.list({k: v[0] for k, v in parse_qs(url.query).items()}))
                     if url.path.startswith('/api/pr/') and url.path[8:].isdigit():return self.send(200, db.detail(int(url.path[8:])))
