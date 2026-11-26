@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/index.md","reason":"遵循宿主模块组织与现有业务入口，不修改 DSH"}
+{"file":".trellis/tasks/11-26-codex-local-access/design.md","reason":"固定本机账户、操作白名单及启停和资源生命周期"}
