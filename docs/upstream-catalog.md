@@ -13,9 +13,19 @@ python3 scripts/upstream-catalog.py serve --port 4179
 
 终端返回本地URL、实际执行分支和数据库位置。浏览器打开`http://127.0.0.1:4179`，停止服务用该终端的Ctrl+C。无需安装第三方Python依赖。主目录仍在dev时，从专用工作树运行这些命令；写命令拒绝dev/main/master及detached HEAD。
 
+主表新增“PR提交时间”和“同步时间”，均显示为Asia/Taipei。提交时间取GitHub创建PR时间（createdAt），同步时间取来源资料实际写入本台账的时间；仅修改选择或分析不刷新它，代码采用和安装时间另记。缺失显示“待补齐”，不拿合并时间替代。时间缓存在prs.upstream_json的createdAt/sourceSyncedAt字段，查询接口提供pr_created_at/synced_at；无需修改现有SQLite表结构。
+
 主表显示265个历史PR及其中文作用和来源，详情提供具体场景、差异、方案、验证和历史。可组合筛选关键词/PR号、状态、我的选择、权重、依赖组、类型与需重审；默认状态→权重降序→PR号升序，也能按最近变更排序。
 
 “我的选择”保存待评估、需要、不需要以及理由，可以撤销。不需要项不会被下一次来源刷新覆盖或重新推荐；已安装代码仍保留真实采用结果。点击“更新同步记录”只更新当前同步分支的upstream-changelog.md，不自动提交。若文件被其他会话改动，导出拒绝覆盖，先对账后再继续。
+
+## 补齐历史时间
+
+```sh
+python3 scripts/upstream-catalog.py metadata
+```
+
+需要可用且已登录的GitHub CLI（gh）。按最多50个PR一次读取GitHub官方GraphQL，核对仓库ID、PR号及URL；只补缺失的createdAt，重复运行零远程读取、不刷新时间。失败不补造时间；不改变状态、选择或完整盘点游标。bootstrap首次导入和sync新增来源同样缓存时间。
 
 ## 后续只补增量
 

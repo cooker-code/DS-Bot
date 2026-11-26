@@ -169,12 +169,20 @@ class Store:
         total = self.db.execute('SELECT count(*)' + join, params).fetchone()[0]
         order = 'p.updated_at DESC,p.number' if args.get('sort') == 'time' else RANK + ',p.weight DESC,p.number'
         rows = self.db.execute('SELECT p.*,c.wanted,c.reason choice_reason,c.decided_at,c.revision choice_revision' + join + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', [*params, limit, offset]).fetchall()
-        return {'total': total, 'offset': offset, 'rows': [dict(r) for r in rows]}
+        return {'total': total, 'offset': offset, 'rows': [self.public_row(r) for r in rows]}
+
+    @staticmethod
+    def public_row(row):
+        out = dict(row)
+        source = json.loads(out.get('upstream_json') or '{}')
+        out['pr_created_at'] = source.get('createdAt')
+        out['synced_at'] = source.get('sourceSyncedAt')
+        return out
 
     def detail(self, number):
         row = self.db.execute('SELECT p.*,c.wanted,c.reason choice_reason,c.decided_at,c.revision choice_revision FROM prs p LEFT JOIN preferences c ON c.repo_id=p.repo_id AND c.pr_number=p.number WHERE p.repo_id=? AND p.number=?', (REPO_ID, number)).fetchone()
         if not row:raise CatalogError('PR not found')
-        out = dict(row)
+        out = self.public_row(row)
         out['history'] = [dict(r) for r in self.db.execute('SELECT * FROM events WHERE repo_id=? AND pr_number=? ORDER BY id DESC', (REPO_ID, number))]
         return out
 

@@ -6,17 +6,21 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 import urllib.error
 import urllib.request
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from upstream_catalog.store import Store, Conflict, CatalogError, REPO_ID
-from upstream_catalog.source import sync, reassess, writable, database_path
+from upstream_catalog.source import sync, reassess, writable, database_path, complete_metadata, github_metadata
 from upstream_catalog.web import server
 
 
 class CatalogTests(unittest.TestCase):
     def setUp(self):
+        self.metadata_mock = patch('upstream_catalog.source.github_metadata', side_effect=lambda numbers: {n:{'createdAt':'2026-11-20T01:02:03Z','githubMergedAt':'2026-11-21T04:05:06Z'} for n in numbers})
+        self.metadata_mock.start();self.addCleanup(self.metadata_mock.stop)
         self.tmp = tempfile.TemporaryDirectory(prefix='ds-upstream-catalog-test-')
         self.root = Path(self.tmp.name)
         self.repo = self.root / 'repo';self.repo.mkdir()
@@ -47,6 +51,47 @@ class CatalogTests(unittest.TestCase):
 
     def run_git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True, stderr=subprocess.DEVNULL).strip()
+
+    def test_source_dates_are_persisted_and_not_refreshed_by_decisions(self):
+        self.store.preference(2,0,'用户不要',0)
+        with patch('upstream_catalog.source.github_metadata',return_value={1:{'createdAt':'2026-11-20T01:02:03Z'},2:{'createdAt':'2026-11-19T02:03:04Z'}}) as fetch:
+            result = complete_metadata(self.store,self.repo)
+            self.assertEqual(result['githubPRsRead'],2)
+            row = self.store.detail(2)
+            self.assertEqual(row['pr_created_at'],'2026-11-19T02:03:04Z')
+            self.assertEqual(row['wanted'],0)
+            synced = row['synced_at'];self.assertIsNotNone(synced)
+            self.store.preference(2,1,'撤销不需要',1)
+            self.store.annotate(2,dict(purpose='搜索',scenario='输入关键词',effect='定位设置',reason='完整验证待执行',solution='补齐测试'),self.base)
+            self.assertEqual(self.store.detail(2)['synced_at'],synced)
+            self.assertEqual(complete_metadata(self.store,self.repo)['githubPRsRead'],0)
+            self.assertEqual(fetch.call_count,1)
+        with Store(self.path,readonly=True) as reopened:
+            self.assertEqual(reopened.list({'q':'搜索'})['rows'][0]['synced_at'],synced)
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'],self.base)
+
+    def test_metadata_failure_does_not_change_rows_or_source_cursor(self):
+        before=self.store.detail(1);source=self.store.stats()['source']
+        with patch('upstream_catalog.source.github_metadata',side_effect=CatalogError('network unavailable')):
+            with self.assertRaises(CatalogError):complete_metadata(self.store,self.repo)
+        self.assertEqual(self.store.detail(1),before)
+        self.assertEqual(self.store.stats()['source'],source)
+
+    def test_github_metadata_batches_and_validates_source_identity(self):
+        calls=[]
+        def run(args,**kwargs):
+            import re
+            numbers=[int(n) for n in re.findall(r'pullRequest\(number:(\d+)\)',args[-1])]
+            calls.append(numbers)
+            repo={'databaseId':REPO_ID}
+            repo.update({f'p{n}':{'number':n,'createdAt':'2026-11-20T01:02:03Z','mergedAt':None,'url':f'https://github.com/Fei-Craft/DS-Bot/pull/{n}'} for n in numbers})
+            return SimpleNamespace(returncode=0,stdout=json.dumps({'data':{'repository':repo}}))
+        with patch('upstream_catalog.source.subprocess.run',side_effect=run):
+            result=github_metadata(list(range(1,53))+[1])
+            self.assertEqual(len(result),52);self.assertEqual([len(c) for c in calls],[50,2])
+        bad={'data':{'repository':{'databaseId':0}}}
+        with patch('upstream_catalog.source.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps(bad))):
+            with self.assertRaises(CatalogError):github_metadata([1])
 
     def test_import_repeat_and_choices_survive_reopen(self):
         first = self.store.preference(2, 0, '保留本地行为', 0)
@@ -110,6 +155,8 @@ class CatalogTests(unittest.TestCase):
         result = sync(self.store, self.repo, end)
         self.assertEqual(result['commitsExamined'], 1)
         self.assertEqual(result['pendingAnalysis'], [9001])
+        self.assertEqual(self.store.detail(9001)['pr_created_at'],'2026-11-20T01:02:03Z')
+        self.assertIsNotNone(self.store.detail(9001)['synced_at'])
         self.assertEqual(self.store.detail(9001)['status'],'暂缓')
         self.assertFalse(result['checkpointAdvanced'])
         self.assertEqual(self.store.stats()['source']['checkpoint_sha'], self.base)

@@ -57,6 +57,55 @@ def snapshot(repo, sha):
             'mergedAt': git(repo, 'show', '-s', '--format=%cI', sha)}
 
 
+def github_metadata(numbers):
+    """Fetch only uncached PR timestamps; gh owns authentication."""
+    from datetime import datetime
+    out = {}
+    numbers = sorted(set(numbers))
+    for start in range(0, len(numbers), 50):
+        batch = numbers[start:start + 50]
+        fields = ' '.join(f'p{n}:pullRequest(number:{n}){{number createdAt mergedAt url}}' for n in batch)
+        query = 'query { repository(owner:"Fei-Craft",name:"DS-Bot") { databaseId ' + fields + ' } }'
+        try:
+            result = subprocess.run(['gh','api','graphql','-f','query=' + query], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise CatalogError('读取GitHub PR时间失败；需要可用且已登录的gh，未补造时间') from exc
+        if result.returncode:
+            raise CatalogError('GitHub PR时间查询失败，请核对gh登录与网络；未补造时间')
+        try:
+            payload = json.loads(result.stdout)
+            repo = payload['data']['repository']
+            if payload.get('errors') or repo['databaseId'] != REPO_ID:raise ValueError('source mismatch')
+            for number in batch:
+                item = repo['p' + str(number)]
+                if item['number'] != number or item['url'] != f'{SOURCE_URL}/pull/{number}':raise ValueError('PR mismatch')
+                created = datetime.fromisoformat(item['createdAt'].replace('Z','+00:00'))
+                if created.utcoffset() is None:raise ValueError('timezone missing')
+                out[number] = {'createdAt':item['createdAt'], 'githubMergedAt':item['mergedAt']}
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise CatalogError('GitHub返回的PR来源或提交时间无效；本批时间未写入') from exc
+    return out
+
+
+def complete_metadata(store, repo):
+    """One-time backfill. Repeat reads neither contact GitHub nor refresh dates."""
+    writable(repo);validate_source(repo)
+    numbers = [row['number'] for row in store.db.execute('SELECT number,upstream_json FROM prs') if not json.loads(row['upstream_json'] or '{}').get('createdAt')]
+    if not numbers:return {'updatedPRs':[], 'githubPRsRead':0}
+    details = github_metadata(numbers)
+    changed = []
+    with store.db:
+        for number, extra in details.items():
+            row = store.db.execute('SELECT upstream_json FROM prs WHERE repo_id=? AND number=?',(REPO_ID,number)).fetchone()
+            item = json.loads(row[0] or '{}')
+            if item.get('createdAt'):continue
+            item.update(extra, sourceSyncedAt=now())
+            store.db.execute('UPDATE prs SET upstream_json=? WHERE repo_id=? AND number=?',(json.dumps(item,ensure_ascii=False),REPO_ID,number))
+            store.event(number,'metadata',None,extra | {'sourceSyncedAt':item['sourceSyncedAt']})
+            changed.append(number)
+    return {'updatedPRs':changed, 'githubPRsRead':len(numbers)}
+
+
 def groups(repo):
     file = Path(repo) / 'docs/upstream-remaining-review.md'
     out = {};group = None
@@ -83,7 +132,9 @@ def bootstrap(store, repo, endpoint, progress=lambda _: None):
         elif number in known:
             cache[number] = snapshot(repo, known[number])
         if (at + 1) % 50 == 0:progress(f'缓存来源 {at + 1}/{len(numbers)}')
-    return store.bootstrap(ledger, cache, git(repo, 'rev-parse', 'HEAD'), endpoint, groups(repo))
+    result = store.bootstrap(ledger, cache, git(repo, 'rev-parse', 'HEAD'), endpoint, groups(repo))
+    result['metadata'] = complete_metadata(store,repo)
+    return result
 
 
 def reassess(store, repo):
@@ -123,19 +174,29 @@ def _sync(store, repo, endpoint, fetch=False):
         item = json.loads(cached[0]) if cached else store.meta('direct_commits',{}).get(sha) or snapshot(repo, sha)
         if match:candidates.append((int(match[1]), item))
         else:direct.append(item)
+    missing = [number for number,item in candidates if not item.get('createdAt')]
+    metadata = github_metadata(missing)
+    for number,item in candidates:
+        if number in metadata:item.update(metadata[number])
     pending = [];changed = []
     with store.db:
         run = store.db.execute('INSERT INTO sync_runs(repo_id,from_sha,to_sha,local_branch,local_sha,started_at,outcome) VALUES(?,?,?,?,?,?,?)', (REPO_ID, start, end, current, git(repo, 'rev-parse', 'HEAD'), now(), 'running')).lastrowid
         for number, item in candidates:
             old = store.db.execute('SELECT * FROM prs WHERE repo_id=? AND number=?', (REPO_ID, number)).fetchone()
             if old is None:
+                item['sourceSyncedAt'] = now()
                 body_lines = [line.strip() for line in item['body'].splitlines() if line.strip()]
                 title = body_lines[1] if len(body_lines)>1 else body_lines[0] if body_lines else 'PR ' + str(number)
                 store.db.execute('INSERT INTO prs(repo_id,number,url,title,status,weight,merge_sha,upstream_json,reason,solution,first_seen_at,updated_at,needs_review) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)', (REPO_ID, number, f'{SOURCE_URL}/pull/{number}', title, '暂缓', 5, item['sha'], json.dumps(item, ensure_ascii=False), '新增来源，尚未完成本地评估', '补齐功能解释、本地差异和完整验证方案', now(), now()))
                 store.event(number, 'source', None, {'sha': item['sha']}, run_id=run);changed.append(number)
             elif old['merge_sha'] != item['sha']:
+                item['sourceSyncedAt'] = now()
                 store.db.execute('UPDATE prs SET merge_sha=?,upstream_json=?,updated_at=?,needs_review=1 WHERE repo_id=? AND number=?', (item['sha'], json.dumps(item, ensure_ascii=False), now(), REPO_ID, number))
                 store.event(number, 'source', {'sha': old['merge_sha']}, {'sha': item['sha']}, run_id=run);changed.append(number)
+            elif not json.loads(old['upstream_json'] or '{}').get('createdAt'):
+                item['sourceSyncedAt'] = now()
+                store.db.execute('UPDATE prs SET upstream_json=? WHERE repo_id=? AND number=?',(json.dumps(item,ensure_ascii=False),REPO_ID,number))
+                store.event(number,'metadata',None,metadata[number] | {'sourceSyncedAt':item['sourceSyncedAt']})
             row = store.db.execute('SELECT purpose,scenario,effect,needs_review FROM prs WHERE repo_id=? AND number=?', (REPO_ID, number)).fetchone()
             choice = store.db.execute('SELECT wanted FROM preferences WHERE repo_id=? AND pr_number=?', (REPO_ID, number)).fetchone()
             if not all(row[k] for k in ('purpose', 'scenario', 'effect')) or (row['needs_review'] and not (choice and choice['wanted'] == 0)):pending.append(number)

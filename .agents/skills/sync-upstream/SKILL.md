@@ -88,6 +88,8 @@ PR 表使用“原因类型”“实际差异与采用范围”“解决方式�
 
 ## 结构化记录与增量查询
 
+**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；upstream-changelog.md是该台账可提交的审计导出。** 数据库通过`git rev-parse --git-common-dir`定位为`upstream-sync/upstream.sqlite3`（本机主库`/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3`），所有专用工作树共用；不是DSH团队数据库，不提交SQLite二进制。
+
 SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明](../../../docs/upstream-catalog.md)。在本批专用工作树先查台账，不再从头重复查所有历史PR：
 
 ```sh
@@ -96,6 +98,7 @@ python3 scripts/upstream-catalog.py list --q 设置
 python3 scripts/upstream-catalog.py show 2028
 # 尚无台账时先bootstrap，默认固定为既有完整盘点终点bb1b1592，不能改成未覆盖的新终点。
 python3 scripts/upstream-catalog.py bootstrap
+python3 scripts/upstream-catalog.py metadata
 python3 scripts/upstream-catalog.py serve --port 4179
 # 同步新进展才明确fetch；补记历史时不fetch。
 python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
@@ -107,6 +110,14 @@ python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
 - 新区间按上次完整盘点终点→本次固定终点补增量，成功对账后才推进游标；失败不跳过。来源历史不连续或本地基线变化时重审受影响项，不能因上游没变就沿用失效的本地结论。
 - “我的选择”与实际采用结果分开；用户标记“不需要”的PR，之后增量同步不得覆盖或重新推荐。已采用代码不会因页面标记而自动回滚，取消“不需要”也不自动合入。
 - PR唯一键沿用同一来源仓库ID与PR号，直接提交用完整SHA；时间、依赖、原因、方案、验证、版本和历史变更均可追溯。Markdown继续作为可提交的审计交付，不维护两份独立人工事实。
+
+## 每次执行后打开管理网页
+
+- 本技能每次执行结束（包括无新增、只盘点、历史补记和重审），都检查本地管理服务并主动打开页面，不只返回URL。优先用Codex的`open_in_codex`浏览器入口；该入口不可用时用系统浏览器打开实际本地URL。
+- 先读服务`/api/meta`核对数据库、执行工作树和分支；已有匹配服务则复用。尚未启动时，从本批专用工作树运行`python3 scripts/upstream-catalog.py serve --port 4179`并等API可读再打开。端口被其他会话占用时保留它，另选空闲端口并给出实际URL。切换本次自己维护的服务前核对进程归属，不中断其他会话或DSH。
+- 来源写入先经SQLite，再导出去重记录；打开前核对导出状态。遇到待补说明或失败，仍可打开已有页面并解释具体缺口，不能把旧页面当成本次同步成功证据。只改技能/管理页不推进上游区间、不重新安装无变化的DSH插件。
+- 表格必须显示“PR提交时间”和“同步时间”：前者来自GitHub `pullRequest.createdAt`，后者是该PR来源资料实际入库时间；两者均以Asia/Taipei显示。上游合并时间、首次历史记录日期、分析时间、采用/部署时间分别保留，不相互冒充。GitHub时间只查询缓存缺失项；无来源变化、仅改选择/分析时不刷新同步时间。
+- 技能及脚本从其所在的专用工作树解析。主目录仍检出dev时，不假定其旧技能已经包含新流程；交付新版技能的完整路径，未获授权不为更新入口写入dev。
 
 ## 盘点与移植
 

@@ -33,6 +33,12 @@ function parameters() {
   }
   return query
 }
+function timestamp(value) {
+  const date = new Date(value)
+  if (!value || Number.isNaN(date.getTime())) return element('span', '待补齐', { class: 'time-cell' })
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type, p.value]))
+  return element('time', `${parts.year}-${parts.month}-${parts.day}\n${parts.hour}:${parts.minute}:${parts.second}`, { datetime: value, title: `${value} · Asia/Taipei`, class: 'time-cell' })
+}
 async function loadRows() {
   const current = ++generation
   $('summary').textContent = '正在筛选…'
@@ -49,6 +55,7 @@ async function loadRows() {
       if (row.needs_review) title.append(element('span', '需重新评估', { class: 'stale' }))
       const status = element('td');status.append(element('span', row.status, { class: 'status', 'data-status': row.status }))
       tr.append(number, title, status, element('td', row.wanted === 0 ? '不需要' : row.wanted === 1 ? '需要' : '待评估'), element('td', row.weight), element('td', row.dependency_group || '—'))
+      for (const value of [row.pr_created_at, row.synced_at]) { const cell = element('td');cell.append(timestamp(value));tr.append(cell) }
       return tr
     })
     $('rows').replaceChildren(...nodes)
@@ -68,6 +75,7 @@ async function showDetail(number, focus = false) {
     const head = element('div', null, { class: 'detail-head' })
     const titles = element('div');titles.append(element('a', `PR #${number} ↗`, { href: row.url, target: '_blank', rel: 'noopener noreferrer' }), element('h2', row.title), element('p', `${row.status} · 权重 ${row.weight} · ${row.dependency_group || '未分组'}`))
     const close = element('button', '关闭', { class: 'secondary' });close.addEventListener('click', () => { selected = null; $('detail').replaceChildren(element('p', '选择一项 PR，查看功能和本地差异。')); loadRows() })
+    const dates = element('p', null, { class: 'detail-dates' });dates.append(element('span', 'PR 提交时间（Asia/Taipei）'), timestamp(row.pr_created_at), element('span', '来源同步时间（Asia/Taipei）'), timestamp(row.synced_at));titles.append(dates)
     head.append(titles, close)
     const choice = element('form', null, { class: 'choice' })
     const pickLabel = element('label', '我的选择'), pick = element('select', null, { 'aria-label': '我的选择' })

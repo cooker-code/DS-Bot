@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 from upstream_catalog.store import Store, CatalogError, REPO_ID, now
-from upstream_catalog.source import database_path, bootstrap, sync, reassess, git, writable
+from upstream_catalog.source import database_path, bootstrap, sync, reassess, git, writable, complete_metadata
 from upstream_catalog.web import server
 
 
@@ -19,6 +19,7 @@ def main(argv=None):
     update = sub.add_parser('sync', help='只读新区间并更新来源缓存；不合并代码、不覆盖用户选择')
     update.add_argument('--to', default='upstream/dev')
     update.add_argument('--fetch', action='store_true', help='显式刷新upstream/dev；默认只用本地引用')
+    sub.add_parser('metadata', help='只补缓存缺失的GitHub PR提交时间，保留状态/选择/游标；需要gh登录')
     sub.add_parser('inspect', help='只读统计和游标，不联网')
     query = sub.add_parser('list', help='只读筛选缓存PR摘要，不重新检索上游')
     for field in ['q','status','wanted','group','category','min','max','stale','sort','limit','offset']:
@@ -48,12 +49,13 @@ def main(argv=None):
             return 0
         with Store(database, readonly=args.command in ('inspect','list','show')) as db:
             if args.command == 'bootstrap':result = bootstrap(db, repo, args.to, lambda m: print(m, file=sys.stderr, flush=True))
+            elif args.command == 'metadata':result = complete_metadata(db,repo)
             elif args.command == 'sync':result = sync(db, repo, args.to, args.fetch)
             elif args.command == 'inspect':result = db.stats()
             elif args.command == 'show':result = db.detail(args.number)
             elif args.command == 'list':
                 result = db.list(vars(args))
-                result['rows'] = [{key:row[key] for key in ['number','title','purpose','status','weight','dependency_group','wanted','needs_review','url']} for row in result['rows']]
+                result['rows'] = [{key:row[key] for key in ['number','title','purpose','status','weight','dependency_group','wanted','needs_review','url','pr_created_at','synced_at']} for row in result['rows']]
             elif args.command == 'reassess':result = {'affectedPRs':reassess(db,repo)}
             elif args.command == 'export':result = db.export(repo / 'upstream-changelog.md')
             elif args.command == 'annotate':result = db.annotate(args.number,json.loads(args.file.read_text()),git(repo,'rev-parse','HEAD'))
