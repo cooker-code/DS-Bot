@@ -1,28 +1,29 @@
-import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { isMainOf } from './sources.js'
 import { HEADER, currentPart, runStatsOf, stripHeader, usageOf } from './text.js'
-import { AlertIcon, PlusIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
+import { AlertIcon, PlusIcon, PlugIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
 import { botState, BotMark, BotAvatar } from './mark.js'
 import { GlobeIcon, Favicon, PanelMenu, menuItemFor } from './browser-pane.js'
-import { drawerMenuKeys } from './side-model.js'
 import { useEscape } from './overlay-hooks.js'
-import { GroupContext, MemberContext, useGroupContext } from './group-context.js'
+import { MemberContext, useGroupContext } from './group-context.js'
 import { BotSettingsForm, InlineText } from './bot-settings.js'
 import { GroupSettingsForm, GroupTodos, ROOM_MODES, roomSubtitle, shownMode } from './group-settings.js'
 import { ModelMenu, modelOf } from './model-menu.js'
 import { FolderMenu } from './folder-menu.js'
 import { MemoryRow } from './memory-panel.js'
 import { ScheduleSummary } from './schedules.js'
-import { useGlide, useMorph } from './motion.js'
+import { useGlide } from './motion.js'
 import { MemberApprovals, MemberState, StopMemberWork, StopRoomWork, useMemberWork, workState } from './member-status.js'
 import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
+import { RetainedConversation } from './member-history.js'
+import { MembersSection } from './members-section.js'
 import { ProjectTaskDetail } from './project-task-detail.js'
 import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
 import { ComputerView } from './computer.js'
-import { MarkdownText } from './dsh-primitives.js'
-import { dateLocale, mdLabels, t } from './i18n.js'
+import { MarkdownSetting } from './markdown-field.js'
+import { dateLocale, t } from './i18n.js'
 
 function transcriptOf(list, id, name, hiddenTurns = []) {
   const outline = list.projectionsBySession?.[id]?.values?.turnOutline ?? list.byId[id]?.projectionValues?.turnOutline
@@ -40,6 +41,8 @@ const TAB_LABELS = { details: 'Details', browser: 'Browser', computer: 'Computer
 
 const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } }
 const shortUrl = url => String(url ?? '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+const emptyGuide = []
+const noGuide = { getSnapshot: () => emptyGuide, subscribe: () => () => {} }
 const EMPTY_TABS = { ids: [], active: null }
 
 // The Bot's permission preset, from the presets DeepSeek Harness offers.
@@ -134,33 +137,6 @@ function BotLabel({ bot, actions, run }) {
   return h(InlineText, { label: t('Label'), value: role, placeholder: t('Add a label'), maxLength: 24, className: 'bt-drawer-role-input', onSave: save })
 }
 
-// About: a Bot's instructions or a group's notice in the overview, folded to five lines.
-// With `onSave` the Bot's text is edited in place: a click turns it into a field, and an
-// empty one is a field already.
-function About({ text, title = 'About', label, placeholder, onSave }) {
-  const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [shown, save] = useSaved(text, next => onSave(next))
-  const long = shown.split('\n').length > 5 || shown.length > 240
-  const body = useRef(null)
-  useMorph(body, open)
-  const field = onSave !== undefined && (editing || shown === '')
-  const editText = (event) => {
-    if (event.target.closest('a, button, input, summary, [role="button"]') || window.getSelection()?.toString()) return
-    setEditing(true)
-  }
-  return h('div', null,
-    h('div', { className: 'bt-about-heading bt-section-title' }, t(title),
-      onSave && !field ? h('button', { type: 'button', className: 'bt-mini', onClick: () => setEditing(true) }, t('Edit')) : null),
-    field
-      ? h(InlineText, { label, value: shown, multiline: true, placeholder, autoFocus: editing, className: 'bt-input bt-input-area', onSave: save, onDone: () => setEditing(false) })
-      : h('div', {
-          ref: body, className: 'bt-about', 'data-open': open || !long || undefined,
-          ...(onSave ? { 'data-editable': '', onClick: editText } : {}),
-        }, h(MarkdownText, { text: shown, labels: mdLabels(), variant: 'compact' })),
-    long && !field ? h('button', { type: 'button', className: 'bt-more', 'aria-expanded': open, onClick: () => setOpen(value => !value) }, open ? t('Show less') : t('Show more')) : null)
-}
-
 // A group's face in its details: its first members side by side, each on a disc that
 // cuts into the one before, and how many more there are.
 const PILE_MAX = 4
@@ -180,7 +156,7 @@ const markOf = entry => (entry?.state === 'ask' ? 'alert' : entry?.state === 'wo
 function MemberRow({ member, entry, room, roster, actions, stats }) {
   return h('div', { role: 'listitem', className: 'bt-member' },
     h('div', { className: 'bt-member-row' },
-      h('button', { type: 'button', className: 'bt-member-open', title: t("Open {name}'s chat", { name: member.name }), onClick: () => actions.openSession(member.id) },
+      h('button', { type: 'button', className: 'bt-member-open', title: t("Open {name}'s chat", { name: member.name }), onClick: () => actions.openMemberSession(room.id, member.id) },
         h(BotMark, { bot: member, size: 32, state: markOf(entry) }),
         h('span', { className: 'bt-member-text' },
           h('span', { className: 'bt-member-line' },
@@ -193,25 +169,18 @@ function MemberRow({ member, entry, room, roster, actions, stats }) {
 
 // A group's overview: what members read, who is in it, who answers, and what it
 // remembers. Changes are made in its settings.
-function GroupOverview({ room, roster, actions, run, usage, useWork, openSettings, openTask, returnId, taskFilter: [statuses, onStatusesChange] }) {
+function GroupOverview({ room, roster, actions, run, usage, useWork, openTask, returnId, taskFilter: [statuses, onStatusesChange] }) {
   const members = room.members.map(id => roster.byId[id]).filter(Boolean)
-  const readings = useGroupContext(room, actions)
-  const stats = Object.fromEntries(members.map(member => {
-    const reading = readings?.[member.id]
-    return [member.id, reading?.id === room.memberSessions?.[member.id]?.at(-1)?.id ? reading : undefined]
-  }))
+  const stats = useGroupContext(room, actions)
   const { entries } = useMemberWork(room, useWork)
   return [
-    room.notice
-      ? h(About, { key: 'notice', title: 'Notice', text: room.notice })
-      : h('button', { key: 'notice', type: 'button', className: 'bt-more', onClick: openSettings }, t('Add a notice in group settings')),
+    h(MarkdownSetting, { key: 'notice:' + room.id, title: t('Notice'), value: room.notice, label: t('Group notice'),
+      maxLength: 2000, placeholder: t('Group goals, notices and background…'), readOnly: roster.readOnly,
+      onSave: notice => run(actions.updateRoom(room.id, { notice })) }),
     h(GroupTodos, { key: 'todos', room, actions }),
-    h('button', { key: 'archive', type: 'button', className: 'bt-more', onClick: () => actions.openArchive(room.id, 'library') }, t('Archived discussions')),
-    h(GroupContext, { key: room.id, room, members, stats, actions, run, readOnly: roster.readOnly }),
-    h('div', { key: 'members' },
-      h('div', { className: 'bt-members-head' },
-        h('div', { className: 'bt-section-title' }, t('Members · {count}', { count: members.length })),
-        h(StopRoomWork, { room, entries, actions })),
+    h(MembersSection, { key: 'members:' + room.id,
+      title: t('Members · {count}', { count: members.length }),
+      controls: h(StopRoomWork, { room, entries, actions }) },
       h('div', { className: 'bt-members', role: 'list' }, members.map(member => h(MemberRow, {
         key: member.id, member, stats: stats[member.id], entry: entries.find(item => item.id === member.id), room, roster, actions,
       })))),
@@ -245,7 +214,7 @@ function GroupOverview({ room, roster, actions, run, usage, useWork, openSetting
 
 // DSH list rows carry the last activity time. Archived rows can be absent from
 // the shell list, so use the part's saved time until the row is available.
-function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus, actions, running, readOnly }) {
+function BotSessions({ bot, part, viewingMember, memberSessionId, rooms = [], run, useSessions, useSessionStatus, actions, running, readOnly }) {
   const [selection, setSelection] = useState(null)
   const [confirmation, setConfirmation] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -331,27 +300,33 @@ function BotSessions({ bot, part, rooms = [], run, useSessions, useSessionStatus
         h('span', { key: 'name', className: 'bt-agent-session-name' }, label, timing(entry)),
         state(entry),
       ]
-      const className = `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`
-      if (entry.roomId) return h('button', { type: 'button', key: entry.id, className: 'bt-agent-session',
-        disabled: editing || busy, onClick: () => actions.openSession(entry.roomId) }, row)
+      const visible = viewingMember ? entry.id === memberSessionId : entry.current && !entry.roomId
+      const className = `bt-agent-session${visible ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`
+      if (entry.roomId) return h('button', { type: 'button', key: entry.id, className, 'aria-current': visible || undefined,
+        disabled: editing || busy, onClick: () => actions.openMemberSession(entry.roomId, bot.id, entry.id) }, row)
       if (editing) return h('label', { key: entry.id, className },
         h('input', { type: 'checkbox', checked: selected.includes(entry.id), disabled: entry.running || !!confirmation || busy,
           'aria-label': t('Select {name}', { name: label }), onChange: e => {
             const checked = e.target.checked
             setSelection(prev => checked ? [...prev, entry.id] : prev.filter(id => id !== entry.id))
           } }), row)
-      return h('button', { key: entry.id, type: 'button', className, title, disabled: entry.current || busy || readOnly,
-        onClick: () => act(() => actions.openPart(bot.id, entry.id, entry.running)) }, row)
+      return h('button', { key: entry.id, type: 'button', className, title, disabled: busy || (entry.current ? !viewingMember : readOnly),
+        onClick: () => act(async () => {
+          if (!entry.current) await actions.openPart(bot.id, entry.id, entry.running)
+          if (viewingMember) actions.openSession(bot.id)
+        }) }, row)
     })))
 }
 const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row?.updatedAt === b[index]?.updatedAt && row?.createdAt === b[index]?.createdAt)
 
-export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
+export function DetailsDrawer({ sessionId, SessionProvider, renderSlot, viewingMember, memberSessionId, archivedReason, startRenaming, startTab, hasStrip, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
   const owner = roster.byId[sessionId]
   const part = owner ? currentPart(owner) : sessionId
   const isMainBot = isMainOf(roster, owner?.id)
   const [tab, setTab] = useState('details')
   const room = roster.roomsById[sessionId]
+  const guide = (room || owner) && actions.sidebarGuide ? actions.sidebarGuide : noGuide
+  const entries = useSyncExternalStore(guide.subscribe, guide.getSnapshot)
   // The info pane swaps its overview for the Bot or group settings view in place.
   const [view, setView] = useState(room && startTab?.startsWith('task/') ? { taskId: startTab.slice(5) } : startTab === 'settings' && (owner || room) ? 'settings' : 'overview')
   const [editing, setEditing] = useState(Boolean(startRenaming && (roster.byId[sessionId] || roster.roomsById[sessionId])))
@@ -369,7 +344,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
   const move = last.current.move
   const side = move === 'tab' ? undefined : move
   const close = () => actions.closeOverlay()
-  useEscape(view?.taskId ? () => setView('overview') : close)
+  useEscape(view?.taskId || view === 'context' ? () => setView('overview') : close)
   const bot = owner
   const running = useSessionStatus(map => map.get(part)?.running === true)
   const doing = useActivity(map => map[bot?.id ?? sessionId])
@@ -385,9 +360,19 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
     })
   }
   const errorLine = error ? h('div', { className: 'bt-error', role: 'alert', style: { padding: 0 } }, error) : null
+  if (view === 'context' && viewingMember && memberSessionId) {
+    return [
+      h('div', { key: 'head', className: 'bt-subhead' },
+        h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': t('Back to details'), onClick: () => setView('overview') }, h(ChevronLeftIcon)),
+        h('span', { className: 'bt-subhead-title' }, entries.find(entry => entry.kind === 'dsh-context')?.title())),
+      h('div', { key: memberSessionId, className: 'bt-drawer-body bt-member-context' },
+        h(RetainedConversation, { sessionId: memberSessionId, view: 'context', SessionProvider, renderSlot, retain: actions.retainMember,
+          fallback: h('div', { role: 'alert' }, t('The conversation workspace is not open yet. Try again.')) })),
+    ]
+  }
   if (room && view?.taskId) {
     const card = room.projectCards?.find(item => item.taskId === view.taskId)
-    return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, roster, readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
+    return h(ProjectTaskDetail, { key: room.id + '/' + view.taskId, room, card, roster, actions, openReference: path => actions.openTaskReference(room.sessionId ?? room.id, path), readOnly: !!roster.readOnly, move, hasStrip, onBack: () => setView('overview'), close })
   }
   if ((bot || room) && view === 'settings') {
     return [
@@ -399,16 +384,31 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
         bot ? h(BotSettingsForm, { bot, roster, actions, run }) : h(GroupSettingsForm, { room, roster, actions, run, onDeleted: close })),
     ]
   }
-  // The `···` button holds Browser, a new side chat, and DSH's right-column
-  // tabs; it hides when none of them applies.
-  const more = drawerMenuKeys({
-    bot: bot !== undefined,
-    room: room !== undefined,
-    canBrowse: bot !== undefined && roster.browser === true && actions.openBrowser !== undefined,
-    canTerminal: actions.canOpenTerminal?.() === true,
-    canFiles: actions.canOpenFiles?.() === true,
-    canSidebarBrowser: actions.canOpenSidebarBrowser?.() === true,
-  }).map(key => menuItemFor(key, actions, sessionId))
+  const more = []
+  if (bot) {
+    if (roster.browser === true && actions.openBrowser) {
+      more.push({ ...menuItemFor('browser', actions, sessionId), label: t('Bot browser') })
+    }
+    more.push({ ...menuItemFor('side', actions, sessionId), label: t('Bot side chat') })
+    if (entries.length) more.push({ sep: true })
+  }
+  for (const entry of entries) {
+    const memberContext = viewingMember && entry.kind === 'dsh-context'
+    const embedded = memberContext && actions.hasContextView()
+    const reason = archivedReason && !embedded ? (memberContext
+      ? t('Enable the conversation tab in Context plugin settings to view archived sessions.') : archivedReason) : undefined
+    more.push({
+      key: JSON.stringify([entry.providerId ?? entry.kind, entry.id]),
+      icon: entry.icon ?? PlugIcon,
+      label: entry.title(),
+      disabled: (viewingMember && !memberSessionId) || !!reason,
+      reason,
+      onPick: () => {
+        if (embedded) { setView('context'); return }
+        actions.openConversationTab(entry.kind, viewingMember ? memberSessionId : room?.sessionId ?? part)
+      },
+    })
+  }
   const top = h('div', { className: 'bt-drawer-top', 'data-move': side },
     bot || room ? h('button', { type: 'button', className: 'bt-round', 'aria-label': bot ? t('Edit Bot') : t('Group settings'), title: bot ? t('Edit Bot') : t('Group settings'), 'data-info-row': 'settings', onClick: () => setView('settings') }, h(GearIcon)) : null,
     more.length > 0 ? h('span', { 'data-info-row': 'more' }, h(PanelMenu, { items: more, className: 'bt-round', 'aria-label': t('More') })) : null,
@@ -452,7 +452,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
       tabs.map(key => h('button', { key, type: 'button', role: 'tab', className: 'bt-tab', 'aria-selected': tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))) : null,
     h('div', { key: `body:${tab}`, className: 'bt-drawer-body', 'data-move': move },
       errorLine,
-      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, run, usage, useWork, taskFilter, returnId: returnTask.current, openTask: taskId => { returnTask.current = taskId; setView({ taskId }) }, openSettings: () => setView('settings') }) : null,
+      room && tab === 'details' ? h(GroupOverview, { room, roster, actions, run, usage, useWork, taskFilter, returnId: returnTask.current, openTask: taskId => { returnTask.current = taskId; setView({ taskId }) } }) : null,
       bot && tab === 'computer' ? h(ComputerView, { bot, actions, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [
         h(RunStats, { key: 'stats', bot, part, running, actions }),
@@ -461,16 +461,16 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h(ModelMenu, { bot, roster, actions, run, wide: true, inline: true }),
           modelOf(bot, roster) ? null : h('div', { className: 'bt-note' }, t('Pick a model and {name} can start.', { name: bot.name })),
         ),
-        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, rooms: roster.rooms, run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
+        h(BotSessions, { key: `sessions:${bot.id}`, bot, part, viewingMember, memberSessionId, rooms: roster.rooms, run, useSessions, useSessionStatus, actions, readOnly: !!roster.readOnly, running: roster.partsRunning }),
         h(PermissionRow, { key: 'permission', bot, roster, actions, run }),
         h(BotConnectors, { key: 'connectors', bot, roster, actions, run }),
         h('div', { key: 'folder', className: 'bt-drawer-model' },
           h('div', { className: 'bt-section-title' }, t('Working folder')),
           h(FolderMenu, { value: bot.workDir, actions, run, wide: true, onPick: workDir => run(actions.updateBot(bot.id, { workDir })) })),
         roster.readOnly
-          ? (bot.instructions ? h(About, { key: `about:${bot.id}`, text: bot.instructions }) : null)
-          : h(About, {
-              key: `about:${bot.id}`, text: bot.instructions ?? '', label: t('Instructions'), placeholder: t('What this Bot is responsible for…'),
+          ? (bot.instructions ? h(MarkdownSetting, { key: `about:${bot.id}`, title: t('About'), value: bot.instructions }) : null)
+          : h(MarkdownSetting, {
+              key: `about:${bot.id}`, title: t('About'), value: bot.instructions ?? '', label: t('Instructions'), placeholder: t('What this Bot is responsible for…'),
               onSave: instructions => run(actions.updateBot(bot.id, { instructions })),
             }),
         roster.memory === false ? null : h(MemoryRow, { key: 'memory', owner: { id: bot.id, name: bot.name }, actions }),

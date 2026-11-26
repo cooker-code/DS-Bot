@@ -90,22 +90,23 @@ const Dot = ({ state }) => h('span', { className: 'bt-im-dot', 'data-state': sta
 
 const Tick = ({ on }) => h('span', { className: 'bt-model-tick', 'aria-hidden': true }, on ? h(CheckIcon) : null)
 
-// Who an IM bot or an IM group talks to: a Bot, or with `rooms` also a group chat.
-function TargetMenu({ value, roster, rooms = false, label, onPick, disabled = false }) {
+// A WeCom direct chat inherits the connection Bot until a group is selected.
+function TargetMenu({ value, roster, rooms = false, direct = false, label, onPick, disabled = false }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu()
   const bot = value?.botId !== undefined ? roster.bots.find(entry => entry.id === value.botId) : undefined
   const room = value?.roomId !== undefined ? roster.rooms.find(entry => entry.id === value.roomId) : undefined
+  const emptyLabel = direct ? t('Use connection Bot') : t('Not bound')
   const pick = (next) => { close(); onPick(next) }
   const shown = bot ? h(BotAvatar, { bot, size: 20, badge: false, live: false }) : room ? h('span', { className: 'bt-im-room' }, h(ChatsIcon)) : null
   return h(Fragment, null,
     h('button', { ref: button, type: 'button', className: 'bt-model-trigger bt-im-target', 'aria-haspopup': 'menu', 'aria-expanded': isOpen, 'aria-label': label, disabled, onClick: () => (isOpen ? close() : open()) },
       shown,
-      h('span', { className: 'bt-model-name' }, bot?.name ?? room?.name ?? t('Not bound')),
+      h('span', { className: 'bt-model-name' }, bot?.name ?? room?.name ?? (value ? t('Not bound') : emptyLabel)),
       h(Caret)),
     shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu bt-im-menu${shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': label, style: shownPlace, 'data-leaving': leaving || undefined },
-      rooms ? h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': !bot && !room, onClick: () => pick(null) }, h('span', { className: 'bt-menu-label' }, t('Not bound')), h(Tick, { on: !bot && !room })) : null,
-      rooms ? h('div', { className: 'bt-model-group', role: 'presentation' }, t('Bots')) : null,
-      roster.bots.map(entry => h('button', { key: entry.id, type: 'button', role: 'menuitemradio', 'aria-checked': entry.id === bot?.id, onClick: () => pick({ botId: entry.id }) },
+      rooms ? h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': !value, onClick: () => pick(null) }, h('span', { className: 'bt-menu-label' }, emptyLabel), h(Tick, { on: !value })) : null,
+      rooms && !direct ? h('div', { className: 'bt-model-group', role: 'presentation' }, t('Bots')) : null,
+      !direct && roster.bots.map(entry => h('button', { key: entry.id, type: 'button', role: 'menuitemradio', 'aria-checked': entry.id === bot?.id, onClick: () => pick({ botId: entry.id }) },
         h(BotAvatar, { bot: entry, size: 20, badge: false, live: false }), h('span', { className: 'bt-menu-label' }, entry.name), h(Tick, { on: entry.id === bot?.id }))),
       rooms && roster.rooms.length > 0 ? h('div', { className: 'bt-model-group', role: 'presentation' }, t('Group chats')) : null,
       rooms ? roster.rooms.map(entry => h('button', { key: entry.id, type: 'button', role: 'menuitemradio', 'aria-checked': entry.id === room?.id, onClick: () => pick({ roomId: entry.id }) },
@@ -302,8 +303,8 @@ function DetailView({ conn, status, roster, actions, onBack }) {
             h('span', { className: 'bt-im-name' }, chatName(conn, key, chat)),
             h('span', { className: 'bt-tag' }, chat.kind === 'group' ? t('Group') : t('Direct'))),
           h('span', { className: 'bt-set-control' },
-            chat.kind === 'group'
-              ? h(TargetMenu, { value: chat.target ?? null, roster, rooms: true, label: t('Bound to'), disabled: busy, onPick: target => run(actions.imChat(conn.id, { chatKey: key, target })) })
+            chat.kind === 'group' || (conn.platform === 'wecom' && chat.kind === 'direct')
+              ? h(TargetMenu, { value: chat.target ?? null, roster, rooms: true, direct: chat.kind === 'direct', label: t('Bound to'), disabled: busy, onPick: target => run(actions.imChat(conn.id, { chatKey: key, target })) })
               : null,
             h('button', { type: 'button', className: 'bt-mini bt-im-danger', 'data-confirm': confirm === `c:${key}` || undefined, disabled: busy, onClick: () => ask(`c:${key}`, () => actions.imChat(conn.id, { chatKey: key, remove: true })) }, confirm === `c:${key}` ? t('Remove?') : t('Remove'))))))) : null,
     h('div', { className: 'bt-set-card' },

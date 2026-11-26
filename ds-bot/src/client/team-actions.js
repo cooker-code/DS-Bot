@@ -5,7 +5,7 @@ import { noteClientError } from './diagnostics.js'
 // source), requests to the host, and the notes the transcript keeps. The shell around the
 // views adds navigation and its own panels. `after` reads the team again once a request
 // is done; `partFor` maps a Bot id, or any part of its chat, to its current part.
-export function teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }) {
+export function teamActions({ call, after, partFor, mainView, show, roster, ui, live, cards, heldCards, turnClock, panelFolded }) {
   // A memory is a Bot's or a group chat's; both are opened by id.
   const memoryOf = id => (roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id })
   // Cards of long pastes, numbered as they come; each waits for the shell's attachment.
@@ -24,6 +24,13 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
   const openSettings = (page = 'general', id = null) => { ui.set(state => ({ ...state, settings: { page, id }, menu: null, palette: null, newChat: null })) }
   return {
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
+    openMemberSession: (roomId, botId, sessionId) => {
+      ui.set(state => ({ ...state, memberChat: { roomId, botId, sessionId, returnSession: state.memberChat?.returnSession ?? mainView?.() }, details: botId, view: 'details', tab: null, renaming: false, panelYield: false, leftDrawer: false }))
+    },
+    closeMemberSession: returnSession => {
+      ui.set(state => ({ ...state, memberChat: null, details: returnSession && state.details ? returnSession : state.details }))
+      if (returnSession && mainView?.() !== returnSession) show?.(returnSession)
+    },
     openNewChat: (mode, sectionId = null) => { ui.set(state => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },
     // The token keeps a late exit timer from closing a palette opened again since.
@@ -136,6 +143,10 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     createRoom: (members, options = {}) => after(call('create-room', { members, ...options })),
     updateBot: (id, patch) => after(call('update-bot', { id, ...patch })),
     // Give up one wait the Bot has on a hand-off that will not come back.
+    resumeRoomPause: roomId => after(call('resume-room-pause', { roomId })),
+    resumeWork: id => after(call('resume-work', { id })),
+    cancelWork: id => after(call('cancel-work', { id })),
+    answerWork: (id, answer) => after(call('answer-work', { id, answer })),
     abandonWork: id => after(call('abandon-work', { id })),
     refreshModels: () => after(call('models')).catch(() => {}),
     // One local agent's models: the first look starts its CLI, later ones read what it said.
@@ -147,6 +158,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     addProvider: body => after(call('provider-add', body)),
     providerModels: body => call('provider-models', body),
     saveProviderModels: body => call('provider-models-save', body),
+    setProviderModelFast: body => call('provider-model-fast', body),
     removeProvider: provider => after(call('provider-remove', { provider })),
     // After a failed turn: the Bot answers the user's last unanswered message, which is never sent again.
     resume: (botId, target) => {
@@ -266,6 +278,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     fileText: file => call('file-text', { file }).catch(() => undefined),
     roomProgress: roomId => call('room-progress', { roomId }).catch(() => []),
     groupRows: (roomId, from, to, anchor) => call('group-rows', { roomId, from, ...(to === undefined ? {} : { to }), ...(anchor === undefined ? {} : { anchor }) }).catch(() => null),
+    groupRelayReplies: (sessionId, preview) => call('group-relay-replies', { sessionId, preview }).catch(() => null),
     earlier: (sessionId, cursor) => call('earlier', { sessionId, cursor: cursor ?? null }),
     // Hours come back in this browser's time zone, so days start at local midnight.
     usage: () => call('usage', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),

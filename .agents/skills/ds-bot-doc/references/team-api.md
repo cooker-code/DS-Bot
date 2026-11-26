@@ -30,10 +30,11 @@
 
 | 操作 | 业务及输入 | 服务、返回与数据层 |
 | --- | --- | --- |
-| `set-prefs` | 差量对象。`theme` 主题，`accent` 为十六进制颜色或 null，`layout` 为 bubble/flat，`width/flatWidth` 为 50–100 的整数百分比，`effects` 为 full/reduced/off，`motion` 为 normal/quiet/lively。`thinking,enterToSend,memoryAutoRecall` 为开关。`defaultBotModel` 为模型引用或 null。`memoryLimits` 以 bot/group/team 映射到每层 1000–200000 个字符。 | `channel.setPrefs` 写 `team_state.prefs_json`，返回完整 prefs。用 `state.prefs` 回读。 |
+| `set-prefs` | 差量对象。`theme` 主题，`accent` 为十六进制颜色或 null，`layout` 为 bubble/flat，`width/flatWidth` 为 50–100 的整数百分比，`effects` 为 full/reduced/off，`motion` 为 normal/quiet/lively。`thinking,enterToSend,memoryAutoRecall` 为开关。`defaultBotModel` 为模型引用或 null。`taskExplanationPrompt` 为任务人话解释的自定义话术提示词（字符串，最多 20000 字符）；传 null 或空白恢复默认。`memoryLimits` 以 bot/group/team 映射到每层 1000–200000 个字符。 | `channel.setPrefs` 写 `team_state.prefs_json`，返回完整 prefs。用 `state.prefs` 回读。taskExplanationPrompt 仅影响任务解释，保存后新生成或已打开的人话视图按新 Prompt 重新生成，旧缓存按实际 Prompt 失效；不更改消息、Bot 简介或执行模型。 |
 | `models` / `efforts` | `models {}` 刷新目录；`efforts {ref}` 查询某一模型支持的思考强度。 | `catalog/reasoningOf` 返回 `{modelsKey}` 和强度结构（无候选时 `{efforts:[]}`）。模型清单从 `state.models` 获取。 |
 | `providers` / `provider-key` | 读取可配置供应商用 `{}`。设置密钥用 `{provider,value}`，`value:null` 清除。 | [providers.js](../../../../ds-bot/src/host/providers.js) 的 `providersView/setProviderKey/clearProviderKey`，使用 DSH settings 和 credentials。返回供应商视图，读取可用状态与是否已配置。 |
 | `provider-add` / `provider-remove` | 添加用 `provider,custom?,key?`，自定义供应商还提供 `name,api,baseURL,models`。移除用 `provider`。 | `addProvider/removeProvider` 操作宿主供应商配置及其凭据，返回更新后的供应商视图。 |
+| `provider-model-fast` | `{provider,model,enabled}`，供应商和 GPT 模型 ID 为字符串，enabled 为布尔值。只支持 llm-pi-ai 的 OpenAI Chat Completions / Responses HTTP 路由，不支持本地 Agent。 | `model-fast.js` 的 `setModelFast` 保存开关到团队库 `team_state.extra_json.modelFast`，经 DSH settings.mutate 调整该供应商 baseURL 到插件本机转发；开启时请求正文写 `service_tier:fast`，关闭后恢复原请求行为，最后一个开关关闭时恢复原地址。返回供应商视图；用 `providers` 的 `providers[].fast.models[]` 按供应商和模型 ID 回读 enabled，fast.error 为重连错误。只在团队写锁宿主修改；不读取或另存 API 密钥。重启或接管团队写锁后恢复开启状态，失去写锁或停用插件时恢复本进程管理的地址；全部关闭后退役转发并释放连接，异常退出由下一次插件启动重连。 |
 | `provider-models` / `provider-models-save` | 发现候选用已有 `provider` 或待配置的 `baseURL,api,key?`。保存用 `provider,models,revision?`，revision 来自读取的配置版本。 | `discoverModels` 返回候选数组。`saveProviderModels` 写宿主模型配置，返回供应商视图，版本冲突时重读。 |
 | `local-agents` / `local-agent-refresh` / `local-agent-models` | 前两者 `{}` 列出本地智能体，refresh 重扫；模型查询用 `route`。 | [localAgentsEndpoint](../../../../ds-bot/src/host/local-agents/index.js) 返回 `{available,detected,custom}` 或该路由的模型信息。探测依赖本机可执行文件和实际登录状态。 |
 | `local-agent-add` / `local-agent-update` / `local-agent-remove` | 增加自定义智能体用 `name,command,args?`，更新再传 `id`，删除按 `id`。 | 同一服务写 `team_state.local_agents_json` 并更新宿主模型路由。增改返回含 `id,route` 的条目，删除返回剩余自定义条目。 |
@@ -44,3 +45,5 @@
 | `schedules` / `schedule-create` / `schedule-delete` | 查询 `{}`。创建用 `{target,title,prompt,when}`，target 为 Bot 或群 ID。单次用 `{kind:"at",at:"2030-01-01T10:00:00Z"}`。每日用 `kind:"daily",time,timeZone?`，每周用 `kind:"weekly",time,weekdays,timeZone?`（星期取 1–7），间隔用 `kind:"every",minutes`。删除用 `{sessionId,id}`。 | [scheduleEndpoint](../../../../ds-bot/src/host/schedules.js) 调 DSH 调度服务。返回 `{available,tasks}`，id、目标会话和下一次执行时间以实际记录为准。 |
 
 DSH 自身的字体、外观、开发工具、账号、插件和其他宿主设置由注册设置项的模块维护。例如开发工具用 `configForms.developerTools.setEnabled`，读取配置文档用 `remote.settings.openSettingsDocument`。它们使用对应 DSH 版本公开的设置服务，独立于团队偏好表。[设置项组装](../../../../ds-bot/src/client/settings.js) · [宿主设置接入](../../../../ds-bot/src/client/settings-shell.js)
+
+任命或更换任务助理后，服务会安排管理员扫描尚无计划、尚无执行轮次的原卡，说明未交接原因并按条件重试；不重新派发在途工作。扫描与重试契约见 [项目工作与运行接口](runtime-api.md#管理员扫描与重试交接)。

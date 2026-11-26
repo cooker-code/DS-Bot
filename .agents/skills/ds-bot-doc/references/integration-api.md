@@ -8,7 +8,7 @@
 
 | 操作 | 业务及入参 | 出参与生效判断 |
 | --- | --- | --- |
-| `connector-add` / `connector-remove` | 新建用 `name` 加 `url,headers?` 或 `command,args?,env?`。删除自定义连接用 `id`。 | 返回连接器视图。操作后按 id 核对存在性及连接状态。 |
+| `connector-add` / `connector-remove` | 新建用 `name` 加 `url,headers?,oauth?`（布尔值，默认 false；仅远程地址可设 true。保存后用 connector-connect 登录，令牌覆盖自定义 Authorization 请求头） 或 `command,args?,env?`。删除自定义连接用 `id`。 | 返回连接器视图。操作后按 id 核对存在性及连接状态。 |
 | `connector-connect` / `connector-disconnect` / `connector-retry` / `connector-cancel` | 均按连接 `id`。connect 按该连接的认证方式提供 `token`、`key` 或发起登录。其他动作分别断开、重连或取消登录。 | 更新后的连接器视图；发起登录或开始连接后还须查看最终状态。 |
 | `connector-sign-in-code` / `connector-client` | 前者传 `id,input` 回交本次登录生成的码或回调。后者以 `id,clientId,clientSecret?` 配置 OAuth 客户端。 | 返回连接器视图。秘密经安全输入送达，不打印出参全集。 |
 | `connector-set` | `id,readOnly?,offFor?`。offFor 是禁用该连接的 Bot ID 列表。 | 返回连接器视图，核对保存的范围与能力。 |
@@ -26,10 +26,11 @@
 | --- | --- | --- |
 | `im-add` / `im-update` / `im-remove` | 创建传 `platform,botId,fields`。更新用 `id` 加 `botId?,enabled?,fields?`。删除用连接 `id`。 | 增改返回单条连接视图，删除返回 true。`state.im` 核对绑定，`imStatus` 核对运行连接。 |
 | `im-pair` / `im-unpair` | `id,senderId` 标识连接及发件人，配对申请用 `allow` 给出决定。 | true。用连接的已配对和待处理列表核实。 |
-| `im-chat` / `im-retry` | 聊天映射用 `id,chatKey,target`，null 清除目标，`remove:true` 删映射。重连用 `id`。 | true，路由及实际连接状态分别查看。 |
+| `im-chat` / `im-retry` | 聊天映射用 `id,chatKey,target`，企微私聊绑定群用已有私聊的 `chatKey` 和 `target:{roomId}`，在 `state.im.connections` 对应连接的 `chats[chatKey].target` 回读。`target:null` 清除目标（私聊恢复跟随连接 Bot），`remove:true` 删映射。重连用 `id`。 | true，路由及实际连接状态分别查看。 |
+| `im-send-document` | 用户明确要求发送时，传 `roomId,taskId,fileName,requestId`，`fileName` 是本卡已登记 Markdown 的完整文件名；`requestId` 是本次发送的稳定标识，重试保持不变。默认选择唯一启用、已配对且绑定本群的企微聊天；有多个时用现有 `id,chatKey` 消歧。 | `deliverDocument` 复用已连接的 WeCom `sendFile`，上传临时素材并等待文件发送匹配回执，返回 `{status:"sent",id,platform,chatKey,title,kind,taskId,fileName,acknowledged:true,messageId?,sentAt}`。文件读取沿用 task 结果附件与工作目录边界；请求标识和成功回执写入团队 `requests`。结果不明时同一请求不重发，不把上传成功视为文件已发送。连接未就绪、目标不唯一、未配对或文件不属于本卡时拒绝。Bot 使用 `send_im_document`，限本群当前管理员或本卡当前派工执行者，不暴露连接凭据。回读同一请求取得原回执，状态没有自动改成任务完成。 |
 | `im-login-start` / `im-login-wait` | 对支持扫码的平台传 `platform,botId` 开始，轮询同一 `loginId,botId,platform`。 | 开始返回 `loginId,qr,expiresAt,botId`，等待返回 `status`，成功另有连接 `id`。 |
 | `secret-store` / `secret-unlock` / `secret-encrypt` / `secret-decrypt` | 查存储状态用 `{}`。解锁、启用加密或解除加密按服务要求传 `passphrase`。 | 返回存储状态，可检查模式和锁定情况。原始密钥值不在此响应中。 |
-| `secret-set` / `secret-update` | 设置值用 `name,value,purpose?,scope?`，回应申请时用 `requestId,value,scope?`。更新用途或授权范围用 `name,purpose?,scope?`。 | 返回该项可展示的元数据。团队申请和密钥库分别保存。 |
+| `secret-set` / `secret-update` | 设置值用 `name,value,purpose?,scope?`，value 支持多行，CRLF/CR 规范为 LF、去除首尾空白，拒绝 NUL 字符，回应申请时用 `requestId,value,scope?`。更新用途或授权范围用 `name,purpose?,scope?`。 | 返回该项可展示的元数据。团队申请和密钥库分别保存。 |
 | `secret-allow` / `secret-cancel` / `secret-delete` | 授予已有申请或取消用 `requestId`，删除已有密钥用 `name`。 | 授权返回条目元数据；取消、删除核对申请或条目的最终状态。 |
 
 ## 浏览器、电脑与记忆

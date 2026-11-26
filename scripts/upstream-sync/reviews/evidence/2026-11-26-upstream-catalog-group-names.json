@@ -1,0 +1,70 @@
+{
+  "candidate": "58acd76c329e99d1cf9567c7483059d7218f4def",
+  "base": "1f6df19419dba25c20fa79c037067394f6ef81cc",
+  "branch": "chore/upstream-catalog-group-names",
+  "groups": {
+    "G01": "测试基线、翻译与测试维护",
+    "G02": "进程、请求与界面资源释放",
+    "G03": "索引、统计与 SQLite 保存",
+    "G04": "记忆缓存、预算与写入因果",
+    "G05": "压缩、交接与冷启动上下文",
+    "G06": "群消息去重、历史与成员轮次",
+    "G07": "后台任务底座与恢复",
+    "G08": "群回报、派活树与排队唤醒",
+    "G09": "原生后台命令、前台移交与任务查看",
+    "G10": "IM 来源、重投、表单与图片",
+    "G11": "模型代审与额外工作目录",
+    "G12": "能力包、工具过滤与插件运行时",
+    "G13": "对外 API、MCP 与缺陷报告目标",
+    "G14": "本地多会话、分叉与会话数据",
+    "G15": "输入草稿、定时任务与待处理状态",
+    "G16": "设置导航、搜索与组件入口",
+    "G17": "布局、浮层隔离与客户端性能",
+    "G18": "群头像与图片校验",
+    "G19": "文档/语音服务与内置技能"
+  },
+  "browser": {
+    "pid": 85907,
+    "groups": 19,
+    "allFilterOptionsNamed": true,
+    "g01TableNamed": true,
+    "g16TableNamed": true,
+    "detailNamed": true,
+    "queryRetainsGroupCode": true,
+    "serverFilterRetainsGroupCode": true,
+    "helpStillWorks": true,
+    "narrow390": true,
+    "longNameG09": true,
+    "missingNameExplicit": true,
+    "formalChoicesNotWritten": true,
+    "pageErrors": []
+  },
+  "cleanup": {
+    "4179": {
+      "oldOwnedPID": 83102,
+      "exited": true
+    },
+    "4183": {
+      "oldOwnedPID": 84727,
+      "exited": true
+    },
+    "browser": {
+      "pid": 85907,
+      "browserConnected": false,
+      "temporaryChromeFiles": [],
+      "ownedRemoved": true,
+      "scriptExited": true
+    },
+    "dailyDSHStopped": false,
+    "deliveryURL": "http://127.0.0.1:4179",
+    "deliveryBranch": "chore/upstream-catalog-group-names",
+    "intentionalDeliveryService": true
+  },
+  "tests": {
+    "passed": 22,
+    "total": 22
+  },
+  "independentReadOnlyReview": "passed",
+  "devTrackedDiffByteIdentical": true,
+  "devSHA": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d"
+}

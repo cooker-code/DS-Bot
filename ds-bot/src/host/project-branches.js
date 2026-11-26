@@ -1,5 +1,5 @@
 import { taskManagementEnabled, taskError } from '../shared/task-settings.js'
-import { assistantId } from './project-assistant.js'
+import { decidesGitWorkspace } from './project-assistant.js'
 // The room owns its branch observations. Git owns the refs and checkouts.
 import { execFile } from 'node:child_process'
 import { lstat, realpath, stat } from 'node:fs/promises'
@@ -74,7 +74,7 @@ async function checkouts(repo) {
 }
 
 export async function existingProjectDir(path) {
-  if (!path) throw new Error('The branch has no working tree. The Main Bot must prepare it before planning.')
+  if (!path) throw new Error('The branch has no working tree. The task assistant (or the Main Bot if unassigned) must prepare it before planning.')
   const dir = await realpath(path).catch(() => { throw new Error('The planned working tree is missing at ' + path + '. Inspect the branch and its Git registration before dispatch.') })
   if (!(await lstat(dir)).isDirectory()) throw new Error('The assigned working folder must be a directory: ' + path)
   return dir
@@ -103,7 +103,7 @@ async function mergeRelation(repo, branch, tip, target, targetCommit) {
   }
 }
 
-export async function verifyReviewCommit(rt, room, repository, value, { writePaths, base } = {}) {
+export async function verifyReviewCommit(rt, room, repository, value, { writePaths, base, branch } = {}) {
   if (typeof value !== 'string' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(value))
     throw new Error('Supply the full commit ID of this delivery to enter review.')
   const repo = await projectRepository(rt, room, repository)
@@ -121,6 +121,15 @@ export async function verifyReviewCommit(rt, room, repository, value, { writePat
     const touched = await git(repo, '--literal-pathspecs', 'diff-tree', '--root', '-m', '--no-commit-id', '-r', '--name-only', commit, '--', ...writePaths)
     if (!touched.trim()) throw new Error('The delivery commit must include a change to the assigned files.')
   }
+  if (branch) {
+    const tip = await reviewBaseline(rt, room, repo, branch)
+    try { await git(repo, 'merge-base', '--is-ancestor', commit, tip) }
+    catch (error) {
+      if (error.code === 1) throw new Error('The candidate is outside local branch ' + branch + '.')
+      throw error
+    }
+    return { repository: repo, branch, commit, tip }
+  }
   const refs = await git(repo, 'for-each-ref', '--contains=' + commit, '--format=%(refname) %(objectname)', 'refs/heads/main', 'refs/heads/master')
   for (const line of refs.trim().split('\n')) {
     const [ref, tip] = line.split(' ')
@@ -128,6 +137,18 @@ export async function verifyReviewCommit(rt, room, repository, value, { writePat
       return { repository: repo, branch: ref.slice('refs/heads/'.length), commit, tip }
   }
   throw new Error('The delivery commit is not on local main or master. It cannot enter review yet.')
+}
+
+export async function verifyIntegration(rt, room, repository, candidate, snapshot) {
+  const receipt = await verifyReviewCommit(rt, room, repository, candidate, { branch: 'dev' })
+  if (!snapshot) return receipt
+  const tested = await verifyReviewCommit(rt, room, repository, snapshot, { branch: 'dev' })
+  try { await git(receipt.repository, 'merge-base', '--is-ancestor', candidate, tested.commit) }
+  catch (error) {
+    if (error.code === 1) throw new Error('The tested integration snapshot must contain the candidate.')
+    throw error
+  }
+  return { ...receipt, tip: tested.tip, testedCommit: tested.commit }
 }
 
 export async function reviewBaseline(rt, room, repository, branch) {
@@ -186,7 +207,7 @@ async function prepare(rt, repo, args, target, exec) {
   if (policy?.mode === 'workspace-write') {
     const folder = rt.sessionFolder(exec.agent.session)
     if (!folder || !within(repo, await realpath(folder))) {
-      await rt.approveFolder(exec, { path: repo, sessions: [exec.agent.id], who: { en: 'the project Main Bot', zh: '项目主 Bot' } })
+      await rt.approveFolder(exec, { path: repo, sessions: [exec.agent.id], who: { en: 'the Bot preparing the project worktree', zh: '准备项目工作树的 Bot' } })
     }
   }
   if (await rt.realBeyond(path) !== path) throw new Error('Choose a worktree path without symbolic links.')
@@ -381,8 +402,8 @@ export function workspaceDecisions(card) {
 export async function manageBranches(rt, room, args, actor, exec) {
   const session = exec.agent.id
   const check = () => {
-    if (rt.roomOf(room.id) !== room || !room.members.includes(actor) || (!rt.isMain(actor) && actor !== assistantId(room)) || room.sessions?.[actor] !== session)
-      throw new Error('Manage project branches from a Main Bot chat in this group.')
+    if (rt.roomOf(room.id) !== room || !room.members.includes(actor) || !decidesGitWorkspace(rt, room, actor) || room.sessions?.[actor] !== session)
+      throw new Error('Manage project branches from the appointed task assistant’s group chat, or a Main Bot group chat if unassigned.')
     if (rt.readOnly() !== undefined) throw new Error('This host cannot write the Bot team.')
   }
   check()
@@ -462,7 +483,7 @@ export async function resolvePlanWorkspaces(rt, room, args, actor, card) {
     if (node.workspaceMode === 'none') {
       if (node.workDir || node.workRef || node.repository || node.writePaths || node.baseRef) throw new Error('Remove Git assignment fields for non-repository work.')
     } else if (['current', 'worktree'].includes(node.workspaceMode)) {
-      if (!rt.isMain(actor) && actor !== assistantId(room)) throw new Error('The Main Bot must plan Git assignments.')
+      if (!decidesGitWorkspace(rt, room, actor)) throw new Error('Only the task assistant (or the Main Bot if unassigned) can plan Git assignments.')
       const selected = previous?.repository && previous.workRef === node.workRef &&
         (!node.repository || previous.repository === node.repository) ? previous : undefined
       resolved.push(await resolveNodeWorkspace(rt, room, node, selected))
@@ -485,8 +506,8 @@ export function reserveNodePaths(rt, roomId, card, round) {
     const other = room.id === roomId && saved.id === card.id ? card : saved
     for (const r of other.rounds ?? []) {
       const b = r.planNode
-      if (!b || round.dispatchId === r.dispatchId || b.supersededBy || r.result || b.lateResult) continue
-      if (b.version !== other.plans.at(-1).version && !r.startedAt) continue
+      if (!b || round.dispatchId === r.dispatchId || b.supersededBy || r.result || b.lateResult || r.ownershipTransfer) continue
+      if ((other.completedWithTaskId || b.version !== other.plans.at(-1).version) && !r.startedAt) continue
       const n = { ...other.plans.find(p => p.version === b.version)?.nodes[b.node - 1], ...r.workspace }
       if (n?.workDir !== node.workDir) continue
       if (n.writePaths?.length === 0 || (!node.writePaths && !n.writePaths)) continue

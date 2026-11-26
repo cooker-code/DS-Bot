@@ -14,10 +14,12 @@ import { LocalAgentAdapter } from './adapter.js'
 import { AcpEngine } from './acp.js'
 import { CodexEngine } from './codex.js'
 import { ClaudeEngine } from './claude.js'
-import { ENGINES, customRoute, isLocalAgentRoute, validateCustom } from './engines.js'
-import { cleanEnv, findEngineExecutable, findExecutable, probeSignIn, probeVersion, refreshSearchDirs } from './discover.js'
+import { ENGINES, customRoute, isLocalAgentRoute, signInFor, signedInFor, validateCustom } from './engines.js'
+import { findEngineExecutable, findExecutable, probeEnv, probeSignIn, probeVersion, refreshSearchDirs } from './discover.js'
 
 const SIGNED_IN_TTL_MS = 60_000
+const SIGNED_IN_RETRY_MS = 20_000
+const VERSION_FAIL_TTL_MS = 20_000
 
 // The preset a Session runs on: its group's, else its Bot's, else DSH's default — the one
 // a Bot without a preset of its own is shown with (permissions.js keeps it applied to the
@@ -34,7 +36,7 @@ const spawnEngine = (kind, route, spec) => (kind === 'acp' ? new AcpEngine(route
   : kind === 'codex' ? new CodexEngine(route, spec, { findExecutable })
     : new ClaudeEngine(route, spec, { findExecutable }))
 
-export function install(rt) {
+export function install(rt, { probeSignIn: checkSignIn = probeSignIn, probeVersion: checkVersion = probeVersion, now = Date.now } = {}) {
   const { ctx, state } = rt
   // state.localAgents is replaced by the state load after install; read it
   // each time instead of holding the pre-load object.
@@ -51,6 +53,7 @@ export function install(rt) {
 
   // Only CLIs found on this machine get a route; the scan result feeds the page.
   const found = new Map()
+  let nextProbeEpoch = 0
   let disposed = false
   async function scan() {
     await refreshSearchDirs()
@@ -59,30 +62,90 @@ export function install(rt) {
       const spec = ENGINES[route]
       const path = findEngineExecutable(spec, findExecutable)
       if (path === undefined) found.delete(route)
-      else if (found.get(route)?.path !== path) found.set(route, { route, name: spec.name, path, version: undefined, signIn: spec.signIn })
+      else if (found.get(route)?.path !== path) found.set(route, { route, name: spec.name, path, version: undefined, signIn: signInFor(spec, path) })
     }
     applyRoutes()
     return [...found.values()]
   }
-  async function probeVersions() {
+  async function probeVersions({ force = false } = {}) {
     await Promise.all([...found.values()].map(async (entry) => {
-      if (entry.version !== undefined) return
-      const spec = ENGINES[entry.route]
-      const result = await probeVersion(entry.path, spec.version ?? ['--version'], cleanEnv(spec.env ?? {})).catch(() => undefined)
-      entry.version = result?.version
+      if (!force && entry.version !== undefined) return
+      if (!force && entry.versionFailedAt !== undefined && now() - entry.versionFailedAt < VERSION_FAIL_TTL_MS) return
+      if (force || entry.versionProbe === undefined) {
+        const epoch = ++nextProbeEpoch
+        entry.versionEpoch = epoch
+        entry.versionAbort?.abort()
+        const controller = new AbortController()
+        entry.versionAbort = controller
+        const spec = ENGINES[entry.route]
+        const probe = Promise.resolve()
+          .then(() => checkVersion(entry.path, spec.version ?? ['--version'], probeEnv(spec.env ?? {}), { signal: controller.signal }))
+          .catch(() => undefined)
+          .then((result) => {
+            if (entry.versionEpoch !== epoch || entry.versionProbe !== probe || found.get(entry.route) !== entry) return
+            if (result?.version !== undefined) {
+              entry.version = result.version
+              delete entry.versionFailedAt
+            } else {
+              if (force) entry.version = undefined
+              entry.versionFailedAt = now()
+            }
+          })
+          .finally(() => {
+            if (entry.versionProbe === probe) {
+              delete entry.versionProbe
+              delete entry.versionAbort
+            }
+          })
+        entry.versionProbe = probe
+      }
+      while (entry.versionProbe !== undefined) {
+        await entry.versionProbe
+      }
     }))
   }
   // Asked only when the list of CLIs is about to show, never at start or for a menu.
-  async function probeSignIns() {
+  async function probeSignIns({ force = false } = {}) {
     await Promise.all([...found.values()].map(async (entry) => {
-      if (entry.signedIn !== undefined && Date.now() - entry.signedInAt < SIGNED_IN_TTL_MS) return
-      entry.signedIn = await probeSignIn(entry.path, ENGINES[entry.route].signedIn)
-      entry.signedInAt = Date.now()
+      const check = signedInFor(ENGINES[entry.route], entry.path)
+      if (check === undefined) {
+        entry.signedIn = null
+        return
+      }
+      if (!force) {
+        const ttl = entry.signedIn === null ? SIGNED_IN_RETRY_MS : SIGNED_IN_TTL_MS
+        if (entry.signedIn !== undefined && now() - entry.signedInAt < ttl) return
+      }
+      if (force || entry.signInProbe === undefined) {
+        const epoch = ++nextProbeEpoch
+        entry.signInEpoch = epoch
+        entry.signInAbort?.abort()
+        const controller = new AbortController()
+        entry.signInAbort = controller
+        const probe = Promise.resolve()
+          .then(() => checkSignIn(entry.path, check, { signal: controller.signal }))
+          .catch(() => null)
+          .then((result) => {
+            if (entry.signInEpoch !== epoch || entry.signInProbe !== probe || found.get(entry.route) !== entry) return
+            entry.signedIn = result
+            entry.signedInAt = now()
+          })
+          .finally(() => {
+            if (entry.signInProbe === probe) {
+              delete entry.signInProbe
+              delete entry.signInAbort
+            }
+          })
+        entry.signInProbe = probe
+      }
+      while (entry.signInProbe !== undefined) {
+        await entry.signInProbe
+      }
     }))
   }
   // A signed-out CLI or a slow one never holds back the list for long: each check is bounded.
-  async function freshList() {
-    await Promise.all([probeVersions(), probeSignIns()])
+  async function freshList({ forceSignIn = false, forceVersion = forceSignIn } = {}) {
+    await Promise.all([probeVersions({ force: forceVersion }), probeSignIns({ force: forceSignIn })])
     return { available: supported(), detected: detected(), custom: customView() }
   }
 
@@ -157,6 +220,10 @@ export function install(rt) {
   // setup would leave the adapter disposed from the moment it installs.
   ctx.effect(() => async () => {
     disposed = true
+    for (const entry of found.values()) {
+      entry.versionAbort?.abort()
+      entry.signInAbort?.abort()
+    }
     registration?.()
     await Promise.all([initialScan, adapter.dispose()])
   }, 'ds-bot: local agents')
@@ -234,10 +301,9 @@ export function install(rt) {
       }
       case 'local-agent-refresh': {
         adapter.dropModelCache()
-        for (const entry of found.values()) delete entry.signedIn
         await scan()
         await rt.catalog?.({ fresh: true })
-        return freshList()
+        return freshList({ forceSignIn: true, forceVersion: true })
       }
       case 'local-agent-models': {
         const models = await localAgentModels(String(body.route ?? ''))

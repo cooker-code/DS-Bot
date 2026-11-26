@@ -66,3 +66,8 @@ def rehearse_intro(copy_root, bot_id, proposed_intro):
         finally:
             db.close()
 ```
+
+
+## 任务解释的派生缓存
+
+插件 home 下 `task-explanations/<群与卡的 SHA-256>/<消息 key 与语言的 SHA-256>.json` 保存 `{messageKey,sourceHash,language,text,generatedAt}`。sourceHash 包含原文、说话人上下文、语言与规则版本；生成成功才原子替换，失败不保存。不参与任务状态、模型输入输出或 SQLite 修订。只读宿主可读有效缓存，生成受团队写锁约束。宿主停止后可仅删除此派生目录，下次点击重新生成，原消息不受影响。

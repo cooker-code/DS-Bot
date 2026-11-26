@@ -12,6 +12,24 @@ export function scopeFields(key) {
   return key.startsWith('intake-') ? { intakeId: key } : { taskId: key }
 }
 
+const quotedCard = new RegExp(' · \\[task:(' + uuid + ')\\]$', 'i')
+// The selected card determines the subject. The user's own words determine the action.
+export function mentionedProjectCard(text = '') {
+  const ids = []
+  let single
+  const body = text.replace(/^>[^\n]*(?:\n>[^\n]*)*/gm, (quote, offset) => {
+    const id = quotedCard.exec(quote.split('\n', 2)[1])?.[1]?.toLowerCase()
+    if (!id) return quote
+    ids.push(id)
+    if (ids.length === 1) single = { offset, end: offset + quote.length }
+    return '[task:' + id + ']'
+  })
+  if (!ids.length) return
+  if (ids.length > 1) return { taskId: ids[0], text: body.trim(), referencedCards: ids }
+  const instruction = (text.slice(0, single.offset) + ' ' + text.slice(single.end)).trim()
+  return { taskId: ids[0], text: instruction || body.trim() }
+}
+
 export function inboundScope(post) {
   const bound = scopeOf(post)
   if (bound) return bound

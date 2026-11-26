@@ -98,7 +98,15 @@ export function answeredIn(events, exchangeId) {
 const triggerOf = info => ({
   ...scopeFields(scopeOf(info)),
   role: info.role,
+  ...(info.workProtocol ? { workProtocol: true } : {}),
+  ...(info.parentExchangeId ? { parentExchangeId: info.parentExchangeId } : {}),
+  ...(info.silent ? { silent: true } : {}),
+  ...(info.workQuestion ? { workQuestion: info.workQuestion } : {}),
+  ...(info.workAnswer ? { workAnswer: true } : {}),
+  ...(info.protocolReturn ? { protocolReturn: info.protocolReturn } : {}),
+  ...(info.protocolDeliveryId ? { protocolDeliveryId: info.protocolDeliveryId } : {}),
   ...(info.exchangeId ? { exchangeId: info.exchangeId } : {}),
+  ...(info.replyTo ? { replyTo: info.replyTo } : {}),
   ...(info.senderSessionId ? { senderSessionId: info.senderSessionId } : {}),
   ...(info.senderPart ? { senderPart: info.senderPart } : {}),
   ...(info.intakeSeq !== undefined ? { intakeSeq: info.intakeSeq } : {}),
@@ -162,7 +170,7 @@ export function install(rt) {
     for (const [sessionId, list] of Object.entries(queued)) {
       const at = list.findIndex(item => item.args.exchangeId === exchangeId)
       if (at === -1) continue
-      const rest = list.toSpliced(at, 1)
+      const rest = list.filter(item => item.args.exchangeId !== exchangeId)
       queued = { ...queued }
       if (rest.length === 0) delete queued[sessionId]
       else queued[sessionId] = rest
@@ -173,6 +181,7 @@ export function install(rt) {
 
   const deliver = rt.deliver
   rt.deliver = async (args) => {
+    if (args.silent) return deliver(args)
     if (scopeOf(args)) outgoingScope(args, undefined, args.text, true)
     const noted = { ...args, exchangeId: args.exchangeId ?? randomUUID() }
     const sessionId = noted.sessionId ?? rt.chatOf(noted.toId)
@@ -253,6 +262,23 @@ export function install(rt) {
     if (bot === undefined) return
     const text = resumeText(record)
     const trigger = record.trigger
+    if (trigger?.workQuestion || trigger?.protocolReturn) {
+      if (!record.resumed) await rt.resumeProtocolControl(sessionId, trigger, text)
+      return
+    }
+    if (trigger?.workProtocol) {
+      await rt.resumeProtocolTurn(sessionId, trigger, text)
+      return
+    }
+    if (trigger?.taskId && trigger.exchangeId) {
+      const room = trigger.roomId ? rt.roomOf(trigger.roomId) : projectRoomForCard(rt, trigger.taskId)
+      const card = room?.projectCards?.[trigger.taskId]
+      const round = card?.rounds.find(r => r.dispatchId === trigger.exchangeId && r.ownerId === bot.id)
+      if (round?.planNode) {
+        await interruptProject(rt, room, card, round, 'restart', 'The host restarted during this dispatch.')
+        return
+      }
+    }
     if (record.roomId !== undefined) {
       const room = rt.roomOf(record.roomId)
       if (room === undefined || !room.members.includes(bot.id)) return
@@ -266,7 +292,7 @@ export function install(rt) {
       // A turn already picked up once and cut off again stays stopped: a restart loop
       // must not run it forever.
       if (record.resumed) return
-      await rt.deliver({ toId: bot.id, sessionId: room.sessions?.[bot.id] ?? sessionId, ...scopeFields(scopeOf(record.trigger)), role: 'room', roomId: room.id, note: 'picking up after a restart', resumed: true, text, ...(record.trigger?.askedBy ? { askedBy: record.trigger.askedBy } : {}) })
+      await rt.deliver({ toId: bot.id, sessionId: room.sessions?.[bot.id] ?? sessionId, ...scopeFields(scopeOf(record.trigger)), role: 'room', roomId: room.id, note: 'picking up after a restart', resumed: true, retryOf: record.trigger?.exchangeId, text, ...(record.trigger?.askedBy ? { askedBy: record.trigger.askedBy } : {}) })
       return
     }
     if (record.resumed) return
@@ -274,15 +300,6 @@ export function install(rt) {
     // foreground chat when that part is a background one. A part gone since (archived and
     // dropped) falls back to the Bot's current chat.
     const ownPart = rt.selfOf(sessionId) === bot.id && rt.isBotSession(sessionId) ? { sessionId } : {}
-    if (trigger?.taskId && trigger.exchangeId) {
-      const room = trigger.roomId ? rt.roomOf(trigger.roomId) : projectRoomForCard(rt, trigger.taskId)
-      const card = room?.projectCards?.[trigger.taskId]
-      const round = card?.rounds.find(r => r.dispatchId === trigger.exchangeId && r.ownerId === bot.id)
-      if (round?.planNode) {
-        await interruptProject(rt, room, card, round, 'restart', 'The host restarted during this dispatch.')
-        return
-      }
-    }
     if (scopeOf(trigger) && trigger.audience === 'user' && trigger.role === 'request') {
       const room = rt.roomOf(trigger.roomId)
       const dispatch = room?.projectCards?.[trigger.taskId]?.rounds.some(round => round.dispatchId === trigger.exchangeId && round.ownerId === bot.id)
@@ -316,7 +333,7 @@ export function install(rt) {
   // up, so a send that fails here, or a Session that cannot be opened, leaves them
   // for the next start instead of losing them.
   async function resendQueued(sessionId, list) {
-    const fresh = list.filter(item => rt.botOf(item.args?.toId) !== undefined
+    const fresh = list.filter(item => !rt.protocolSkipReplay?.(item.args) && rt.botOf(item.args?.toId) !== undefined
       && sessionFor(sessionId, item.args) !== undefined && taken?.has(item.args.exchangeId) !== true)
     if (fresh.length === 0) return
     const target = sessionFor(sessionId, fresh[0].args)

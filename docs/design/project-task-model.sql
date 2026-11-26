@@ -586,3 +586,8 @@ ALTER TABLE room.project_inbox ADD COLUMN planning_at INTEGER;
 -- @room-upgrade 7
 ALTER TABLE room.task_plans ADD COLUMN workspace_policy TEXT CHECK (workspace_policy IN ('auto','current','worktree'));
 ALTER TABLE room.task_plan_nodes ADD COLUMN workspace_reason TEXT;
+
+-- @room-upgrade 8
+ALTER TABLE room.task_plan_nodes ADD COLUMN merge_to_dev INTEGER CHECK (merge_to_dev = 1);
+ALTER TABLE room.task_plan_nodes ADD COLUMN candidate_commit TEXT;
+ALTER TABLE room.task_round_plans ADD COLUMN test_feedback TEXT;

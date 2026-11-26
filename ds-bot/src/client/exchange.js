@@ -6,12 +6,15 @@ import { Bubbles } from './cells.js'
 import { stripLongNote } from './fold.js'
 import { useEscape } from './overlay-hooks.js'
 import { layoutOf } from './themes.js'
+import { WorkCard } from './work-dock.js'
 import { t } from './i18n.js'
 
 const SHEET_EXIT_MS = 220
 
-export function ExchangeDialog({ pair, paneLeft, roster, actions }) {
+export function ExchangeDialog({ pair, paneLeft, roster, actions, useWork }) {
   const [entries, setEntries] = useState(null)
+  const delegated = useWork ? useWork(work => work.delegated ?? []) : []
+  const pending = delegated.filter(work => ['paused', 'need_input'].includes(work.status) && [work.from, work.to].every(id => pair.includes(id)))
   const [leaving, setLeaving] = useState(false)
   const log = useRef(null)
   const atEnd = useRef(true)
@@ -55,6 +58,7 @@ export function ExchangeDialog({ pair, paneLeft, roster, actions }) {
         const node = event.currentTarget
         atEnd.current = node.scrollHeight - node.scrollTop - node.clientHeight < 2
       } },
+        pending.map(work => h(WorkCard, { key: work.id, work, actions })),
         entries === null ? h('div', { className: 'bt-hint' }, t('Loading…'))
           : entries.length === 0 ? h('div', { className: 'bt-hint' }, t('No messages yet'))
             : entries.map((entry) => {

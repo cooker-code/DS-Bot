@@ -79,6 +79,48 @@ async function team(call) {
 }
 
 const user = (seq, text, time = seq) => ({ seq, time, type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text }] } })
+test('task-explanation generates on demand with memory off and allows cached reads on a read-only host', async t => {
+  const { rt, call, stop } = start({ memory: false })
+  t.after(stop)
+  const { chief, writer, room } = await team(call)
+  assert.equal(typeof rt.botShot, 'function')
+  rt.roomOf(room.id).projectCards = { current: { title: 'Check data', rounds: [] } }
+  rt.taskPairMessages = () => [{ id: 'original', taskId: 'current', roomId: room.id,
+    from: chief, to: writer.id, time: 1, text: '**Dispatched**; not started.' }]
+  let calls = 0
+  rt.botShot = async () => { calls++; return 'Assigned to the developer; work has not started.' }
+  const body = { roomId: room.id, taskId: 'current', messageKey: 'exchange-original' }
+  assert.equal(calls, 0)
+  assert.equal((await call('task-explanation', body)).value.cached, false)
+  rt.readOnly = () => 'Another host is writing'
+  assert.equal((await call('task-explanation', body)).value.cached, true)
+  assert.equal((await call('task-explanation', { ...body, language: 'ja' })).error.code, 'bot/read-only')
+  assert.equal(calls, 1)
+})
+
+test('the explanation prompt can be saved, read back and reset through preferences', async t => {
+  const { rt, call, stop } = start({ memory: false })
+  t.after(stop)
+  await call('state')
+  const prompt = '先说明这条消息要求做什么，再说明哪些信息还没确认。'
+  await call('set-prefs', { taskExplanationPrompt: '  ' + prompt + '\n' })
+  assert.equal((await call('state')).value.prefs.taskExplanationPrompt, prompt)
+  for (const invalid of [false, 12, {}, 'x'.repeat(20001)]) {
+    const result = await call('set-prefs', { taskExplanationPrompt: invalid, width: 95 })
+    assert.equal(result.error.code, 'bot/invalid')
+    assert.equal(rt.state.prefs.taskExplanationPrompt, prompt)
+    assert.notEqual(rt.state.prefs.width, 95)
+  }
+  rt.readOnly = () => 'Another host is writing'
+  assert.equal((await call('set-prefs', { taskExplanationPrompt: 'changed' })).error.code, 'bot/read-only')
+  rt.readOnly = () => undefined
+  await call('set-prefs', { taskExplanationPrompt: null })
+  assert.equal((await call('state')).value.prefs.taskExplanationPrompt, undefined)
+  await call('set-prefs', { taskExplanationPrompt: prompt })
+  await call('set-prefs', { taskExplanationPrompt: '\n ' })
+  assert.equal((await call('state')).value.prefs.taskExplanationPrompt, undefined)
+})
+
 test('project-task-list reads one room at the same revision as the team view, including on a read-only host', async t => {
   const { rt, call, stop } = start()
   t.after(stop)
@@ -97,11 +139,28 @@ test('project-task-list reads one room at the same revision as the team view, in
   rt.readOnly = () => 'Another host is writing'
   const result = await call('project-task-list', { roomId: room.id })
   assert.deepEqual(result, { ok: true, value: {
-    roomId: room.id, revision: full.revision, tasks: summary.projectCards, pendingIntakes: summary.pendingIntakes,
+    roomId: room.id, revision: full.revision, tasks: summary.projectCards, pendingIntakes: summary.pendingIntakes, unassigned: [],
   } })
   assert.deepEqual(result.value.tasks.map(task => [task.taskId, task.ownerId]), [['current', writer.id]])
   assert.deepEqual(result.value.pendingIntakes.map(item => item.id), ['queued'])
   assert.equal((await call('project-task-list', { roomId: 'missing' })).error.code, 'GROUP_CONTEXT_REQUIRED')
+})
+
+test('unassigned cards expose actual retry reasons without internal scan metadata in state', async t => {
+  const { rt, call, stop } = start()
+  t.after(stop)
+  const { writer, room } = await team(call)
+  const target = rt.roomOf(room.id)
+  target.projectAssistantId = writer.id
+  target.projectCards = { waiting: { id: 'waiting', title: 'Daily table', goal: 'Create daily data.', acceptance: 'Verify daily updates.', rounds: [], plans: [], intakes: [] } }
+  target.projectHandoffScan = { id: 'internal', toId: target.admin, fingerprint: 'internal scan body', status: 'delivered' }
+  const result = (await call('project-task-list', { roomId: room.id })).value
+  assert.equal(result.unassigned[0].taskId, 'waiting')
+  assert.equal(result.unassigned[0].status, 'not_sent')
+  assert.equal(result.unassigned[0].retryable, true)
+  assert.match(result.unassigned[0].reason, /not been delivered/)
+  const view = (await call('state', {})).value.rooms.find(r => r.id === room.id)
+  assert.equal(Object.hasOwn(view, 'projectHandoffScan'), false)
 })
 
 test('stop-chat ends a Bot own-chat turn, and answers false when nothing runs', async () => {

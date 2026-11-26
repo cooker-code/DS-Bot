@@ -1,3 +1,4 @@
+import { installSettingsShortcut, SETTINGS_SEARCH_EVENT } from './settings-discovery.js'
 import { call } from './api.js'
 import { isHex, inkText, paintCss } from './inks.js'
 import { DEFAULT_MASK, SHAPES, markupCache, maskOf } from './characters.js'
@@ -20,6 +21,7 @@ import { BtwDock, BtwTurnTail } from './btw.js'
 import { SIDE_CSS, sideSource } from './side-chat.js'
 import { VOICE_BUNDLE, closingReplyText, requestPreparation } from './speech.js'
 import { sameVersion } from './dsh-offer.js'
+import { WorkDock } from './work-dock.js'
 import { QuestionCard, QuestionDock } from './questions.js'
 import { AnsweredReply, WidgetDock, WIDGET_CSS } from './widget-cell.js'
 import { CHANGES_CSS } from './changes-card.js'
@@ -30,6 +32,7 @@ import { AssistantCell, TriggerCell, TurnProcessCell, Nothing, CellEmpty, TurnTa
 import { SaveFileAction } from './file-save.js'
 import { fileMentionSource } from './mention-source.js'
 import { FailureCell, TURN_ERROR_CSS } from './turn-error.js'
+import { MemberConversation } from './member-history.js'
 import { Overlays } from './overlays.js'
 import { createBotBrowsers, serveBrowserReads } from './bot-browsers.js'
 import { BROWSER_CSS } from './browser-pane.js'
@@ -75,7 +78,7 @@ import { installMotionRest } from './motion-rest.js'
 import { agentSessionToReuse, singleFlight } from './agent-new.js'
 import { TextSelectionAction, ANNOTATION_CSS } from './text-annotation.js'
 
-export const inject = ['sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
+export const inject = ['remote.session', 'sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
 
 export function apply(ctx) {
   ctx.effect(() => installLocale(ctx.get('locale')), 'ds-bot: interface copy')
@@ -93,7 +96,7 @@ export function apply(ctx) {
   let seenAt = seenStore.read()
   // `details` is the panel's subject (a Session id); `view` picks details or the
   // subject Bot's browser inside it.
-  const ui = createSource({ details: null, view: 'details', readOnlyPart: null, renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, paste: {}, pendingOpen: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false, bootFailed: false, goalCompose: null, goalOpen: null })
+  const ui = createSource({ details: null, view: 'details', readOnlyPart: null, renaming: false, tab: null, side: null, newChat: null, memberChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, paste: {}, pendingOpen: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false, bootFailed: false, goalCompose: null, goalOpen: null })
   // The left column's kept preference, and the frame geometry the layout rules
   // in frame-layout.js read: the window and the shell's collapsed track come from
   // installFrameWatch, the open column's width is the user's own.
@@ -571,7 +574,7 @@ export function apply(ctx) {
     }
   }
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
+    ...teamActions({ call, after, partFor, mainView, show, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     // The files a group row names open DSH's own review tab for that turn. The tab reads
     // the changes of the Session the shell shows, so that Session is opened first; the same
     // call then retries until its right column is mounted. This jump is the one place a
@@ -587,6 +590,14 @@ export function apply(ctx) {
       if (openReview === undefined) { actions.notice(t('This window cannot open the change review')); return }
       openChangesReview(changes)
     },
+    retainMember: sessionId => ctx.sessions.retain(sessionId, { source: 'dsBotMemberChat' }),
+    followMember: (sessionId, signal) => ctx.get('remote.session').follow({
+      address: { kind: 'session', sessionId }, maxMessages: 50,
+    }, signal),
+    memberHistory: (sessionId, beforeSeq, signal) => ctx.get('remote.session').page({
+      address: { kind: 'session', sessionId }, maxMessages: 50,
+      ...(beforeSeq === undefined ? {} : { beforeSeq }),
+    }, signal),
     learningAnswer: (id, approve) => after(call('learning-answer', { id, approve })),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
@@ -594,15 +605,16 @@ export function apply(ctx) {
     openSession: (id) => {
       // A DSH Agent Session id lands on the plain surface, not the Bot skin.
       if (isAgentSessionId(id)) return actions.openAgentSession(id)
-      ui.set(state => (state.newChat || state.exchange || state.menu || state.palette || state.groupSearch ? { ...state, newChat: null, exchange: null, menu: null, palette: null, groupSearch: null } : state))
+      ui.set(state => (state.memberChat || state.newChat || state.exchange || state.menu || state.palette || state.groupSearch ? { ...state, newChat: null, memberChat: null, exchange: null, menu: null, palette: null, groupSearch: null } : state))
       setPlain(false)
       const target = partFor(id)
       show(target)
+      if (roster.getSnapshot().roomsById[id]) actions.showDetails(target)
     },
     // The conversation replacements withdraw for a plain Session; set the surface
     // before the navigation so the Bot skin never flashes.
     openAgentSession: (sessionId) => {
-      ui.set(state => ({ ...state, newChat: null, exchange: null, menu: null, palette: null, groupSearch: null, details: null, view: 'details', renaming: false, tab: null }))
+      ui.set(state => ({ ...state, newChat: null, memberChat: null, exchange: null, menu: null, palette: null, groupSearch: null, details: null, view: 'details', renaming: false, tab: null }))
       setPlain(true)
       show(sessionId)
     },
@@ -710,7 +722,7 @@ export function apply(ctx) {
         return
       }
       if (mode === 'agent') {
-        ui.set(state => ({ ...state, details: null, view: 'details', settings: null, palette: null, groupSearch: null, groupArchive: null, newChat: null, menu: null, voice: null, exchange: null, memory: null, toast: null }))
+        ui.set(state => ({ ...state, details: null, view: 'details', settings: null, palette: null, groupSearch: null, groupArchive: null, newChat: null, menu: null, voice: null, memberChat: null, exchange: null, memory: null, toast: null }))
       }
       writeMode(mode)
       surface.set(state => ({ ...state, mode }))
@@ -790,6 +802,11 @@ export function apply(ctx) {
   actions.openPlugins = () => ctx.get('pluginNavigation')?.openList()
   // The Voice Input plugin's speech Remote; absent while that plugin is off.
   actions.speech = () => ctx.get('remote.speech') ?? undefined
+  ctx.effect(() => installSettingsShortcut(window, () => surface.getSnapshot().mode === 'bot', () => {
+    if (ui.getSnapshot().settings) window.dispatchEvent(new Event(SETTINGS_SEARCH_EVENT))
+    else actions.openSettings('search')
+  }), 'ds-bot: settings search shortcut')
+
   // One of DSH's onboarding editors, such as the DeepSeek API key form, opened by id
   // through the settings shell's coordinator.
   actions.openHarnessOnboarding = id => settingsShell?.openOnboarding(id)
@@ -934,9 +951,60 @@ export function apply(ctx) {
   actions.canOpenTerminal = () => canOpenSidebarTab('terminal')
   actions.newTerminal = () => openSidebarTab('terminal')
   actions.canOpenFiles = () => canOpenSidebarTab('files')
+  actions.openTaskReference = (sessionId, path) => {
+    const scope = ctx.sessions.scope(sessionId)
+    return scope && ctx.get('inputTriggers')?.sessionOf(scope).openReference('reference', { ref: '@"' + path + '"', appearance: 'file' })
+  }
   actions.openFiles = () => openSidebarTab('files')
-  actions.canOpenSidebarBrowser = () => canOpenSidebarTab('browser')
-  actions.openSidebarBrowser = () => openSidebarTab('browser')
+  const sidebarGuide = createSource([])
+  actions.isArchivedSession = id => ctx.get('workspaces')?.list.getSnapshot().archivedSessionIds.includes(id) === true
+  actions.hasContextView = () => ctx.slots.entries('conversation.view').some(entry => entry.options.id === 'context')
+  actions.sidebarGuide = sidebarGuide
+  ctx.inject(['sidebarRight', 'sidebarRightTabs'], scope => {
+    scope.effect(() => {
+      const tabs = scope.sidebarRightTabs
+      const update = () => sidebarGuide.set(tabs.guide())
+      const off = tabs.subscribe(update)
+      update()
+      return () => { off(); sidebarGuide.set([]) }
+    }, 'ds-bot: conversation sidebar guide')
+  })
+  actions.openConversationTab = async (kind, target) => {
+    try {
+      const sidebar = ctx.get('sidebarRight')
+      if (!target) return
+      const selection = ui.getSnapshot().memberChat
+      const archived = () => selection && actions.isArchivedSession(target)
+      if (archived()) { actions.notice(t('Dimmed plugins require an active session. This group session is archived.')); return }
+      if (sidebar.mounted.getSnapshot() !== target) {
+        if (!ctx.sessions.list.getSnapshot().byId[target]) await ctx.sessions.refresh()
+        if (ui.getSnapshot().memberChat !== selection || archived()) return
+        if (!ctx.sessions.list.getSnapshot().byId[target]) throw new Error(t('The conversation workspace is not open yet. Try again.'))
+        await new Promise((resolve, reject) => {
+          const finish = error => {
+            off()
+            clearTimeout(timer)
+            if (error) reject(error)
+            else resolve()
+          }
+          const check = () => {
+            if (sidebar.mounted.getSnapshot() === target) finish()
+          }
+          const off = sidebar.mounted.subscribe(check)
+          const timer = setTimeout(() => finish(new Error(t('The conversation workspace is not open yet. Try again.'))), 5000)
+          try { show(target); check() } catch (error) { finish(error) }
+        })
+        // The sidebar publishes its Session before React commits that Session's pane.
+        await new Promise(resolve => requestAnimationFrame(resolve))
+      }
+      if (ui.getSnapshot().memberChat !== selection || archived()) return
+      if (sidebar.mounted.getSnapshot() !== target) throw new Error(t('The conversation workspace is not open yet. Try again.'))
+      sidebar.openTab(kind)
+      actions.closePanel()
+    } catch (error) {
+      actions.reportError(error, 'right-sidebar')
+    }
+  }
 
   // The drawer and DSH's right column never share the window: whichever the
   // user asked for last wins. The column's state is read off the frame's
@@ -1112,7 +1180,8 @@ export function apply(ctx) {
     // Desktop's "··· More"), which comes back in Agent mode.
     () => shadow('settings.launcher', { priority: BOT_PRIORITY, inject: face }, AccountLauncher),
     () => shadow('shell.overlay', { id: 'bot-computer', order: 40, inject: face }, ComputerIndicator),
-    () => shadow('shell.overlay', { id: 'bot', order: 50, inject: face }, Overlays),
+    () => shadow('shell.overlay', { id: 'bot', order: 50, inject: face, children: { 'ds-bot.member-conversation': { kind: 'single', scope: 'session' } } }, Overlays),
+    () => shadow('ds-bot.member-conversation', {}, MemberConversation),
     () => shadow('shell.overlay', { id: 'bot-signin', order: 55, inject: face }, DeepSeekSignIn),
     () => shadow('shell.overlay', { id: 'bot-toast', order: 60, inject: face }, ErrorToast),
   ]
@@ -1179,6 +1248,7 @@ export function apply(ctx) {
     () => shadow('conversation.input.dock', { id: 'bot-members', order: -120, inject: face }, MemberDock),
     () => shadow('conversation.input.dock', { id: 'bot-model', order: -110, inject: face }, ModelChoiceDock),
     () => shadow('conversation.input.dock', { id: 'bot-readonly', order: -105, inject: face }, ReadOnlyDock),
+    () => shadow('conversation.input.dock', { id: 'bot-work', order: -95, inject: face }, WorkDock),
     () => shadow('conversation.input.dock', { id: 'bot-question', order: -100, inject: face }, QuestionDock),
     () => shadow('conversation.input.dock', { id: 'bot-view', order: -95, inject: face }, WidgetDock),
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),

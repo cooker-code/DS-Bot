@@ -305,7 +305,7 @@ test('section-add menu offers both creating a new Bot/group in the section and a
     useSessionRetainInfo: (id, pick) => pick(id === 'writer' ? { retainedBy: { mainView: 1 } } : {}),
     useActivity: pick => pick({}),
     useWork: pick => pick({}),
-    useUpdate: () => ({}),
+    useUpdate: pick => pick({}),
   })
   let peekFound = false
   let bodyInert = false

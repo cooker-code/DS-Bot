@@ -220,6 +220,8 @@ test('other Bots cannot reach a private Bot through the tools between Bots', asy
   t.after(stop)
   for (const [name, args, from] of [
     ['message_bot', { to: 'Diary', message: 'hi' }, 'a'],
+    ['delegate_work', { to: 'Diary', goal: 'Private task' }, 'a'],
+    ['note_bot', { to: 'Diary', message: 'Private note' }, 'a'],
     ['message_bot', { to: '@diary', message: 'hi' }, 'b'],
     ['message_bot', { to: P, message: 'hi' }, 'b'],
     ['stop_bot', { bot: 'Diary' }, 'a'],

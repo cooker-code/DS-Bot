@@ -149,10 +149,12 @@ export const SIDE_CSS = `
 .bt-side-input:focus{border-color:var(--bt-accent)}
 .bt-side-input:disabled{opacity:.6}
 .bt-pmenu{position:relative;display:inline-flex;flex:none}
-.bt-pmenu-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:172px;padding:6px;border-radius:12px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);display:flex;flex-direction:column;gap:2px;transform-origin:top right;animation:bt-pop-drop .18s cubic-bezier(.16,1,.3,1),bt-fade .14s ease-out}
+.bt-pmenu-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:6;min-width:172px;max-height:65vh;overflow-y:auto;padding:6px;border-radius:12px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);display:flex;flex-direction:column;gap:2px;transform-origin:top right;animation:bt-pop-drop .18s cubic-bezier(.16,1,.3,1),bt-fade .14s ease-out}
 .bt-pmenu-pop[data-leaving]{animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
 .bt-pmenu-item{display:flex;align-items:center;gap:9px;width:100%;min-width:0;padding:7px 10px;border:0;border-radius:8px;background:none;color:var(--bt-ink);font:inherit;font-size:12px;line-height:17px;text-align:left;cursor:pointer}
-.bt-pmenu-item:hover{background:var(--bt-hover)}
+.bt-pmenu-note{padding:5px 10px;color:var(--bt-ink-3);font-size:11px;line-height:16px;white-space:normal}
+.bt-pmenu-item:disabled{color:var(--bt-ink-3);opacity:.55;cursor:not-allowed}
+.bt-pmenu-item:not(:disabled):hover{background:var(--bt-hover)}
 .bt-pmenu-item:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
 .bt-pmenu-item svg{flex:none;width:15px;height:15px;color:var(--bt-ink-3)}
 .bt-pmenu-sep{height:.5px;flex:none;margin:4px 8px;background:var(--bt-line-2)}

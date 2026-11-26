@@ -5,7 +5,10 @@ import { test } from 'node:test'
 import { build } from 'esbuild'
 
 const { outputFiles } = await build({
-  entryPoints: [fileURLToPath(new URL('../src/client/bot-settings.js', import.meta.url))],
+  stdin: {
+    contents: "export { BotSettingsForm, InlineText } from './bot-settings.js'; export { GroupSettingsForm } from './group-settings.js'",
+    resolveDir: fileURLToPath(new URL('../src/client/', import.meta.url)),
+  },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
   external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
 })
@@ -99,22 +102,44 @@ test('Escape drops the typed text, still reports the edit done, and the saved va
   assert.deepEqual(log, [['done']])
 })
 
-test('the preview receives each unsaved draft and goes back to the saved text on Escape', () => {
-  let preview
-  const log = editing({
-    label: 'Group notice', value: 'Original', multiline: true,
-    renderField: (input, text) => { preview = text; return input },
-  }, (api) => {
-    for (const next of ['## Friday', '**Release**', '']) {
-      api.type(next)
-      assert.equal(api.props().value, next)
-      assert.equal(preview, next)
-    }
-    api.key('Escape')
-    assert.equal(api.props().value, 'Original')
-    assert.equal(preview, 'Original')
-  })
-  assert.deepEqual(log, [['done']])
+test('Markdown settings have exclusive read and edit modes and retain a refused draft for retry', async () => {
+  const setting = settings(bot).find(node => node.type.name === 'MarkdownSetting')
+  const original = react.useState
+  const cells = []
+  let slot = 0
+  react.useState = initial => {
+    const i = slot++
+    if (!(i in cells)) cells[i] = initial
+    return [cells[i], next => { cells[i] = next }]
+  }
+  const writes = []
+  const render = () => {
+    slot = 0
+    const field = setting.type({ ...setting.props, value: 'Original', onSave: text => { writes.push(text); return writes.length > 1 } })
+    return walk(field.type(field.props))
+  }
+  const button = label => render().find(node => node.type === 'button' && node.props.children.includes(label))
+  const input = () => render().find(node => node.type === 'textarea')
+  try {
+    assert.equal(input(), undefined)
+    assert.equal(button('Save'), undefined)
+    button('Edit').props.onClick()
+    assert.equal(button('Edit'), undefined)
+    assert.equal(render().some(node => node.props.text === 'Original'), false)
+    input().props.onChange({ target: { value: '## New' } })
+    assert.equal(input().props.onBlur, undefined)
+    await button('Save').props.onClick()
+    assert.equal(input().props.value, '## New')
+    await button('Save').props.onClick()
+    assert.deepEqual(writes, ['## New', '## New'])
+    assert.equal(input(), undefined)
+    button('Edit').props.onClick()
+    button('Cancel').props.onClick()
+    assert.ok(button('Edit'))
+    assert.equal(writes.length, 2)
+  } finally {
+    react.useState = original
+  }
 })
 
 test('an unchanged or untouched field saves nothing but still reports done', () => {
@@ -145,4 +170,53 @@ test('a field takes its class from the page it sits in, and defaults to the Sett
   assert.equal(InlineText({ label: 'Label', value: '' }).props.className, 'bt-bs-input')
   assert.equal(InlineText({ label: 'Instructions', value: '', multiline: true }).props.className, 'bt-bs-input bt-bs-area')
   assert.equal(InlineText({ label: 'Label', value: '', className: 'bt-drawer-role-input' }).props.className, 'bt-drawer-role-input')
+})
+
+test('member role selectors read and update the group assistant binding', () => {
+  const bots = ['a', 'b', 'c'].map(id => ({ id, name: id }))
+  const roster = { byId: Object.fromEntries(bots.map(bot => [bot.id, bot])), bots }
+  const room = { id: 'room', admin: 'a', members: bots.map(bot => bot.id), projectAssistantId: 'b' }
+  const actions = { updateRoom(id, patch) { assert.equal(id, room.id); Object.assign(room, patch) } }
+  const tree = () => walk(module.exports.GroupSettingsForm({ room, roster, actions, run: value => value }))
+  function role(id) {
+    const control = tree().find(node => node.props.member?.id === id && node.props.view === 'role')
+    return control.type(control.props)
+  }
+  const pick = (id, value) => role(id).props.onChange({ target: { value } })
+  assert.equal(tree().some(node => node.props.label === 'Task assistant'), false)
+  assert.equal(role('b').props.value, 'assistant')
+  pick('c', 'assistant')
+  assert.equal(role('b').props.value, 'member')
+  assert.equal(role('c').props.value, 'assistant')
+  pick('c', 'member')
+  assert.equal(room.projectAssistantId, null)
+  assert.equal(room.admin, 'a')
+  pick('b', 'assistant')
+  pick('b', 'admin')
+  assert.equal(room.projectAssistantId, null)
+  assert.equal(role('b').props.value, 'admin')
+  assert.equal(role('b').props.children.find(node => node.props.value === 'assistant').props.disabled, true)
+  pick('b', 'member')
+  assert.equal(role('c').props.children.find(node => node.props.value === 'assistant').props.disabled, true)
+  room.unresolvedTaskAssistant = 'old name'
+  tree().find(node => node.props['aria-label'] === 'Invalid binding').props.onChange()
+  assert.equal(room.projectAssistantId, null)
+  roster.readOnly = true
+  assert.equal(role('c').props.disabled, true)
+})
+
+test('Manage opens this group’s archive and offers its session handoff controls before deletion', () => {
+  const room = { id: 'writers', members: [bot.id] }
+  const roster = { byId: { [bot.id]: bot }, bots: [bot], readOnly: true }
+  const requests = []
+  const actions = { openArchive: (...args) => requests.push(args) }
+  const tree = walk(module.exports.GroupSettingsForm({ room, roster, actions }))
+  const [archive, handoff, remove] = tree.find(node => node.props.title === 'Manage').props.children
+  assert.ok(walk(archive).some(node => node.props.children.includes('Archived discussions')))
+  archive.props.onClick()
+  assert.deepEqual(requests, [[room.id, 'library']])
+  const controls = walk(handoff.type(handoff.props))
+  assert.ok(controls.some(node => node.type === 'summary' && node.props.children.includes('Session handoff')))
+  assert.equal(controls.find(node => node.type === 'input').props.disabled, true)
+  assert.ok(walk(remove).some(node => node.props.children.includes('Delete group')))
 })

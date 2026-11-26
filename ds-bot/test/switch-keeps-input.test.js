@@ -668,7 +668,7 @@ test('two projects share an admin identity, while an original card receives its 
   assert.equal(card.taskId, saved.taskId)
   assert.equal(card.rounds[0].ownerId, 'b')
   await assert.rejects(host.tool('post_to_group', { group: 'data', taskId: card.taskId, message: 'The review is complete.' }, current), /group that owns it/)
-  await assert.rejects(host.tool('project_task', { action: 'read', taskId }, current), /different card/)
+  await assert.rejects(host.tool('project_task', { action: 'read', taskId }, current), /No such card in this group/)
   const view = (await host.call('state', {})).value
   assert.deepEqual(view.rooms.find(r => r.id === 'eng').memberSessions.a.map(row => row.id), [first, current])
   assert.deepEqual(view.rooms.find(r => r.id === 'data').memberSessions.a.map(row => row.id), [other])

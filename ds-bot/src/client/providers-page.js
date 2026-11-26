@@ -7,6 +7,7 @@ import { KeyIcon, MaskedInput } from './secret-card.js'
 import { Segmented, SPRING_SHAPE } from './motion.js'
 import { isLocalRoute } from './agent-routes.js'
 import { hostText, t } from './i18n.js'
+import { Switch } from './bot-settings.js'
 
 const PROTOCOL_NAMES = {
   'openai-completions': 'OpenAI Chat Completions',
@@ -22,7 +23,7 @@ const ENDPOINT_HINTS = {
 const SHOWN_MODELS = 8
 
 // A failure in the interface language; the dialog's error line shows it.
-const translated = promise => Promise.resolve(promise).catch((failure) => { throw new Error(hostText(failure?.message ?? String(failure))) })
+export const translated = promise => Promise.resolve(promise).catch((failure) => { throw new Error(hostText(failure?.message ?? String(failure))) })
 
 // A discovery result as a draft: what the endpoint returned is selected; entries the
 // endpoint no longer returns stay visible and selected, so a smaller upstream list never
@@ -125,9 +126,10 @@ export function fallbacksFor(provider, draft, roster) {
   return { switching, failed, local }
 }
 
-export function ProvidersPage({ actions, run, roster, Section, advanced = null }) {
+export function ProvidersPage({ actions, run, roster, Section, advanced = null, start = null }) {
   const [view, setView] = useState(null)
-  const [open, setOpen] = useState(null)
+  const [open, setOpen] = useState(start)
+  useEffect(() => { if (start) setOpen(start) }, [start])
   const [adding, setAdding] = useState(false)
   // Resolves true when the host took it; the page then shows the host's new view.
   const apply = promise => run(translated(promise).then((next) => { if (next?.providers) setView(next) }))
@@ -161,6 +163,8 @@ export function ProviderRow({ provider, apply, actions, roster, revision, open, 
   const [refreshError, setRefreshError] = useState('')
   const [draft, setDraft] = useState(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [fastBusy, setFastBusy] = useState(false)
+  const [fastError, setFastError] = useState('')
   useEffect(() => {
     if (open) return
     setConfirm(false)
@@ -168,6 +172,15 @@ export function ProviderRow({ provider, apply, actions, roster, revision, open, 
     setRefreshError('')
     setConfirmRemove(false)
   }, [open])
+  const setFast = (model, enabled) => {
+    if (fastBusy) return
+    setFastBusy(true)
+    setFastError('')
+    void apply(translated(actions.setProviderModelFast({ provider: provider.id, model, enabled })).catch(error => {
+      setFastError(error.message)
+      throw error
+    })).finally(() => setFastBusy(false))
+  }
   const state = keyState(provider.key)
   const shown = provider.models.slice(0, SHOWN_MODELS)
   const hint = provider.error ?? (provider.models.length === 0 ? t('No models') : t('{count} models', { count: provider.models.length }))
@@ -244,6 +257,13 @@ export function ProviderRow({ provider, apply, actions, roster, revision, open, 
       provider.key?.writable ? h(KeyEditor, { provider, apply, actions }) : null,
       provider.key && !provider.key.writable ? h('div', { className: 'bt-set-hint' }, t('This key comes from outside DS Bot, such as an environment variable, and cannot be changed here.')) : null,
       modelsBlock,
+      provider.fast?.models?.length > 0 ? h('div', { className: 'bt-secret-edit-block' },
+        h('div', { className: 'bt-secret-edit-label' }, t('GPT Fast mode')),
+        h('p', { className: 'bt-set-hint' }, t('Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.')),
+        provider.fast.models.map(model => h('div', { key: model.id, className: 'bt-set-row bt-provider-fast' },
+          h('span', { className: 'bt-set-copy', title: model.id }, model.name),
+          h(Switch, { label: t('Fast mode for {name}', { name: model.name }), on: model.enabled, disabled: fastBusy, onChange: enabled => setFast(model.id, enabled) }))),
+        fastError || provider.fast.error ? h('div', { className: 'bt-set-hint', 'data-error': '', role: 'alert' }, fastError || hostText(provider.fast.error)) : null) : null,
       provider.removable ? h('div', { className: 'bt-secret-row-actions' },
         confirm
           ? [
@@ -294,7 +314,7 @@ function ModelDraft({ provider, draft, roster, onToggle, onSave, onCancel, confi
       }, confirmRemove && (switching.length > 0 || failed.length > 0) ? t('Save anyway') : t('Save'))))
 }
 
-function KeyEditor({ provider, apply, actions }) {
+export function KeyEditor({ provider, apply, actions }) {
   const [value, setValue] = useState('')
   const [saved, setSaved] = useState(false)
   const ready = value.trim() !== ''
@@ -412,6 +432,8 @@ export const PROVIDERS_CSS = `
 .bt-provider-state[data-state=missing]::before{background:var(--bt-danger)}
 .bt-provider .bt-secret-field{align-items:center;gap:8px}
 .bt-provider .bt-secret-field>svg,.bt-provider-form .bt-secret-field>svg{flex:none;color:var(--bt-ink-3)}
+.bt-provider-fast{padding:8px 0;gap:12px}
+.bt-provider-fast .bt-set-copy{overflow-wrap:anywhere}
 .bt-provider-models{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .bt-provider-models .bt-tag{max-width:220px}
 .bt-provider-add{gap:12px;animation:bt-q-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing} backwards,bt-veil-in .2s ease-out backwards}

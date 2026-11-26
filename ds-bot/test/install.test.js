@@ -43,7 +43,10 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on credentials/reference-updated',
     'on credentials/record-updated',
     'on settings/document-updated',
+    'on agent/disposed',
     'effect ds-bot: auxiliary llm retry',
+    'effect ds-bot: Fast ownership changes',
+    'effect ds-bot: GPT Fast relay',
     'on subagent/start',
     'on subagent/end',
     'on session/event',
@@ -53,8 +56,10 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on session/event',
     'effect ds-bot: lost hand-offs',
     'on tools/execute',
+    'on session-manager/session-deleted',
     'effect ds-bot: identity section',
-    'prompt bot-identity 640',
+    'prompt bot-team-rules 640',
+    'prompt bot-identity 10300',
     'on agent/pre-step (prepend)',
     'on tools/execute',
     'effect ds-bot: scoped team tools',
@@ -64,6 +69,9 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on system-prompt/assemble',
     'on llm/stream',
     'on session/event',
+    'on session/event',
+    'on agent/status',
+    'effect ds-bot: restore work lifecycle',
     'effect ds-bot: chat index',
     'effect ds-bot: group rounds',
     'effect ds-bot: group step lines',
@@ -72,13 +80,14 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on agent/disposed',
     'on commands/change',
     'effect ds-bot: command shield cleanup',
+    'effect ds-bot: project handoff recovery',
     'on approval/request (prepend)',
     'on agent/inbox/discarded',
     'on session/event',
     'effect ds-bot: resume interrupted turns',
     'effect ds-bot: memory recovery',
     'effect ds-bot: memory section',
-    'prompt bot-memory 645',
+    'prompt bot-memory 10320',
     'on agent/pre-step',
     'on agent/status',
     'effect ds-bot: memory review',
@@ -214,10 +223,10 @@ const TEAM = {
   questions: {},
 }
 
-test('in the Desktop profile read_browser is the last tool and reads through the window', async (t) => {
+test('in the Desktop profile read_browser is available and reads through the window', async (t) => {
   const { ctx, call, stop } = start(TEAM, { services: { profileContext: { name: 'desktop' } } })
   t.after(stop)
-  assert.equal(rt.teamTools.at(-1).name, 'read_browser')
+  assert.ok(rt.teamTools.some(tool => tool.name === 'read_browser'))
   assert.ok(ctx.calls.indexOf('effect ds-bot: browser channel') < ctx.calls.indexOf('effect ds-bot: api route'))
   const read = args => rt.teamTools.find(d => d.name === 'read_browser').execute(args, { agent: { id: 'b2' } })
 

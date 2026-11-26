@@ -2,13 +2,111 @@
 
 All notable changes to DS Bot are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/). Before 1.0, a minor version can contain breaking changes.
 
+## Local repository tooling
+
+### 2026-11-26 — community functions and design evidence
+
+- Add a community view organized around upstream function changes, use cases, implementation evidence, limits and local PR decisions. Separate implementation PRs from design updates and keep functional changes without design documents discoverable.
+- Read fixed design sources and per-PR design differences from the catalog, with links back to the upstream PR and local adoption reasons. Mark later combined designs explicitly.
+- Cache versioned design bodies and relationships in SQLite schema v2; incremental changes and completed source checkpoints share a transaction, and changed sources require renewed explanations. Preserve existing PR decisions and user preferences.
+
+This is repository tooling; the installed DSH package is unchanged. Historical backfill and verification are recorded in the [implementation receipt](scripts/upstream-sync/reviews/2026-11-26-upstream-community-implementation.md).
+
+### 2026-11-26 — upstream catalog timestamps and skill entry
+
+- Show dependency group codes with their Chinese names in filters, table rows and PR details, using the existing review document while retaining stable filter values.
+
+- Explain dependency groups with circular question-mark help in both the filter and table header. Hover, click or keyboard focus opens the explanation; Escape or an outside click dismisses it.
+
+- Show each PR's GitHub creation time and latest source-data import time in the catalog table and details, using Asia/Taipei. Cache missing timestamps once; decisions and repeated checks keep source sync times unchanged.
+- Require the sync-upstream workflow to save structured records in SQLite and open its verified local management page after every execution. Keep the read-only dev checkout separate from the updated skill worktree.
+
+These repository tools are outside the DSH npm package; the installed plugin remains 0.3.10-local.29-upstream. See the [tooling receipt](scripts/upstream-sync/reviews/2026-11-26-upstream-catalog-times.md).
+
 ## Local plugin changes
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### v0.3.10.29-upstream — settings console and upstream catalog (2026-11-26)
+
+- Complete PR2028 in the existing settings shell: configuration attention and repair, model/connection/tool/schedule/usage summaries, field and model search, explicit batch model changes, domain anchors and immediate appearance preview. Preserve local prompts, routes, unsaved search drafts, project cards and parallel sessions.
+- Flush pending width and accent edits when settings closes, and restore failed optimistic preview edits. Service failures remain visible; narrow overview does not fetch its hidden usage summary.
+- Add a local SQLite upstream catalog and browser page with 265 Chinese PR explanations, combined filters, persistent wanted/not-wanted choices, incremental Git caching, scoped local reassessment and conflict-aware Markdown export. Source refresh never overwrites user decisions or merges code.
+
+Version 0.3.10-local.29-upstream is installed in the web and desktop profiles; each installation matches all 177 package files. Daily DSH has not been restarted, so runtime loading remains unverified. Full verification, existing baseline failures and the source adoption are recorded in the [implementation receipt](scripts/upstream-sync/reviews/2026-11-26-upstream-2028-implementation.md) and [upstream-changelog.md](scripts/upstream-sync/upstream-changelog.md). The local dev branch remains unchanged.
+
+### v0.3.10.28-upstream — complete collaboration lifecycle (2026-11-26)
+
+- Connect formal project dispatch and auxiliary delegation to one work lifecycle. Clarifications, answers and child results retain their original card, dispatch and conversation; only the original project owner submits, and project approval stays separate.
+- Run immediate work for a busy Bot in an independent local thread, preserving its foreground and manually managed parallel conversations. Queued work waits in its original conversation; working folder, model and permission policies follow the execution.
+- Add clarification and automatic-handoff checkpoints, directed group-loop protection, and Continue/Answer/Cancel controls in the existing dock and Bot exchange. Metadata tools cannot evade the guard; useful short text workflows and real tool work continue.
+- Buffer silent notes, cancellation and stop reasons until idle. Stop exactly the cancelled subtree, suppress late deliveries/submissions, and keep unrelated cards and sessions running.
+- Persist complete result returns with stable delivery identities and preserve protocol, card and part metadata across SQLite restart and conversation rollover. IM results return to their original chat only while pairing and binding remain valid.
+
+Source: [PR #2130](https://github.com/Fei-Craft/DS-Bot/pull/2130). The complete local lifecycle passed independent verification and was installed as npm `0.3.10-local.28-upstream` in web and desktop (177 matching package files each). See [verification and baseline failures](scripts/upstream-sync/reviews/2026-11-26-upstream-2130-implementation.md). Daily runtime loading remains unverified; the dev commit was not changed or merged.
+
+### v0.3.10.27-upstream — local collaboration and settings (2026-11-25)
+
+2026-11-26 review: the collaboration adaptation below is incomplete. Formal project delegation cannot use the new ask/cancel path, and silent buffering and restart metadata need correction. Historical installation is retained; this is not evidence of a fully validated Call & Return workflow. See the [complete-flow audit](scripts/upstream-sync/reviews/2026-11-26-upstream-2130-complete-flow.md).
+
+- Add `delegate_work`, `ask_back`, `answer_work`, `cancel_work` and `note_bot` over the existing collaboration state. Questions and answers return to their recorded thread and project dispatch; cancellation suppresses late results. Existing `message_bot`, parallel conversations, project cards and approval rules remain available. Full upstream background-task and worktree UI integration remains deferred ([PR #2130](https://github.com/Fei-Craft/DS-Bot/pull/2130)).
+- Add an overview, Cmd/Ctrl+K search and live appearance preview within the current settings navigation. Search includes local prompt settings, Bots, groups and registered DSH pages. The full upstream dashboard and field anchors remain deferred ([PR #2028](https://github.com/Fei-Craft/DS-Bot/pull/2028)).
+- Prepare redacted bug reports for `cooker-code/DS-Bot`, show the complete report for confirmation, and publish once through an authorized GitHub connector or offer a manual draft link. Screenshots can be attached manually on GitHub. Feedback links use the same fork ([PR #1942](https://github.com/Fei-Craft/DS-Bot/pull/1942), [PR #2199](https://github.com/Fei-Craft/DS-Bot/pull/2199)).
+
+Adoption boundaries and verification are recorded in [upstream-changelog.md](scripts/upstream-sync/upstream-changelog.md#2026-11-25--本地产品选择与协作设置适配). This candidate is maintained on `dev-upsteam`; local `dev` remains unchanged.
+
+### v0.3.10.26-upstream — isolated local adaptation (2026-11-25)
+
+- Consecutive working notices fold within the same task and dispatch scope. Compressed legacy group replies can be recovered from unambiguous ledger evidence while preserving task boundaries.
+- Context checks lower overestimated post-compaction baselines, check hard-limit crossings, and budget checkpoints for smaller models. Missing token estimation services retain the existing fallback.
+- Local CLI sign-in detection, bounded probes, refresh ordering, activity reporting and stalled ACP turns are more reliable on macOS. Maintenance resumes existing ACP/Codex conversations without silently starting a new one. Shared line splitting handles chunked output in linear time.
+- Side conversations remain isolated from the live CLI session. Stable prompt sections, cold history reads, indexed recent/nearby history and short/CJK queries reduce repeated work. Feature-pack catalog changes remain deferred until the feature-pack runtime is adapted.
+- Capability status, group search, memory recall and journal-tail recovery reuse bounded work. WeChat quote eviction retains lookup behavior. Full-access directory selection and exact missing-session cleanup preserve local permission and storage rules.
+
+This version is maintained on `dev-upsteam`; `dev` is unchanged. See the [per-PR adoption and verification record](scripts/upstream-sync/upstream-changelog.md#2026-11-25--dev-upsteam-独立适配与部署) for the 25 requested PRs, the additional index dependency, excluded scopes and existing baseline failures.
+
+### Upstream changes adopted on 2026-11-25
+
+- Gemini's specific malformed tool-call stops can retry within the configured budget. Telegram headings and tables render as readable formatted messages with length limits and plain-text fallback.
+- Codex conversations use separate live processes so an idle resume reconnects team tools without disturbing another conversation. Qoder CN aliases use their own sign-in command and login marker.
+- Closing a connector gateway cancels active upstream requests. Scheduled-task polling pauses in hidden pages, skin color probes reuse their canvas, and failed recording startup releases its microphone resources.
+- Model and usage caches release stale data and reduce repeated ownership scans. Usage diagnostics keep real errors visible while omitting explicitly unsupported subagent descriptors.
+- Package metadata and the diagnostics issue link point to the renamed Fei-Craft upstream repository.
+
+See the [per-PR sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-25--macos-插件同步) for adoption boundaries and verification.
+
+### Upstream changes adopted on 2026-11-24
+
+- Secret fields accept multiline values, grow with the input, and submit with Cmd/Ctrl+Enter. Secret redaction covers normalized line endings, encoded values and folded multiline output.
+- IM requests without a caller-provided cancellation signal time out after 60 seconds while waiting for response headers. A stalled request can release its chat's send queue.
+- The activity row reuses its running-message host while it remains attached, reducing repeated transcript searches.
+- The avatar picker includes dolphin, octopus, turtle, crab, pufferfish, jellyfish, starfish and seahorse characters.
+- Model content-safety refusals have a dedicated error explanation. Local ACP agents record updated team instructions after sending them.
+
+See the [per-PR sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-24--macos-插件同步) for scope and verification.
+
+### Upstream changes adopted on 2026-11-23
+
+- Feishu discovers its long-connection endpoint and retries failed connections. Edited Discord messages retain their Markdown formatting.
+- Local ACP agents finish cancellation when a prompt stops responding and suppress stale errors. ACP and Claude clean up pending questions and worker resources. Provider-owned Antigravity model references survive a restart.
+- The Settings model picker opens reliably and its tooltip no longer flickers. Message popovers release their viewport listener when closed.
+- Bot creation handles a failed greeting, history reads reuse per-message secret redaction, and memory retries a failed journal-tail read.
+
+See the [per-PR sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-23--macos-插件同步) for scope and verification.
+
+### Upstream changes adopted on 2026-11-21
+
+The [sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-21--macos-插件同步) lists the source pull requests and deferred changes.
+
+- WeChat passes quoted messages to Bots. QQ retries only undelivered chunks, reports platform errors in successful HTTP responses, and formats tables without outer pipes. Discord conversations prefer channel names.
+- Custom remote MCP servers support optional OAuth sign-in. The setup guide for custom clients is easier to follow.
+- Web search can use DeepSeek Search on the active route's own HTTPS origin and retain provider summaries for the model.
+- Local agents use the context window reported by their CLI and retain upstream error details. The launcher filters host-only variables regardless of case. Provider-owned Qoder model selections survive restart.
+- The usage page updates totals when switching ranges. Chat width on DSH 0.2.2-rc.3, mention-menu backgrounds, dark-theme model options and the send button hover are corrected.
+
 ### Upstream changes adopted on 2026-11-20
 
-The [sync record](upstream-changelog.md#已合入本地工作区) lists the source pull requests for these changes.
+The [sync record](scripts/upstream-sync/upstream-changelog.md#已合入本地工作区) lists the source pull requests for these changes.
 
 - Search the model menu and filter results with the keyboard. Local agents now start with the permission preset selected for their group, Bot or host.
 - Malformed model responses can be retried. Local agent errors retain their original cause, Claude accepts chunked input, and Antigravity sign-in detection works on macOS. On Windows, Pi now receives the resolved executable path at startup.

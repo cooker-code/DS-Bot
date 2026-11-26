@@ -1,6 +1,6 @@
 // Values are stored on the group and copied onto each new Git plan.
 export const workspacePolicies = {
-  auto: 'Main Bot decides',
+  auto: 'Task assistant decides (Main Bot if unassigned)',
   current: 'Current branch only',
   worktree: 'Separate worktree only',
 }

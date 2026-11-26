@@ -97,9 +97,10 @@ function start({ home = mkdtempSync(join(tmpdir(), 'ds-bot-rounds-')) } = {}) {
     .execute({}, { agent: { id: roomId, inbox: inboxOf(roomId) }, callId, signal })
     .then(async value => JSON.stringify(await afterRound(rt, roomId, value)))
   // The Bot's answer to its group turn: a delivery source plus the reply text.
-  const answer = async (sessionId, exchangeId, text, turn) => {
+  const answer = async (sessionId, exchangeId, text, turn, worked = false) => {
     await emit(sessionId, { type: 'turn/start', data: { turn } })
     await emit(sessionId, { type: 'user/message', data: { source: { kind: 'bot', role: 'room', exchangeId }, content: [{ type: 'text', text: 'your turn' }] } })
+    if (worked) await emit(sessionId, { type: 'tool/call', data: { name: 'read', callId: 'work-' + turn, arguments: '{}' } })
     await emit(sessionId, { type: 'assistant/message', data: { message: { content: [{ type: 'text', text }] } } })
     await emit(sessionId, { type: 'turn/end', data: { reason: { kind: 'stop' } } })
   }
@@ -695,7 +696,7 @@ test('a long post goes to the group as a file, and reaches the member with its p
 // dropping calls in silence, then by parking them until the user went on. Now
 // nothing caps how often members call each other, and every user message is
 // answered.
-test('members call each other for as long as they call, and a user @ mid-round still reaches a member', async (t) => {
+test('members keep handing on real work and a user @ mid-round still reaches a member', async (t) => {
   const { call, emit, userMessage, compose, relay, answer, stop, sent, rt } = start()
   t.after(stop)
   const room = await team(call, sent)
@@ -710,7 +711,7 @@ test('members call each other for as long as they call, and a user @ mid-round s
   let turn = await turnFor(sent)
   for (let step = 0; step < 20; step += 1) {
     spoken.push(turn)
-    await answer(turn.sessionId, turn.message.source.exchangeId, `${step % 2 === 0 ? '@Writer' : '@Chief'} volley ${step + 1}`, step + 1)
+    await answer(turn.sessionId, turn.message.source.exchangeId, `${step % 2 === 0 ? '@Writer' : '@Chief'} volley ${step + 1}`, step + 1, true)
     turn = await turnFor(sent, ...spoken)
   }
   const writerSession = rt.state.rooms[room.id].sessions[writer.id]
@@ -1048,7 +1049,7 @@ test('a group stops answering its own status posts once the idle steps reach the
 
   // One status post and the status answer it gets count once: the step is the answer,
   // the post that opened the round is not a step of its own.
-  for (let step = 1; step <= 5; step += 1) {
+  for (let step = 1; step < ROOM_IDLE_RELAY_LIMIT; step += 1) {
     const { round: running } = await posted('暂无待办，静候下一步', `relay-${step}`)
     const turn = await turnFor(sent)
     assert.ok(turn, `round ${step} answers the post`)
@@ -1069,7 +1070,7 @@ test('a group stops answering its own status posts once the idle steps reach the
   assert.ok(state().idlePaused, 'the room is paused')
   const notices = state().log.filter(line => line.kind === 'notice' && line.reason === 'paused')
   assert.equal(notices.length, 1, 'the group hears about it once')
-  assert.match(lineText(notices[0]), /6 status updates with no new work/)
+  assert.match(lineText(notices[0]), /2 status updates with no new work/)
   assert.match(lineText(notices[0]), /the last from Writer/)
   assert.match(lineText(notices[0]), /until the user writes here/)
 

@@ -426,9 +426,15 @@ await step('DS Bot dispatches a project card with the original image', async () 
   const view = await api('state')
   const cards = view.rooms.find(room => room.id === devRoomId).projectCards ?? []
   const taskProblem = expect(cards.length === 1, 'expected one project card')
-    ?? expect(cards[0].ownerId === botNamed('Coder').id && cards[0].round === 1 && cards[0].status === 'review', 'the owner did not receive, start and submit the image task')
+    ?? expect(cards[0].ownerId === botNamed('Coder').id && cards[0].round === 1 && cards[0].status === 'done', 'the owner did not receive, start and submit the image task')
   if (taskProblem) return taskProblem
   const card = await api('project-task-detail', { roomId: devRoomId, taskId: cards[0].taskId })
+  const history = await api('project-task-detail', { roomId: devRoomId, taskId: card.taskId, interactionsOnly: true })
+  if (history.incomplete) return 'could not read the project member session history'
+  if (!history.messages.some(row => row.exchangeId === card.rounds[0].dispatchId && row.from === chief().id && row.to === card.rounds[0].ownerId))
+    return 'the delivered dispatch must identify both Bots'
+  if (history.messages.some(row => (!row.from && row.sender !== 'user') || !row.to || row.from === row.to))
+    return 'the task timeline must contain the user intake and deliveries between Bots'
   const original = card.requirements[0]
   const { rows } = await api('group-rows', { roomId: devRoomId, from: original.seq })
   const answers = rows.filter(row => row.botId === chief().id && row.text?.includes('核对派工后能否看到附件'))
@@ -464,10 +470,23 @@ await step('admin hands an image requirement to the assistant and reports its ve
 }, async assistant => {
   const room = state().rooms[devRoomId]
   const card = Object.values(room.projectCards ?? {}).find(c => c.title === 'Assistant image check')
-  const report = await api('group-search', { roomId: room.id, query: 'The assistant verified the original image' })
+  const report = await api('group-search', { roomId: room.id, query: 'The worker received the original image' })
   return expect(room.admin === chief().id && room.projectAssistantId === assistant, 'the split roles were not persisted')
-    ?? expect(card?.plans[0].by === assistant && card.rounds[0]?.ownerId === botNamed('Coder').id && card.rounds[0]?.planNode.acceptedBy === assistant, 'the assistant did not plan, dispatch and review the worker')
+    ?? expect(card?.plans[0].by === assistant && card.rounds[0]?.ownerId === botNamed('Coder').id && card.rounds[0]?.result === 'Received the original project attachment.' && card.rounds[0]?.planNode.acceptedBy === 'system', 'the assistant did not dispatch the worker or final submission did not complete the task')
     ?? expect(report.results.filter(row => row.botId === chief().id).length === 1, 'missing final group report from the admin')
+})
+await step('a marked task quote with 推进任务 stays on the selected card', async () => {
+  const room = state().rooms[devRoomId]
+  const card = Object.values(room.projectCards)[0]
+  const inboxIds = room.projectInbox.map(item => item.id)
+  await send(devRoomId, '> 任务详情 · ' + card.title + '\n> 研发群 · [task:' + card.id + ']\n\n  推进任务')
+  return { taskId: card.id, inboxIds, cardIds: Object.keys(room.projectCards) }
+}, async before => {
+  const room = state().rooms[devRoomId]
+  const card = await api('project-task-detail', { roomId: devRoomId, taskId: before.taskId })
+  return expect(card.requirements.some(row => row.text?.endsWith('推进任务')), 'the group message did not bind to the selected card')
+    ?? expect(JSON.stringify(before.inboxIds) === JSON.stringify(room.projectInbox.map(item => item.id)), 'the quote opened a new intake')
+    ?? expect(JSON.stringify(before.cardIds) === JSON.stringify(Object.keys(room.projectCards)), 'the quote created another card')
 })
 await step('delete the group', () => api('delete-room', { id: devRoomId }), () => expect(Object.keys(state().rooms).length === 0, 'group still there')
   ?? expect(memoryFile('groups', devRoomId) === '', 'the group memory is still in place')

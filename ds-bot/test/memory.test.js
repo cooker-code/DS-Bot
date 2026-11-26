@@ -938,6 +938,30 @@ test('a write that changed nothing fails the call with a code, and a saved one k
   })
 })
 
+test('a memory snapshot checks every entry in a file against the same day', async (t) => {
+  const DayFormat = Intl.DateTimeFormat
+  let calls
+  t.mock.method(Intl, 'DateTimeFormat', function (...args) {
+    const formatter = new DayFormat(...args)
+    if (args[0] === 'en-CA') {
+      const format = formatter.format
+      Object.defineProperty(formatter, 'format', { value: value => calls === undefined ? format(value) : calls++ === 0 ? '2099-06-01' : '2099-06-02' })
+    }
+    return formatter
+  })
+  const { tool, section, stop } = start({ config: { timeZone: 'UTC' } })
+  t.after(() => stop())
+  await tool('remember', { text: 'Release checklist alpha', until: '2099-06-01' }, 'b2')
+  await tool('remember', { text: 'Release checklist beta', until: '2099-06-01' }, 'b2')
+  await tool('remember', { text: 'Release checklist expired', until: '2099-05-31' }, 'b2')
+  calls = 0
+  const snapshot = section('b2')
+  assert.match(snapshot, /Release checklist alpha/)
+  assert.match(snapshot, /Release checklist beta/)
+  assert.doesNotMatch(snapshot, /Release checklist expired/)
+  assert.equal(calls, 2)
+})
+
 test('a Session keeps the memory it began with, across restarts, until its snapshot goes', async (t) => {
   const first = start()
   t.after(() => first.stop())
@@ -1804,6 +1828,23 @@ test('a running conversation learns of memory changes as a message, and its prom
   assert.ok(existsSync(join(home, 'memory', 'snapshots', 'b2.seen')))
 })
 
+test('a running conversation retries an unreadable memory journal on the next step', async (t) => {
+  const { ctx, home, read, warnings, stop } = start()
+  t.after(() => stop())
+  assert.equal(await updateOf(ctx, 'b2'), undefined)
+  const journalPath = join(home, 'memory', 'journal.jsonl')
+  mkdirSync(journalPath)
+  assert.equal(await updateOf(ctx, 'b2'), undefined)
+  assert.ok(warnings.some(line => line.includes('memory update for Writer not read') && line.includes('EISDIR')))
+
+  rmSync(journalPath, { recursive: true })
+  const time = new Date(Date.parse(read('snapshots', 'b2.seen')) + 1).toISOString()
+  const row = { id: 'team-change', time, scope: 'team', op: 'add', file: 'MEMORY.md', actor: 'user', after: '- Ships on Friday' }
+  writeFileSync(journalPath, `${JSON.stringify(row)}\n`)
+  assert.match(textOf(await updateOf(ctx, 'b2')), /Added to team memory by the user: Ships on Friday/)
+  assert.equal(await updateOf(ctx, 'b2'), undefined)
+})
+
 test('a topic entry and another group stay out of the memory update', async (t) => {
   const { ctx, tool, section, stop } = start()
   t.after(() => stop())
@@ -2040,6 +2081,29 @@ test('a turn brings up matching topic entries once, as data, and only from what 
   assert.equal(await recallOf(ctx, 'b2', 'small pull requests please'), undefined)
   await call('set-prefs', { memoryAutoRecall: false })
   assert.equal(await recallOf(ctx, 'b2', '这次发版前要做什么检查'), undefined)
+})
+
+test('auto recall checks every entry against the same day', async (t) => {
+  const DayFormat = Intl.DateTimeFormat
+  let calls
+  t.mock.method(Intl, 'DateTimeFormat', function (...args) {
+    const formatter = new DayFormat(...args)
+    if (args[0] === 'en-CA') {
+      const format = formatter.format
+      Object.defineProperty(formatter, 'format', { value: value => calls === undefined ? format(value) : calls++ === 0 ? '2099-06-01' : '2099-06-02' })
+    }
+    return formatter
+  })
+  const { ctx, tool, section, stop } = start({ config: { timeZone: 'UTC' } })
+  t.after(() => stop())
+  await tool('remember', { text: 'Release checklist alpha', topic: 'release', until: '2099-06-01' }, 'b2')
+  await tool('remember', { text: 'Release checklist beta', topic: 'release', until: '2099-06-01' }, 'b2')
+  section('b2')
+  calls = 0
+  const recalled = textOf(await recallOf(ctx, 'b2', 'Release checklist'))
+  assert.match(recalled, /Release checklist alpha/)
+  assert.match(recalled, /Release checklist beta/)
+  assert.equal(calls, 1)
 })
 
 test('recall puts the entry that matches best first', () => {

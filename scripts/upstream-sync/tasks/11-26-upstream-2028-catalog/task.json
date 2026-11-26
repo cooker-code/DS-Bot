@@ -1,0 +1,42 @@
+{
+  "id": "upstream-2028-catalog",
+  "name": "upstream-2028-catalog",
+  "title": "上游PR完整适配与SQLite管理页",
+  "description": "PR2028完整适配及SQLite/HTML增量台账，独立验证后安装.29到日用web/desktop，不合dev",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "upstream-sync",
+  "package": "ds-bot",
+  "priority": "P2",
+  "creator": "wangliangbj01",
+  "assignee": "wangliangbj01",
+  "createdAt": "2026-11-26",
+  "completedAt": "2026-11-26T12:59:52+08:00",
+  "branch": "chore/upstream-2028-catalog",
+  "base_branch": "chore/upstream-2130-complete",
+  "worktree_path": "<repo>/.worktree/chore%2Fupstream-2028-catalog",
+  "commit": "e25f6caf0b8bc3962b1ef30c27a793bdec1ab116",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "scripts/upstream-sync/reviews/2026-11-26-upstream-2028-implementation.md",
+    "scripts/upstream-sync/README.md",
+    "scripts/upstream-sync/upstream-changelog.md"
+  ],
+  "notes": "用户已批准文字方案；实现、自动检查、独立只读复核、安装及测试清理完成。台账最终候选118245cf，插件e25f6caf；日用加载和最终用户验收未核实。见scripts/upstream-sync/reviews/2026-11-26-upstream-2028-implementation.md。",
+  "meta": {
+    "planning_contract_version": "2",
+    "ui": "true",
+    "interaction_change": "true",
+    "data_model_change": "true",
+    "public_contract_change": "true",
+    "cross_layer_change": "true",
+    "state_lifecycle_change": "true",
+    "security_compatibility_rollout_change": "true",
+    "technical_tradeoff": "true",
+    "planning_tier": "complex",
+    "prototype_manifest": "prototype/manifest.json"
+  }
+}

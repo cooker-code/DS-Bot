@@ -1,22 +1,31 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
+import { fakeWsServer } from './fake-ws.js'
 import { fakeContext } from './fake-ctx.js'
+import { capSentStore } from '../src/host/im/index.js'
 import { adapters } from '../src/host/im/platforms/index.js'
 
 // A platform adapter that records sends/edits and lets the test feed inbound
 // messages, actions and statuses. `fail` makes send throw once per call queued.
-const fakeAdapter = ({ buttons = true } = {}) => {
+// `quote` says the platform hands back quoted replies, so the host keeps what it
+// sent; it is off by default, like most platforms.
+const fakeAdapter = ({ buttons = true, quote = false } = {}) => {
   const sent = []
   const edited = []
   const typed = []
   const fails = []
+  const jobs = []
+  // Ids keep counting when a test empties `sent`, so a quoted id never names a
+  // later message by accident.
+  let nextMessage = 0
   const adapter = {
     id: 'fake',
+    quote,
     sent,
     edited,
     typed,
@@ -32,10 +41,12 @@ const fakeAdapter = ({ buttons = true } = {}) => {
       handlers.onStatus({ state: 'ready', account: { id: 'bot1', name: '@fakebot' } })
       return {
         send: async (chat, body) => {
-          sent.push({ chat, ...body })
+          const messageId = String(++nextMessage)
+          sent.push({ chat, messageId, ...body })
+          jobs.push(body)
           const next = fails.shift()
           if (next !== undefined) throw next
-          return { messageId: sent.length }
+          return { messageId }
         },
         edit: async (chat, messageId, body) => { edited.push({ chat, messageId, ...body }) },
         typing: async (chat) => { typed.push(chat) },
@@ -44,6 +55,7 @@ const fakeAdapter = ({ buttons = true } = {}) => {
     },
   }
   adapter.fails = fails
+  adapter.jobs = jobs
   adapter.buttons = buttons
   return adapter
 }
@@ -85,6 +97,7 @@ async function start({ platform = 'telegram', adapter, seed, services = {} } = {
     llm: { listProviders: () => [] },
     workspaceRegistry: { get: () => undefined, resolveByPath: async () => undefined, create: async () => ({ id: 'w1' }), archiveSession: async () => {} },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       resolveAgent: async sessionId => ({ agent: agentOf(sessionId) }),
       selectModel: async () => {},
@@ -199,6 +212,187 @@ test('unpaired DM asks once, allow pairs it, next message prompts the Bot', asyn
   assert.deepEqual(s.prompts[0].content, [{ type: 'text', text: 'do a thing' }])
 })
 
+test('a WeCom direct chat can route to a room and return to the connection Bot', async (t) => {
+  const s = await start({ platform: 'wecom' })
+  t.after(s.stop)
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  const send = (id, text) => dm(s, id, text, { chat: { key: id, kind: 'direct', title: id } })
+  for (const id of ['u1', 'u2']) {
+    await send(id, 'connect')
+    await s.rt.imEndpoint('im-pair', { id: conn.id, senderId: id, allow: true })
+    await send(id, 'before binding')
+    assert.equal(s.prompts.at(-1).sessionId, 'a')
+  }
+  const bind = target => s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'u1', target })
+  await bind({ roomId: 'r1' })
+  await send('u2', 'still private')
+  assert.equal(s.prompts.at(-1).sessionId, 'a')
+  await send('u1', 'hello room')
+  assert.equal(s.prompts.at(-1).sessionId, 'r1')
+  assert.deepEqual(s.prompts.at(-1).content, [{ type: 'text', text: 'hello room' }])
+  s.imTurn('r1')
+  s.emitEvent('r1', 'user/message', { source: { kind: 'ds-bot-time-context', form: 'snapshot' } })
+  s.fake.sent.length = 0
+  s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'reply from room' })
+  await s.flush()
+  assert.deepEqual(s.fake.sent.map(msg => [msg.chat.key, msg.chat.kind, msg.text]), [
+    ['u1', 'direct', '**Writer**: reply from room'],
+  ])
+  await bind(null)
+  await send('u1', 'back to private')
+  assert.equal(s.prompts.at(-1).sessionId, 'a')
+})
+
+test('a room member reply reaches the originating WeCom DM through the WebSocket adapter', async (t) => {
+  const waitFor = async condition => {
+    for (let i = 0; i < 100 && !condition(); i++) await delay(20)
+    assert.ok(condition())
+  }
+  const delivered = []
+  const gateway = await fakeWsServer({ onSocket(ws) {
+    ws.on('message', raw => {
+      const packet = JSON.parse(raw)
+      let errcode = 0
+      if (packet.cmd !== 'aibot_subscribe') {
+        if (packet.cmd === 'aibot_send_msg' && packet.body.chatid === 'u1' && packet.body.msgtype === 'markdown') {
+          delivered.push(packet.body.markdown.content)
+        } else errcode = 40058
+      }
+      ws.send(JSON.stringify({ headers: packet.headers, errcode }))
+    })
+  } })
+  t.after(() => gateway.close())
+  const s = await start({ platform: 'wecom', adapter: adapters.wecom })
+  t.after(s.stop)
+  s.rt.config.im = { wecom: { gateway: gateway.url } }
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  s.rt.state.im.connections[conn.id].paired.push({ id: 'u1', name: 'User', at: 1 })
+  await s.rt.save()
+  await waitFor(() => s.rt.imStatusView()[conn.id]?.state === 'ready')
+  const inbound = id => gateway.sockets.at(-1).send(JSON.stringify({
+    cmd: 'aibot_msg_callback', headers: { req_id: id },
+    body: { chattype: 'single', from: { userid: 'u1' }, msgtype: 'text', msgid: id, text: { content: id } },
+  }))
+  inbound('before binding')
+  await waitFor(() => s.prompts.length === 1)
+  await s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'u1', target: { roomId: 'r1' } })
+  inbound('which workspace')
+  await waitFor(() => s.prompts.at(-1)?.sessionId === 'r1')
+  s.imTurn('r1')
+  s.emitEvent('r1', 'user/message', { source: { kind: 'time-context', form: 'snapshot' } })
+  s.rt.logRoom(s.rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: 'room workspace' })
+  await waitFor(() => delivered.includes('**Writer**: room workspace'))
+})
+
+test('explicit task document delivery uses the configured WeCom chat, uploads complete bytes and records one acknowledged receipt', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'im-document-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const report = join(dir, 'discussion.md')
+  const document = '# Discussion\n\n' + '完整正文与证据。'.repeat(40000)
+  writeFileSync(report, document)
+  const uploaded = []
+  const sends = []
+  let reject = false
+  let rejectUpload = false
+  let unbind = false
+  const gateway = await fakeWsServer({ onSocket(ws) {
+    ws.on('message', raw => {
+      const packet = JSON.parse(raw)
+      const answer = (body = {}) => ws.send(JSON.stringify({ headers: packet.headers, errcode: 0, body }))
+      if (packet.cmd === 'aibot_subscribe' || packet.cmd === 'ping') return answer()
+      if (packet.cmd === 'aibot_upload_media_init') {
+        if (rejectUpload) return ws.send(JSON.stringify({ headers: packet.headers, errcode: 60001, errmsg: 'media refused' }))
+        assert.equal(packet.body.type, 'file')
+        assert.equal(packet.body.filename, 'discussion.md')
+        assert.equal(packet.body.total_size, Buffer.byteLength(document))
+        uploaded.push({ init: packet.body, chunks: [] })
+        return answer({ upload_id: 'upload-' + uploaded.length })
+      }
+      if (packet.cmd === 'aibot_upload_media_chunk') {
+        const file = uploaded.at(-1)
+        assert.equal(packet.body.chunk_index, file.chunks.length)
+        file.chunks.push(Buffer.from(packet.body.base64_data, 'base64'))
+        return answer()
+      }
+      if (packet.cmd === 'aibot_upload_media_finish') {
+        const file = uploaded.at(-1)
+        assert.equal(file.chunks.length, file.init.total_chunks)
+        assert.equal(Buffer.concat(file.chunks).toString(), document)
+        if (unbind) one.chats.u1.target = null
+        return answer({ media_id: 'media-' + uploaded.length })
+      }
+      assert.equal(packet.cmd, 'aibot_send_msg')
+      assert.equal(packet.body.chatid, 'u1')
+      assert.equal(packet.body.msgtype, 'file')
+      assert.equal(packet.body.file.media_id, 'media-' + uploaded.length)
+      sends.push(packet.body)
+      if (reject) ws.close()
+      else answer({ msgid: 'file-' + sends.length })
+    })
+  } })
+  t.after(() => gateway.close())
+  const s = await start({ platform: 'wecom', adapter: adapters.wecom })
+  t.after(s.stop)
+  s.rt.config.im = { wecom: { gateway: gateway.url } }
+  const conn = await add(s, { botId: 'example', secret: 'test-only' })
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'User', at: 1 })
+  one.chats.u1 = { kind: 'direct', title: 'Configured recipient', target: { roomId: 'r1' }, at: 1 }
+  const room = s.rt.roomOf('r1')
+  room.workDir = dir
+  room.projectCards = { delivery: { id: 'delivery', title: 'Discussion document', intakes: [], rounds: [
+    { ownerId: 'b', assignedAt: 1, startedAt: 2, submittedAt: 3, result: 'Document ready: ' + report },
+  ] } }
+  await s.rt.save()
+  const ready = async () => {
+    for (let i = 0; i < 150 && s.rt.imStatusView()[conn.id]?.state !== 'ready'; i++) await delay(20)
+    assert.equal(s.rt.imStatusView()[conn.id]?.state, 'ready')
+  }
+  await ready()
+  const input = { roomId: 'r1', taskId: 'delivery', fileName: 'discussion.md', requestId: 'deliver-discussion' }
+  const send = extra => s.rt.imEndpoint('im-send-document', { ...input, ...extra })
+  const [first, replay] = await Promise.all([send(), send()])
+  assert.deepEqual(first, replay)
+  assert.equal(first.status, 'sent')
+  assert.equal(first.messageId, 'file-1')
+  assert.equal(first.acknowledged, true)
+  assert.equal(first.chatKey, 'u1')
+  assert.equal(uploaded.length, 1)
+  assert.equal(sends.length, 1)
+  const tool = s.rt.teamTools.find(tool => tool.name === 'send_im_document')
+  assert.ok(tool)
+  room.sessions = { a: 'admin-current' }
+  s.rt.groupOwners.set('admin-current', { roomId: 'r1', botId: 'a' })
+  s.rt.groupOwners.set('admin-old', { roomId: 'r1', botId: 'a' })
+  s.rt.groupOwners.set('unassigned-member', { roomId: 'r1', botId: 'b' })
+  assert.deepEqual(JSON.parse(await tool.execute(input, { agent: { id: 'admin-current' } })), first)
+  await assert.rejects(tool.execute(input, { agent: { id: 'admin-old' } }), /group admin|dispatched document owner/)
+  await assert.rejects(tool.execute(input, { agent: { id: 'unassigned-member' } }), /group admin|dispatched document owner/)
+  await assert.rejects(send({ fileName: 'unrelated.md', requestId: 'other' }), /registered on this task/)
+  one.chats.u2 = { ...one.chats.u1 }
+  one.paired.push({ id: 'u2', name: 'Another user', at: 2 })
+  await assert.rejects(send({ requestId: 'ambiguous' }), /one configured WeCom chat/)
+  delete one.chats.u2
+  one.paired = []
+  await assert.rejects(send({ requestId: 'unpaired' }), /one configured WeCom chat/)
+  one.paired.push({ id: 'u1', name: 'User', at: 1 })
+  reject = true
+  await assert.rejects(send({ requestId: 'lost-ack' }), /acknowledged|socket/)
+  assert.deepEqual(await send(), first, 'a confirmed receipt remains readable while the socket reconnects')
+  reject = false
+  await ready()
+  await assert.rejects(send({ requestId: 'lost-ack' }), /no confirmed result.*uncertain/)
+  assert.equal(sends.length, 2, 'a lost acknowledgement never triggers another file send')
+  unbind = true
+  await assert.rejects(send({ requestId: 'unbound-before-post' }), /one configured WeCom chat/)
+  assert.equal(sends.length, 2, 'a route removed during upload cannot receive the document')
+  unbind = false
+  one.chats.u1.target = { roomId: 'r1' }
+  rejectUpload = true
+  await assert.rejects(send({ requestId: 'refused-upload' }), /WeCom 60001/)
+  assert.equal(sends.length, 2, 'a refused upload never posts a file message')
+})
+
 test('unbound group mention replies unbound and records the chat; binding routes mentions', async (t) => {
   const s = await start()
   t.after(s.stop)
@@ -251,6 +445,316 @@ test('outbound: assistant text and member lines go out; hidden turns, user and s
   assert.equal(s.fake.sent.length, 2)
   assert.equal(s.fake.sent[1].text, '**Writer**: member spoke')
   assert.equal(s.fake.sent[1].chat.key, 'g1')
+})
+
+test('a quoted reply carries the message it answers into the Bot', async (t) => {
+  const s = await start({ adapter: fakeAdapter({ quote: true }) })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.fake.sent.length = 0
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'Project A is done' }] } })
+  await s.flush()
+  const sentId = s.fake.sent.at(-1)?.messageId
+  assert.ok(sentId !== undefined, 'the sent message has an id')
+  await dm(s, 'u1', 'ship it', { quote: { ids: [sentId] } })
+  assert.equal(s.prompts.length, 2)
+  assert.equal(s.prompts[1].content[0].text, 'Replying to an earlier message:\n> Project A is done\n\nship it')
+  // The reply can come after a restart, so the message is kept in the runtime file.
+  await delay(600)
+  const runtime = JSON.parse(readFileSync(join(s.home, 'im', `${conn.id}.json`), 'utf8'))
+  assert.ok(runtime.sent['dm-u1'].some(entry => entry.text === 'Project A is done'))
+})
+
+test('a platform whose replies cannot be quoted writes no sent messages', async (t) => {
+  // The adapter keeps state in the runtime file, so the file is written even
+  // though this platform never hands back a quoted reply: it must not carry
+  // the replies the host sent either.
+  const adapter = {
+    id: 'fake',
+    handlers: null,
+    async check() { return { account: { id: 'bot1', name: '@fakebot' } } },
+    connect(fields, env, handlers) {
+      adapter.handlers = handlers
+      handlers.onStatus({ state: 'ready', account: { id: 'bot1', name: '@fakebot' } })
+      env.runtime.set({ lastPoll: 1 })
+      return {
+        send: async () => ({ messageId: 'plain-1' }),
+        typing: async () => {},
+        stop: () => {},
+      }
+    },
+  }
+  const s = await start({ adapter })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'Project A is done' }] } })
+  await s.flush()
+  const fileOf = () => {
+    try { return JSON.parse(readFileSync(join(s.home, 'im', `${conn.id}.json`), 'utf8')) } catch { return undefined }
+  }
+  // The runtime file is written on a delay; wait until it lands.
+  let runtime = fileOf()
+  for (let at = 0; at < 80 && runtime?.runtime?.lastPoll === undefined; at += 1) {
+    await delay(50)
+    runtime = fileOf()
+  }
+  assert.equal(runtime?.runtime?.lastPoll, 1, 'the runtime file was written')
+  assert.equal(runtime.sent, undefined, 'no sent messages are stored')
+})
+
+test('a quote of a later chunk shows that chunk, not the start of the reply', async (t) => {
+  // A platform that cuts a long reply into messages with an id each.
+  const adapter = {
+    id: 'fake',
+    quote: true,
+    handlers: null,
+    async check() { return { account: { id: 'bot1', name: '@fakebot' } } },
+    connect(fields, env, handlers) {
+      adapter.handlers = handlers
+      handlers.onStatus({ state: 'ready', account: { id: 'bot1', name: '@fakebot' } })
+      return {
+        send: async () => ({
+          messageId: 'chunk-b',
+          ids: ['chunk-a', 'chunk-b'],
+          parts: [
+            { ids: ['chunk-a'], text: 'Project A is done' },
+            { ids: ['chunk-b'], text: 'Project B is done' },
+          ],
+        }),
+        typing: async () => {},
+        stop: () => {},
+      }
+    },
+  }
+  const s = await start({ adapter })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'Project A is done\n\nProject B is done' }] } })
+  await s.flush()
+  await dm(s, 'u1', 'do that', { quote: { ids: ['chunk-b'] } })
+  assert.equal(s.prompts[1].content[0].text, 'Replying to an earlier message:\n> Project B is done\n\ndo that')
+})
+
+test('a partial send still remembers the chunks the platform accepted before failing', async (t) => {
+  // A long reply is sent as chunks; the platform accepts the first, then refuses
+  // the second. The accepted chunk must stay quotable even though the send failed.
+  const adapter = {
+    id: 'fake',
+    quote: true,
+    handlers: null,
+    async check() { return { account: { id: 'bot1', name: '@fakebot' } } },
+    connect(fields, env, handlers) {
+      adapter.handlers = handlers
+      handlers.onStatus({ state: 'ready', account: { id: 'bot1', name: '@fakebot' } })
+      let sendCount = 0
+      return {
+        send: async () => {
+          sendCount += 1
+          adapter.sentCount = sendCount
+          // The reply: first chunk accepted, second refused.
+          const error = new Error('WeChat refused the reply (quota)')
+          error.permanent = true
+          error.parts = [{ ids: ['accepted-first'], text: 'Project A is done' }]
+          throw error
+        },
+        typing: async () => {},
+        stop: () => {},
+      }
+    },
+  }
+  const s = await start({ adapter })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'Project A is done\n\nProject B is done' }] } })
+  await s.flush()
+  assert.ok(adapter.sentCount >= 1, 'the adapter send was called')
+  // A later quote naming only the accepted chunk, with no platform text, still
+  // resolves to that chunk's text rather than "content unavailable".
+  await dm(s, 'u1', 'do that', { quote: { ids: ['accepted-first'] } })
+  assert.equal(s.prompts.at(-1).content[0].text, 'Replying to an earlier message:\n> Project A is done\n\ndo that')
+})
+
+test('a quote resolves by its ids, then by the platform text, and says when both are gone', async (t) => {
+  const s = await start({ adapter: fakeAdapter({ quote: true }) })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.fake.sent.length = 0
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'Project A is done' }] } })
+  await s.flush()
+  const sentId = s.fake.sent.at(-1)?.messageId
+  // Any of the ids may name the message; the first one that does is used.
+  await dm(s, 'u1', 'this one', { quote: { ids: ['not-this-one', sentId] } })
+  assert.equal(s.prompts[1].content[0].text, 'Replying to an earlier message:\n> Project A is done\n\nthis one')
+  // An id this chat never sent falls back to the text the platform kept.
+  await dm(s, 'u1', 'that one', { quote: { ids: ['gone'], text: 'Text the platform kept' } })
+  assert.equal(s.prompts[2].content[0].text, 'Replying to an earlier message:\n> Text the platform kept\n\nthat one')
+  await dm(s, 'u1', 'the other one', { quote: { ids: ['gone'] } })
+  assert.equal(s.prompts[3].content[0].text, 'Replying to an earlier message (its text is not available).\n\nthe other one')
+  // A command is read from the reply alone, never from the quote.
+  // A command is read from the reply alone, never from the quote. End the turn
+  // first so /stop has nothing running and answers the deterministic idle text.
+  s.emitEvent('a', 'turn/end', {})
+  await dm(s, 'u1', '/stop', { quote: { ids: [sentId] } })
+  assert.equal(s.prompts.length, 4)
+  assert.equal(s.fake.sent.at(-1).text, 'Nothing is running.')
+})
+
+test('only the last messages sent to a chat are kept for quoting', async (t) => {
+  const s = await start({ adapter: fakeAdapter({ quote: true }) })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.fake.sent.length = 0
+  for (let at = 0; at < 21; at += 1) {
+    s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: `Report ${at}` }] } })
+  }
+  await s.flush()
+  await delay(1_200)
+  const kept = JSON.parse(readFileSync(join(s.home, 'im', `${conn.id}.json`), 'utf8')).sent['dm-u1']
+  assert.equal(kept.length, 20)
+  assert.ok(!kept.some(entry => entry.text === 'Report 0'), 'the oldest is dropped')
+  assert.ok(kept.some(entry => entry.text === 'Report 20'), 'the newest stays')
+})
+
+test('removing a chat drops the messages kept for quoting it', async (t) => {
+  const s = await start({ adapter: fakeAdapter({ quote: true }) })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  // The runtime file is written on a delay, so wait for the write, not a fixed time.
+  const sentOf = () => {
+    try { return JSON.parse(readFileSync(join(s.home, 'im', `${conn.id}.json`), 'utf8')).sent } catch { return undefined }
+  }
+  const until = async (check) => {
+    for (let at = 0; at < 80; at += 1) {
+      if (check(sentOf())) return true
+      await delay(50)
+    }
+    return false
+  }
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.fake.sent.length = 0
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'Project A is done' }] } })
+  await s.flush()
+  assert.ok(await until(sent => sent?.['dm-u1']?.length > 0), 'the sent message is kept')
+  await s.rt.imEndpoint('im-chat', { id: conn.id, chatKey: 'dm-u1', remove: true })
+  assert.ok(await until(sent => sent === undefined || sent['dm-u1'] === undefined), 'the removed chat leaves nothing behind')
+})
+
+test('a runtime file written before sent existed still loads and behaves unchanged', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'dsb-im-'))
+  t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }))
+  const seed = TEAM()
+  seed.im = { connections: {
+    im_legacy: { id: 'im_legacy', platform: 'telegram', botId: 'a', account: { id: 'bot1', name: '@fakebot' }, settings: { token: 'tok' }, secrets: {}, enabled: false, paired: [], requests: [], chats: { 'dm-u1': { kind: 'direct', title: 'u1', at: 1 } }, createdAt: 1 },
+  } }
+  writeFileSync(join(home, 'state.json'), JSON.stringify(seed))
+  // An older DS Bot wrote { runtime, cards } with no `sent` field. A fresh host
+  // reading it must default `sent` to {} and behave exactly as before.
+  mkdirSync(join(home, 'im'), { recursive: true })
+  writeFileSync(join(home, 'im', 'im_legacy.json'), JSON.stringify({ runtime: {}, cards: {} }))
+  const original = adapters.telegram
+  adapters.telegram = fakeAdapter()
+  const fresh = createRuntime(fakeContext(), { home })
+  try {
+    // This endpoint calls dataOf(), which reads the legacy file and must not throw.
+    await fresh.imEndpoint('im-chat', { id: 'im_legacy', chatKey: 'dm-u1', remove: true })
+    assert.equal(fresh.state.im.connections.im_legacy.chats['dm-u1'], undefined)
+  } finally {
+    await fresh.ctx.dispose()
+    adapters.telegram = original
+  }
+})
+
+for (const extra of [0, 1]) {
+  test(`sent store eviction counts JSON characters at cap + ${extra}`, (t) => {
+    const entry = (id, at, text = '') => ({ ids: [id], text, at })
+    const filler = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
+      `chat-${i}`, Array.from({ length: 20 }, (_, j) => entry(`f${i}-${j}`, 4)),
+    ]))
+    const retained = entry('kept', 3, '最新🦊')
+    const tied = entry('tied', 2, 'keep if at the limit')
+    const expected = { single: [], multi: [retained], tie: [tied], ...filler }
+    const { stringify } = JSON
+    const padding = 200_000 + extra - stringify(expected).length
+    Object.values(filler).flat().forEach((item, i, all) => {
+      item.text = 'x'.repeat(Math.floor((padding + i) / all.length))
+    })
+    assert.equal(stringify(expected).length, 200_000 + extra)
+
+    const sent = {
+      ...expected,
+      single: [entry('first', 1, 'oldest')],
+      multi: [retained, entry('second', 2, '"quote"\n\\🦊')],
+    }
+    delete expected.single
+    if (extra !== 0) delete expected.tie
+    const spy = t.mock.method(JSON, 'stringify')
+    capSentStore(sent)
+    assert.deepEqual(sent, expected)
+    assert.ok(stringify(sent).length <= 200_000)
+    assert.equal(spy.mock.calls.filter(call => call.arguments[0] === sent).length, 1)
+  })
+}
+
+test('the sent store is bounded across chats so the runtime file cannot grow without limit', async (t) => {
+  const s = await start({ adapter: fakeAdapter({ quote: true }) })
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  for (let chat = 0; chat < 12; chat += 1) one.paired.push({ id: `u${chat}`, name: `U${chat}`, at: 1 })
+  await s.rt.save()
+  // Fill many chats so the whole `sent` store (not just one chat's 20 entries)
+  // crosses the cap; the oldest chats' entries must then be dropped, while the
+  // most recent message (written to the last chat) survives.
+  for (let chat = 0; chat < 12; chat += 1) {
+    await dm(s, `u${chat}`, 'hi')
+    s.imTurn('a')
+    for (let at = 0; at < 20; at += 1) {
+      s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: `Report ${chat}-${at} ${'x'.repeat(9_000)}` }] } })
+    }
+  }
+  await s.flush()
+  await delay(600)
+  const runtime = JSON.parse(readFileSync(join(s.home, 'im', `${conn.id}.json`), 'utf8'))
+  const size = JSON.stringify(runtime.sent).length
+  assert.ok(size <= 200_000, `sent store stays bounded (${size} bytes)`)
+  const lists = Object.values(runtime.sent)
+  assert.ok(lists.length > 0 && lists.length < 12, 'the oldest chats were trimmed away')
+  assert.ok(lists.every(list => list.length <= 20), 'each remaining chat keeps at most 20')
+  assert.ok(lists.some(list => list.some(entry => entry.text.startsWith('Report 11-19'))), 'the newest message survives the trim')
 })
 
 test('IM user messages are tagged by seq for the current part; a part that is no longer current drops out', async (t) => {
@@ -1047,6 +1551,29 @@ test('a Web question answer cannot inherit a previous IM destination', async t =
   assert.equal(s.fake.sent.length, 0)
 })
 
+// QQ splits a reply into several posts and remembers, by job, which of them went
+// out; that only holds if Try again hands the adapter back the same job.
+test('Try again resends the very job the failed send was given', async (t) => {
+  const s = await start()
+  t.after(s.stop)
+  const conn = await add(s)
+  const one = s.rt.state.im.connections[conn.id]
+  one.paired.push({ id: 'u1', name: 'U1', at: 1 })
+  await s.rt.save()
+  await dm(s, 'u1', 'hi')
+  s.imTurn('a')
+  s.fake.fails.push(Object.assign(new Error('refused'), { status: 400, permanent: true }))
+  s.emitEvent('a', 'assistant/message', { message: { content: [{ type: 'text', text: 'split reply' }] } })
+  await delay(40)
+  assert.equal(s.rt.imStatusView()[conn.id].state, 'error')
+  await s.rt.imEndpoint('im-retry', { id: conn.id })
+  await delay(40)
+  const jobs = s.fake.jobs.filter(job => job.text === 'split reply')
+  assert.equal(jobs.length, 2)
+  assert.equal(jobs[0], jobs[1])
+  assert.equal(s.rt.imStatusView()[conn.id].state, 'ready')
+})
+
 // #1417: a 5xx was retryable with no limit, so one message held its chat's queue
 // forever while the status still said ready. The retry budget is now bounded, the
 // status says what happened, and the messages behind the failed one still go out.
@@ -1251,6 +1778,7 @@ async function startSwitchHarness(t, { tokens = new Map([['a', 1_000]]), cwd = (
       archiveSession: async () => {},
     },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       create: async () => {
         if (createGate) await createGate()
@@ -1936,4 +2464,49 @@ test('a failed update keeps the network reason and redacts a secret as it appear
     assert.ok(!error.message.includes('new%2Btok%2F1'), 'the encoded token is redacted')
     return true
   })
+})
+
+test('delegated work restores its original IM chat after another chat used the same caller session; unpaired origins stay blocked', async t => {
+  const s=await start()
+  t.after(s.stop)
+  const conn=await add(s)
+  const settings=s.rt.state.im.connections[conn.id]
+  settings.paired.push({id:'u1',name:'First',at:1},{id:'u2',name:'Second',at:1})
+  await s.rt.save()
+  await dm(s,'u1','Delegate a comparison')
+  s.imTurn('a')
+  const run=(name,args,id)=>s.rt.teamTools.find(tool=>tool.name===name).execute(args,{agent:{id}})
+  const receipt=await run('delegate_work',{to:'Writer',goal:'Compare the two records'},'a')
+  const id=/work_id: ([\w-]+)/.exec(receipt)[1]
+  assert.equal(s.rt.state.works[id].imOrigin.chatKey,'dm-u1')
+  s.emitEvent('a','turn/end',{turn:1,reason:{kind:'completed'}})
+  // A different IM conversation uses the same front chat before the work returns.
+  await dm(s,'u2','An unrelated message')
+  s.imTurn('a')
+  s.emitEvent('a','turn/end',{turn:2,reason:{kind:'completed'}})
+  const incoming=s.agentOf('b').lastFollowup
+  s.emitEvent('b','turn/start',{turn:1})
+  s.emitEvent('b','user/message',incoming)
+  s.emitEvent('b','assistant/message',{message:{content:[{type:'text',text:'A verified comparison result.'}]}})
+  s.emitEvent('b','turn/end',{turn:1,reason:{kind:'completed'}})
+  for(let i=0;i<100&&!s.agentOf('a').lastFollowup?.source?.protocolReturn;i++) await delay(5)
+  const returned=s.agentOf('a').lastFollowup
+  assert.equal(returned.source.protocolReturn,id)
+  assert.ok(!JSON.stringify(returned.source).includes('dm-u1'),'private IM address stays out of the Session source')
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:3})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'Here is the original comparison.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.at(-1).chat.key,'dm-u1')
+  assert.equal(s.fake.sent.some(message=>message.chat.key==='dm-u2'),false)
+  s.emitEvent('a','turn/end',{turn:3,reason:{kind:'completed'}})
+  settings.paired=settings.paired.filter(user=>user.id!=='u1')
+  await s.rt.save()
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:4})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'A stale receipt must not leave the app.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.length,0)
 })

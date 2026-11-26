@@ -370,7 +370,7 @@ test('a non-Main Bot can steer a message to a Main Bot', async (t) => {
   assert.equal(agents.get('a').calls[0][1].source.senderSessionId, 'b')
 })
 
-test('stop_bot cancels the running turns and tells the Bot why in a new turn', async (t) => {
+test('stop_bot cancels running turns and buffers its reason silently until idle', async (t) => {
   const { agents, emit, tool, stop } = await start(team({ group: true }))
   t.after(stop)
 
@@ -381,12 +381,16 @@ test('stop_bot cancels the running turns and tells the Bot why in a new turn', a
   emit('gb', 'turn/start', { turn: 1 })
   const out = await tool('stop_bot', { bot: 'Writer', reason: 'that command deletes data' }, 'a')
   assert.match(out, /Stopped Writer in its own chat and group "Ops"/)
-  assert.deepEqual(agents.get('b').calls.map(([kind]) => kind), ['cancel', 'followup'])
+  assert.deepEqual(agents.get('b').calls.map(([kind]) => kind), ['cancel'])
+  emit('b', 'turn/end', { turn: 1, reason: { kind: 'aborted' } })
+  await rt.flushProtocolNotes('b')
+  assert.deepEqual(agents.get('b').calls.map(([kind]) => kind), ['cancel', 'inject'])
   assert.deepEqual(agents.get('b').calls[0][1], { kind: 'hook', reason: 'ds-bot/stopped' })
   assert.deepEqual(agents.get('gb').calls.map(([kind]) => kind), ['cancel'])
   const notice = agents.get('b').calls[1][1]
   assert.match(textOf(notice.content), /^\[Stopped by Chief\]\nthat command deletes data$/)
   assert.equal(notice.source.role, 'stopped')
+  assert.equal(notice.source.silent, true)
 })
 
 test('stop_bot stops a turn running in a background part of the Bot\'s chat', async (t) => {
@@ -397,11 +401,11 @@ test('stop_bot stops a turn running in a background part of the Bot\'s chat', as
   // The foreground chat is idle; only the background part runs.
   emit('b-bg', 'turn/start', { turn: 1 })
   const out = await tool('stop_bot', { bot: 'Writer', reason: 'that command deletes data' }, 'a')
-  assert.equal(out, 'Stopped Writer in another of its conversations. It is told why in a new turn, whose reply comes back to you.')
+  assert.equal(out, 'Stopped Writer in another of its conversations. Its stop notice is silent; no acknowledgement turn is opened.')
   assert.deepEqual(agents.get('b-bg').calls.map(([kind]) => kind), ['cancel'])
   assert.deepEqual(agents.get('b-bg').calls[0][1], { kind: 'hook', reason: 'ds-bot/stopped' })
   // The foreground chat was not cancelled; it gets the notice.
-  assert.deepEqual(agents.get('b').calls.map(([kind]) => kind), ['followup'])
+  assert.deepEqual(agents.get('b').calls.map(([kind]) => kind), ['inject'])
   assert.equal(agents.get('b').calls[0][1].source.role, 'stopped')
 })
 

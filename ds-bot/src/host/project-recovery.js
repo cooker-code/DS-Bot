@@ -6,7 +6,7 @@ import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { existingProjectDir, verifiedTree } from './project-branches.js'
-import { field, checkOwner, taskWorkspaceFor } from './project-plan.js'
+import { field, checkOwner, taskWorkspaceFor, pathsOverlap, nodeViews } from './project-plan.js'
 
 const run = promisify(execFile)
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -23,7 +23,7 @@ export const recoveryParameters = Object.fromEntries(Object.entries({
 
 export function currentBinding(card, round) {
   const b = round?.planNode
-  return Boolean(b && b.version === card.plans?.at(-1)?.version && !b.supersededBy)
+  return Boolean(b && !card.completedWithTaskId && b.version === card.plans?.at(-1)?.version && !b.supersededBy)
 }
 
 export function blockRound(round, { at = Date.now(), cause, by, reason, waitingFor, evidence }) {
@@ -37,7 +37,7 @@ export function recoveryOf(card, round) {
   return no ? card.rounds[no - 1]?.planNode?.block?.decisions.at(-1) : undefined
 }
 
-async function worktree(rt, directory) {
+async function worktree(rt, directory, includePaths = false) {
   if (!directory) throw new Error('The working folder could not be verified.')
   const dir = await existingProjectDir(directory)
   if (await rt.inData(dir)) throw new Error('Choose a Bot working folder outside protected application data.')
@@ -60,6 +60,10 @@ async function worktree(rt, directory) {
       git('diff', '--cached', '--no-ext-diff', '--raw', '--no-abbrev', 'HEAD', '--', ':/'),
       git('ls-files', '--full-name', '--modified', '--others', '--exclude-standard', '-z', '--', ':/'),
     ])
+    if (includePaths) {
+      const stagedPaths = await git('diff', '--cached', '--name-only', '--no-renames', '-z', 'HEAD', '--', ':/')
+      tree.changedPaths = [...new Set([...stagedPaths.split('\0'), ...files.split('\0')].filter(Boolean))]
+    }
     const versions = []
     for (const file of new Set(files.split('\0').filter(Boolean))) {
       const stat = await lstat(join(root, file), { bigint: true }).catch(error => {
@@ -91,6 +95,45 @@ function idleWriter(rt, agent, sessionId, exchangeId) {
   return ![...(agent.inbox?.nextTurn ?? []), ...(agent.inbox?.nextStep ?? [])].some(m => m.source?.exchangeId === exchangeId)
 }
 
+// Hand a clean checkout back to its developer at the original start commit or
+// an accepted integration. Revising the plan alone never releases a live writer.
+export async function inspectReplannedWriter(rt, card, node) {
+  if (!node?.writePaths?.length || node.round) return
+  const plan = card.plans.at(-1)
+  const views = nodeViews(card, plan)
+  const accepted = node.dependsOn.map(no => card.rounds[views[no - 1].round - 1])
+    .filter(r => r?.integration?.branch === 'dev' && r.integration.repository === node.repository && r.planNode.acceptedAt)
+  const transfers = []
+  for (const [index, prior] of card.rounds.entries()) {
+    const b = prior.planNode
+    if (!b || !prior.startedAt || b.version >= plan.version || prior.result || b.lateResult || b.supersededBy || prior.ownershipTransfer ||
+        prior.ownerId !== node.ownerId || prior.workspace?.workDir !== node.workDir || prior.workspace.workRef !== node.workRef) continue
+    const oldNode = card.plans.find(p => p.version === b.version)?.nodes[b.node - 1]
+    if (!oldNode?.writePaths?.length || !pathsOverlap(oldNode.writePaths, node.writePaths)) continue
+    const session = b.session ?? prior.executionSession
+    if (!session) continue
+    const writer = await rt.resolveAgent(session)
+    const idle = () => idleWriter(rt, writer, session, prior.dispatchId)
+    if (!idle()) continue
+    const tree = await worktree(rt, node.workDir, true)
+    const receipt = accepted.find(r => r.integration.commit === tree.commit)
+    if (tree.branch !== node.workRef || (!receipt && tree.commit !== prior.reviewBase)) continue
+    if (tree.changes) {
+      // Keep in-progress edits in place only for the same node and authorized paths.
+      const covers = (paths, file) => paths.some(path => file === path || file.startsWith(path + '/'))
+      if (b.node !== node.no || tree.commit !== prior.reviewBase || !tree.changedPaths?.length ||
+          !tree.changedPaths.every(file => covers(oldNode.writePaths, file) && covers(node.writePaths, file))) continue
+    }
+    transfers.push(fresh => {
+      const original = fresh.rounds[index]
+      if (!idle() || fresh.plans.at(-1).version !== plan.version || original.dispatchId !== prior.dispatchId)
+        throw new Error('The original writer or plan changed before dispatch.')
+      original.ownershipTransfer = { version: plan.version, node: node.no, commit: tree.commit, ...(tree.changes && { retainedChanges: true }), ...(receipt && { integrationRound: card.rounds.indexOf(receipt) + 1 }) }
+    })
+  }
+  if (transfers.length) return { apply(fresh) { for (const transfer of transfers) transfer(fresh) } }
+}
+
 function checkTarget(card, args) {
   const round = Number.isSafeInteger(args.round) && card?.rounds[args.round - 1]
   const b = round?.planNode
@@ -110,7 +153,8 @@ export async function inspectRecovery(rt, room, card, args, actor) {
   checkOwner(room, actor, args.ownerId)
   const node = card.plans.at(-1).nodes[b.node - 1]
   requirements(card, node, round, args.ownerId)
-  const oldSession = b.session ?? rt.chatOf(round.ownerId), nextSession = rt.chatOf(args.ownerId)
+  const oldSession = b.session ?? round.executionSession ?? rt.chatOf(round.ownerId)
+  const nextSession = await rt.memberSession(room, args.ownerId)
   const [old, next] = await Promise.all([rt.resolveAgent(oldSession), rt.resolveAgent(nextSession)])
   const sourceDir = b.workDir ?? rt.sessionFolder(old.session)
   const targetDir = rt.sessionFolder(next.session)
@@ -124,7 +168,7 @@ export async function inspectRecovery(rt, room, card, args, actor) {
     artifacts, commits,
     completed: b.completed, remaining: b.remaining, checkpointArtifact: b.checkpointArtifact }
   return { facts: { ...facts, inspection: digest(facts) }, validate() {
-    if (!stopped() || rt.chatOf(args.ownerId) !== nextSession || rt.sessionFolder(next.session) !== targetDir) throw new Error('The original execution or candidate folder changed. Inspect the worktrees again.')
+    if (!stopped() || rt.roomOf(room.id)?.sessions?.[args.ownerId] !== nextSession || rt.sessionFolder(next.session) !== targetDir) throw new Error('The original execution or candidate folder changed. Inspect the worktrees again.')
   } }
 }
 
@@ -142,7 +186,7 @@ export async function checkProjectStart(rt, card, round, session) {
   if (decision) {
     if (digest(actual) !== digest(decision.targetTree)) throw new Error('The working tree differs from the approved recovery.')
     const previous = card.rounds[round.planNode.previousRound - 1]
-    const writerSession = previous.planNode.session ?? rt.chatOf(previous.ownerId)
+    const writerSession = previous.planNode.session ?? previous.executionSession ?? rt.chatOf(previous.ownerId)
     if (writerSession !== session && (actual.root ?? actual.dir) === (decision.sourceTree.root ?? decision.sourceTree.dir)) {
       const writer = await rt.resolveAgent(writerSession)
       if (!idleWriter(rt, writer, writerSession, previous.dispatchId)) throw new Error('The original writer is not confirmed idle in the shared worktree.')

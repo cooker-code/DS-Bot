@@ -787,7 +787,7 @@ export function TeamSidebar(props) {
   }, [])
   const top = wideContent
     ? h('div', { className: 'bt-side-top' },
-        h('span', { className: 'bt-brand' }, h(BrandName)),
+        h(SidebarBrand, { useUpdate: props.useUpdate }),
         h(UpdateButton, { useUpdate: props.useUpdate, actions }),
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New section'), title: t('New section'), onClick: createNewSection }, h(FolderIcon)),
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('Search'), title: t('Search'), onClick: () => actions.openPalette() }, h(SearchIcon)),
@@ -1157,6 +1157,13 @@ export function BrandName() {
   return h('span', { style: { fontWeight: 600, fontSize: 14 } }, 'DS Bot')
 }
 
+function SidebarBrand({ useUpdate }) {
+  const version = useUpdate(update => update?.current)
+  return h('span', { className: 'bt-brand' },
+    h(BrandName),
+    version ? h('small', { className: 'bt-brand-version' }, 'v' + version.replace(/-local\.(\d+)$/, '.$1')) : null)
+}
+
 // With the whale holding the settings seat, the Bot row is just the account menu;
 // FooterAccount only shows when the seat went to no one. The shell's footer classes
 // are CSS-module names, so they match on their stems.
@@ -1169,7 +1176,8 @@ export const SIDEBAR_CSS = `
 .bt-confirm-go{height:28px;padding:0 14px;border:0;border-radius:999px;background:var(--bt-accent);color:var(--bt-accent-ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .12s ease}
 .bt-confirm-go:hover:not(:disabled){opacity:.9}
 .bt-confirm-go:disabled{opacity:.6;cursor:default}
-.bt-side-top .bt-brand{cursor:default;padding-left:6px}
+.bt-side-top .bt-brand{position:relative;cursor:default;padding-left:6px}
+.bt-brand-version{position:absolute;top:calc(50% + 8px);right:8px;color:var(--bt-ink-2);font-size:10px;font-weight:400;line-height:10px;letter-spacing:normal;white-space:nowrap}
 .bt-side-top .bt-brand:hover{background:none}
 .bt-brand .bt-mark{flex:none}
 .bt-pin{flex:none;display:inline-flex;color:var(--bt-ink-3)}

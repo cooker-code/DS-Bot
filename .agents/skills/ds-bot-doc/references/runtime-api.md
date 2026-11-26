@@ -1,6 +1,6 @@
 # 项目工作、会话与运行操作
 
-这些操作和设置共用同一通道，有些会启动工作、发消息或终止执行。查看一个项目的进度用 `project-task-list`，从列表取 `taskId` 再读明细。全队视图在 `state.rooms[].projectCards` 使用同一套摘要。Bot 会话中的 `project_task` 使用该 Bot 的身份和派工资格。[通道处理器](../../../../ds-bot/src/host/channel.js)
+这些操作和设置共用同一通道，有些会启动工作、发消息或终止执行。查看一个项目的进度用 `project-task-list`，从列表取 `taskId` 再读明细。主卡完成后，同群关联子卡（含多级）同步为 done；删除主卡会解除直接子卡关联，保留其完成状态与历史。全队视图在 `state.rooms[].projectCards` 使用同一套摘要。Bot 会话中的 `project_task` 使用该 Bot 的身份和派工资格。正式派工交给负责成员在任务所属群的当前会话，新派工可在 `project-task-detail` 返回的 `rounds[].executionSession` 查看实际收件会话 ID，开工核对该轮工作树。阻塞恢复核对原执行会话和候选负责人的本群会话。[通道处理器](../../../../ds-bot/src/host/channel.js)
 
 ## 群、task 与工作树
 
@@ -14,21 +14,28 @@
 | `member-summary` | 传 `roomId,botId,sessionId`，指定成员及其当前群段；旧段请求被拒绝。 | `requestMemberSummary` 返回 true 表示受理，工作中等待空闲。轮询 `room-context` 查看 pending、failed 或新段 ID；新旧段映射持久化在群库。 |
 | `delete-room` | `id` 删除指定群。 | `deleteRoom` 返回更新后的团队视图。按群 ID 查目录及回读名册。 |
 | `room-todo` | `roomId,id,done` 设置共享待办，`action:"remove"` 删除一项，`action:"clear"` 清理已完成项。新建由群成员或主 Bot 在其会话调用 `group_todo` 的 `add`，保留创建者身份。 | `setRoomTodoDone/removeRoomTodo/clearDoneRoomTodos` 返回条目或清理数及剩余 `todos`，写 `room_todos`。[共享待办设计](../../../../docs/plans/2026-11-10-group-todos.md) |
-| `project-task-list` | 按群查询进度。只需 `roomId`（字符串，项目群 ID）。只读宿主也能调用。 | `roomTaskSummaries/projectCardSummary/pendingIntakes` 读取目标群的 task、轮次、计划和收件。返回 `{roomId,revision,tasks,pendingIntakes}`。revision 是这次读取的团队修订号。tasks 含 taskId、状态、最近轮次的 ownerId 与时间和已有计划摘要，pendingIntakes 是尚在 pending/planning/clarify 的收件。两者分别计数；空群返回两个空数组，未知群返回 `bot/not-found`。回溯重试用下一行的明细。 |
-| `set-project-workspace-policy` / `project-branches` | 前者用 `roomId,policy`（auto/current/worktree）设置已启用 task 群的默认 Git 工作区策略。后者用 `roomId,repository?` 读取分支。 | `setProjectWorkspacePolicy` 返回策略字符串；`branchReport` 返回 `count,observedAt,branches`。 |
-| `task-reference` / `project-task-detail` | 引用用 `sessionId,roomId,kind,id`，kind 为 member/project/intake。明细用 `roomId,taskId`，可选 `imageId,textOnly,workspaceOnly,workspaceChoices` 指定投影。 | `readTaskReference` 返回同群可见摘要。`projectCardDetail` 默认返回需求、节点、版本、轮次及结果。指定投影分别返回附件、文字或工作区信息。 |
-| `select-task-workspace` / `update-project-task-text` | 前者用 `roomId,taskId,previous,selection`，以已读工作区对照选择；后者用 `roomId,taskId,field,previous,value,addImages?,removeImages?` 修订 requirement 或 acceptance。 | `selectTaskWorkspace/updateProjectTaskText` 校验旧值和当前轮次；成功后回读 task 的工作区选择或文本。版本冲突重读。 |
-| `continue-project-task` | roomId、taskId、text、requestId 均为字符串。 | 校验任务开启与本群任务归属后，按 requestId 去重，向群当前会话发送带 taskId 的用户消息。返回 true，回读群账本与卡片需求。 |
+| `project-task-list` | 按群查询进度。只需 `roomId`（字符串，项目群 ID）。只读宿主也能调用。 | `roomTaskSummaries/projectCardSummary/pendingIntakes` 读取目标群的 task、轮次、计划和收件。返回 `{roomId,revision,tasks,pendingIntakes}`。任务栏只显示正式任务；待分类与待澄清的收件仍可用 pendingIntakes 查询。revision 是这次读取的团队修订号。关联卡的列表和详情含 parentTaskId，指向本群主卡。规划者或正在处理用户关联请求的本群管理员用 project_task relate（taskId 为子卡，parentTaskId 为主卡）保存关系于子卡；各卡详情仍按原 ID 读取。tasks 含 taskId、状态、最近轮次的 ownerId 与时间和已有计划摘要，pendingIntakes 是尚在 pending/planning/clarify 的收件。两者分别计数；空群返回两个空数组，未知群返回 `bot/not-found`。startedAt 取本卡所有已保存轮次中最早的实际开工时间。回溯重试用下一行的明细。阻塞轮次的技术协调保留原卡与执行状态；仅群管理员明确声明缺少用户需求或团队外权限时，clarify 才标记待补充。 |
+| `set-project-workspace-policy` / `project-branches` | 前者用 `roomId,policy`（auto/current/worktree）设置已启用 task 群的默认 Git 工作区策略。auto 由该群任命的任务助理决定，未任命时由主 Bot 兼任。后者用 `roomId,repository?` 读取分支。 | `setProjectWorkspacePolicy` 返回策略字符串；`branchReport` 返回 `count,observedAt,branches`。 |
+| `task-reference` / `project-task-detail` | 引用用 `sessionId,roomId,kind,id`，kind 为 member/project/intake。明细用 `roomId,taskId`，可选 `interactionsOnly,withResults,receiptFile,imageId,documentId,textOnly,workspaceOnly,workspaceChoices` 指定投影。 | `readTaskReference` 返回同群可见摘要。`projectCardDetail` 默认返回需求、节点、版本、轮次及结果。interactionsOnly=true 时返回 messages、incomplete 和 planDispatchFailures。planDispatchFailures 只读恢复当前卡已保存计划对应的 project_task dispatch 失败回执，逐项返回 version、node、by（操作Bot）、at（回执时间）、sessionId、seq（原会话结果事件定位）和 error（原始错误全文）。来源是任务管理会话的工具调用及 isError=true 的对应结果；保存计划不代表派工成功，失败不生成交接或执行轮次。客户端结合计划 at/by/reason、rounds 的版本绑定与送达时间、messages 的实际交接，展示保存位置、派发状态和后续版本；缺少原因或会话历史时明确标记未知，不按相邻时间推断派工版本。用户入口通过本卡关联收件的 intakeSeq 与管理员接收会话确认，sender=user，kind=User request；结果返回标为 Result return；正式派工标为 Dispatch，并返回 round、node、planVersion、planReason 和 requirementVersion。新派工保存当次需求版本，历史依据不足时省略 requirementVersion。taskInteractions 按 taskId 及关联收件号返回已送达的 Bot 交接（from、to、text、exchangeId、可选 replyTo、postSeq、sentAt 和 retries）。replyTo 指向本次发送所处理的输入 exchangeId；postSeq 是原始群帖序号，sentAt 是原文发送时间，at 是交接投递时间。历史记录通过发送方会话的输入、成功工具调用和原帖全文恢复 replyTo；并行输出各自保留，不按全局相邻时间关联。群内按接收会话中已送达的定向原帖及有返回标记的调用结果识别双方，委派和询问仅展示交付正文；用户发言、群公告和宿主状态通知不生成交接。会话不可读时标记 incomplete。新派工在群库轮次中保留 dispatchInput（派工全文）和可选 inputFiles（附件名称）。同轮重试的 retries 按投递次序记录 at、input、可选 failedAt（前次失败时间）、previousOutput（前次错误或回复）和 restart；另开一轮恢复时 planNode.previousRound 指向原轮。requirements 按本卡关联的群消息返回 seq、text、files 和 images，供需求附件使用。历史版本有 documentSources 时，按其中的群消息序号还原原始文件和文件引用。withResults=true 随明细返回 results（编号结论 items 和附件 files），优先使用当前计划的独立验收节点。旧回执中的文件通过本卡 receiptFile 标识只读访问，限定在登记的工作目录中；文件不可读时返回 bot/not-found。imageId 读取本卡图片，documentId 读取本卡结果附件的完整 Markdown 字符串。跨卡读取返回 bot/not-found。 |
+| `task-explanation` | `roomId,taskId,messageKey` 均为字符串，messageKey 取该卡 interactionsOnly 明细的 messages[].key。可选 `language` 为至多 80 字符的语言名称，缺省用界面语言，再缺省按原文。 | `explainTaskMessage` 从同群同卡的 taskInteractions 取完整消息，从 state.prefs.taskExplanationPrompt 读取自定义话术（未设置用共享默认），与固定的历史数据职责边界组合后，只按需调用发送者（缺失时接收者、管理员）的 `botShot`，使用其 Bot 基础设置的现有模型路由，当前不采用群成员模型覆盖；普通模型沿用已有默认路由回退，本地 CLI 保持本地。返回 `{messageKey,sourceHash,language,text,generatedAt,cached}`，text 为解释 Markdown，generatedAt 为毫秒时间。解释按消息内容、上下文、语言和解释规则版本校验缓存，原文或语言改变时重新生成；并发同源请求只调用一次。保存到插件 home 下的 task-explanations 派生文件，不修改消息、任务、执行状态或模型会话历史。只读宿主可复用有效缓存，缓存缺失时返回 bot/read-only；跨卡或未知消息、部分正文、无可用 Bot、模型失败或空答均拒绝并保留原文。相同请求回读 cached=true，原文仍通过 project-task-detail 查询。 |
+| `select-task-workspace` / `update-project-task-text` | 前者用 `roomId,taskId,previous,selection`，以已读工作区对照选择；后者用 `roomId,taskId,field,previous,value,addImages?,removeImages?` 修订 requirement 或 acceptance。 | `selectTaskWorkspace/updateProjectTaskText` 校验旧值和当前轮次；成功后回读 task 的工作区选择或文本。版本冲突重读。用户修改需求文字或图片、管理员 delegate 保存整理后的需求，以及 project_task plan 显式传 plan 更新需求时，群库任务同步追加修改前快照。v1 始终保留首条用户原文与附件，首次整理后的不同内容为 v2；相同内容重复保存不增版。执行计划版本与需求版本独立，计划只改节点且未传 plan 不增需求版本。requirement 取卡片正文，旧卡回退到首条原始收件或标题；关联消息可在完整明细的 requirements 中查阅。默认明细的 requirementHistory 按旧到新返回 {text,images}。缺少原始快照的旧卡若原始收件与已保存需求不同，读取时恢复原始收件为 v1，下次保存需求时一起持久化；无法恢复的中间编辑次数不推测。当前版本取 requirement、sourceImages 和 fieldImages.requirement。 |
+| `continue-project-task` | roomId、taskId、text、requestId 均为字符串。 | 校验任务开启与本群任务归属后，按 requestId 去重，向群当前会话发送带 taskId 的用户消息。返回 true，回读群账本与卡片需求。群内 @ 项目卡并填写正文时，以首个引用为消息上下文，多卡引用保留各卡 ID 与正文顺序；明确点名其他成员时仍按群聊点名规则投递，交给本群管理员处理。 |
+| `update-project-task-status` | 用户手动更正阻塞或失败卡，传 `roomId,taskId,previous,status,reason` 字符串；previous 是已读状态，reason 必填且最多 2000 字符。status 可为 clarify/planning/dispatching/active/review/blocked/failed/done/cancelled，必须不同于当前状态。 | `updateProjectTaskStatus` 在团队写锁及保存事务内核对群启用、卡归属、旧状态和可编辑状态；仅当前 blocked/failed 可保存，状态已变、空原因、未知卡、关闭任务管理或只读宿主均拒绝。返回最新完整卡片明细。群库 `tasks.extra_json.statusHistory` 追加 `{from,status,reason,at,by:"user",basis}`，派工轮次、结果、阻塞与失败证据不改，不启动或停止 Bot，不伪造节点验收。手动改为 done 时，在同一事务按原有主卡完成规则同步关联子卡（含多级）；cancelled 不级联。自动执行或计划推进后原更正失效，历史继续保留；`tasks.status` 使用同一状态投影。通过 project-task-detail 的 status、statusHistory（不含内部 basis）及 project-task-list 回读。 |
 | `set-task-node-constraint` | roomId、taskId、version、node、field（fixedOwner 或 independentReview）、value（布尔值）。 | 派工前在原计划上新增一版，保存节点约束；拒绝过期版本。成功返回 true，回读 project-task-detail 的 plans。 |
-| `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。已有验收记录或完成后拒绝更改。用 project-task-detail 回读。 |
+| `set-task-integration-finish` | 操作者指定 roomId、taskId、version、node，以当前计划的独立测试合并节点作为结单位置。 | 保留原计划和轮次，将未派发的后续节点显示为 omitted，并通知助理处理。拒绝变更已开始的下游或过期计划；回读详情 finishAfterIntegration。 |
+| `set-task-predecessor` | roomId、taskId、followsTaskId 指定同群前置卡。 | channel 调用 setPredecessor 保存群库任务字段，拒绝循环。返回前置卡 ID，通过 project-task-list 回读。两卡各自完成。 |
+| `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。待人工终验时传 false 会撤回请求并按自动交付条件处理，撤回记录保存在 previousReviews。用 project-task-detail 回读。 |
 | `project-acceptance` | `roomId,taskId,reviewId,decision,feedback?`。decision 为 approve 或 return，退回需明确 feedback。 | `decideAcceptance` 仅处理当前候选的人工终验，回读 `humanReview` 和 task 状态。 |
 | `room-progress` / `group-rows` / `group-search` | 查活跃群用 `roomId`；分页读群消息用 `roomId,from,to?,anchor?`；检索用 `roomId,query,before?,offset?`。 | `roomProgress/groupRowsView/groupSearch` 返回轮次及发言者、消息页或命中。活跃信息属运行时，持久依据是群账本。 |
+| `group-relay-replies` | 读取被 save-token 省略的旧群回复。请求为 `sessionId:string,preview:string`，preview 最长65,536字符。 | `groups.groupRelayReplies` 仅从该群完整 ledger 记录恢复唯一可证明的回复数组，缺记录、边界不连续或匹配不唯一返回 `null`，不猜测恢复。`channel.js` 将其列为只读入口，无写入副作用。客户端 `team-actions.groupRelayReplies` 和 `parts` 历史读取共同使用，保留项目 scope 与收件回执过滤。回读示例为 `group-relay-replies --payload '{"sessionId":"<群会话ID>","preview":"<被省略的回复原文>"}'`。 |
 | `goal-draft` / `goal-control` | 草拟用 `roomId,text`。操作已有目标用 `roomId,goalId,action,stopWork?`，显式的 stopWork 同时影响执行。 | `goalDraft/goalControl` 返回团队视图。从群目标和实际执行分别回读。[goals.js](../../../../ds-bot/src/host/goals.js) |
 | `task-note` / `task-cancel` / `task-delete` | 留言用 `roomId,id,text`，取消用 `roomId,id`，删除看板项用 `roomId,items` 指定对象。 | `taskNote/taskCancel/deleteBoardTasks`。留言写记录并可能作为用户消息发到群，前两者返回团队视图，删除返回 true。[tasks.js](../../../../ds-bot/src/host/tasks.js) |
 | `stop-chat` / `stop-member-work` / `stop-room-work` | 分别传 `botId,sessionId?`、`roomId,botId` 或 `roomId`，停止相应实际执行。 | `stopChat/stopMemberWork/stopRoomWork` 处理活动轮次。私聊指定 sessionId 时只停止该 Bot 拥有的对应活动会话，省略时停止当前会话。用 state.partsRunning 回读。 |
 | `abandon-work` / `resume` | `id` 为待放弃的单次交接。恢复用 `botId`，指定项目失败轮次时传 `target:{roomId,taskId,round,failedAt}`。 | `abandonWork/resumeBot` 返回确认。核对目标轮次与错误时间，读当前执行判断是否真正恢复。 |
 
 ## 会话、附件、请求与回复
+
+`project-task-detail` 的 `withResults=true` 也返回当前轮次已在 `checkpoint.artifact` 或阻塞证据中明确登记的 Markdown 和截图。尚无正式回执的分组带 `partial:true`，`items` 为空，仅显示已有文件；这不改变卡片状态、提交时间或验收结论。普通节点的当前阻塞由 `rounds[].planNode.block` 提供原因和 `waitingFor`，详情按当前计划节点绑定的轮次显示。旧轮及已恢复轮的阻塞不覆盖当前节点。
 
 会话由 DSH 服务持有，名册保存会话与 Bot、群的关联。消息正文、对话分段缓存、附件和用量各有专用服务。不要用 SQL 修改会话 ID 或删除记录来模拟归档、取消或实际发送。
 
@@ -40,7 +47,7 @@
 | `earlier` / `chat` / `session-times` / `thinking` / `run-stats` / `usage` | 历史分页用 `sessionId,cursor?`；私聊用 `botId,cursor?,steps?`；会话时间用 `botId,ids`；思考时间用 `sessionId,turn`；执行统计用 `botId`；用量可传 `timeZone`。 | `earlierPage/chatPage` 返回分页；`session-times` 返回本 Bot 会话映射；`thinking` 返回 `{ms}`、空对象或 null；其余返回会话投影或按区间的用量视图。 |
 | `exchange` / `exchange-text` | 双方 ID `a,b` 列出协作往来，`id,a?,b?` 取指定交接。 | `exchangesOf/exchangeText` 返回往来概要或记录正文。 |
 | `stage-image` / `file-text` / `file-download` | 暂存 `mediaType,data,name?`；提取纯文本传含 `attachmentId` 的 `file`；下载用 `sessionId` 与 `attachmentId` 或 `seq,index?`，可用 `version` 锁定。 | 暂存返回短期 `{id}`；`fileText/fileDownload` 从附件服务按会话及格式读取。下载按返回元数据和编码取文件。[file-download.js](../../../../ds-bot/src/host/file-download.js) |
-| `send` / `answer-question` / `dismiss-question` / `view-reply` / `dismiss-view` / `approval-answer` | 发送用 `sessionId,text,images?`；答问题用 `sessionId,questionId,answer`；答交互视图用 `sessionId,viewId,action,values`；关闭待答用 `sessionId`；批准用 `id,choice`。 | `sendUser/answerQuestion/viewReply/answerApproval` 触发对应用户动作，成功通常为 true。重复答复要检查原请求是否仍有效。 |
+| `send` / `answer-question` / `dismiss-question` / `view-reply` / `dismiss-view` / `approval-answer` | 发送用 `sessionId,text,images?`；答问题用 `sessionId,questionId,answer`；答交互视图用 `sessionId,viewId,action,values`（普通视图返回 true，缺陷报告确认返回 `{issueReportResult}`，并将同一结果写入模型答复）；关闭待答用 `sessionId`；批准用 `id,choice`。 | `sendUser/answerQuestion/viewReply/answerApproval` 触发对应用户动作，成功通常为 true。重复答复要检查原请求是否仍有效。缺陷报告仅精确匹配由 `prepare_ds_bot_issue` 生成的 `report_issue` 草稿及确认视图才可发布，正文与目标向用户完整展示；确认先持久消费，发布失败或结果不明也不重新打开草稿。 |
 | `btw-delete` / `side-new` / `side-ask` / `side-cancel` / `side-close` | 删除旁问用 `sessionId,cardId`；新建旁聊用 `sessionId`；提问用 `sessionId,chatId?,recent?,text`；取消一条用 `chatId,entryId`；关闭用 `chatId`。 | `btwDelete/sideNew/sideAsk/sideCancel/sideClose` 返回对应旁问或旁聊操作结果，回读 `state.btwCards,sideChats`。[side.js](../../../../ds-bot/src/host/side.js) |
 
 ## 浏览器运行、诊断与更新
@@ -51,3 +58,56 @@
 | `browser-takeover` / `browser-give-back` / `browser-stop` | `botId` 指定浏览器。交回可附具体操作的反馈，停止使控制权归用户。 | `browserChannel`、`stopChat` 等更新控制状态，回读 `browserHolds`。[browser.js](../../../../ds-bot/src/host/browser.js) |
 | `changes-check` / `diagnostics` / `diagnostics-log` / `diagnostics-clear` | 查看某次变更用 `sessionId,seq`；诊断可传 `client,clientErrors`；读取及清理诊断日志用 `{}`。 | `changesAvailable` 返回布尔；`diagnostics.report` 返回 `facts,entries,total,markdown,issuesUrl`；log 读取日志，clear 清理后返回 true。[diagnostics.js](../../../../ds-bot/src/host/diagnostics.js) |
 | `update-check` / `update-install` / `dsh-update-install` / `repo-stars` | 查版本可用 `fresh:true`，启动插件或宿主安装、查仓库星标用 `{}`。 | `updateCheck/updateStart/dshUpdateStart/repoStars` 返回检查结果、安装启动结果或仓库统计。发起安装后按实际加载版本确认。[update.js](../../../../ds-bot/src/host/update.js) |
+
+### 管理员扫描与重试交接
+
+项目卡的受理与交接分别记录。接单时提供的 `title,plan,acceptance` 先保存为标题、需求和验收，投递失败不撤回正文。`project_task list` 和操作者 `project-task-list` 的 `unassigned` 返回尚无计划、尚无执行轮次的卡，包含 `taskId,title,status,reason,retryable`。`pendingIntakes` 仍只表示尚待分类的收件，不能用于判断所有已受理任务是否已交接。
+
+本群管理员或助理可用 `project_task {action:"scan"}` 扫描。状态包括 `needs_document`（缺规范需求或验收）、`not_sent`（尚未送当前助理）、`uncertain`（投递结果待核对）、`delivered`（已送达，等待助理规划）、`no_assistant`（管理员自行规划）、`invalid_assistant`（助理绑定失效）、`clarify`（确有待补业务问题）及 `missing_source`（缺完整正文且原材料不可读）。`reason` 给出实际原因，`retryable` 表示能否沿原卡重试；送达不等于开工。
+
+管理员在自己的本群管理会话调用 `project_task {action:"retry_handoff",taskId,title?,plan?,acceptance?}`。可在恢复通知轮执行，不要求原始收件轮仍活动。需要更新正文时提供整理后的字段；服务只允许未派工原卡，保存正文后交给当前任命的助理。返回 `{delegated:true,taskId,assistantId}` 或 `{delegated:false,taskId,status,reason,retryable}`。`attach` 仅关联补充，不修改正文。原始用户材料仍在账本，实际执行轮次由助理正式计划与派工生成。
+
+卡片扩展字段 `managementHandoff` 保留目标、固定消息ID、发送尝试、状态、错误和送达时间；`room.projectHandoffScan` 保存群级管理员批次恢复通知，保存在 `rooms.extra_json`，不出现在公开 state；卡片交接保存在 `tasks.extra_json`，详情和摘要的 `handoff` 回读最近一次交接记录，当前正文是否待重发以 `unassigned/scan` 为准。结果不确定时先核对目标队列及持久会话；相同目标、来源和正文已投递的不重复发送，修订正文后生成新交接，无法查明的保留错误。临时失败按30秒间隔通知管理员检查和接续，最多三轮自动通知；实际交接由管理员判断后调用 retry_handoff，不由操作者临时发命令。超过上限保留原因供管理员处理。
+
+任命或更换助理、接单保存及插件重载后，宿主检查未交接卡并通知空闲管理员扫描、说明原因和重试。管理员仍在工作时延后；已规划、在途、已完成及确需用户补充的卡不重复派工。无需操作者重新发送用户需求或修改 SQLite。实现在 `project-handoffs.js`、`project-tasks.js`、`roster.js`；清理会释放扫描定时器并等待本次扫描和投递。
+
+### 功能分支开发、独立测试与 dev 集成
+
+有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。submit 和 return_for_changes 可用 resultFiles 提交工作目录内的 Markdown 与截图，宿主保存快照并在任务详情按轮展示。开发轮 submit 提交功能分支的完整 commit。功能任务的独立测试节点设置 independentReview=true、writePaths=[]，依赖已认可的开发轮。测试只读验证该功能分支的固定候选，按当前轮次记录逐项证据，submit 只读回执后由管理者认可结单，候选保留在功能分支。测试失败用 return_for_changes 提供 feedback 与 evidence，由助理安排开发返工后复测。环境故障用 block。需要集成时另行安排。新建计划或改版新增 mergeToDev 节点会被拒绝。已有历史 mergeToDev 节点仍按原约定使用 record_merge 和 testedCommit，可在 rounds 查看合并回执。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。
+
+新版计划派回原开发归档时，若前驱测试已认可并记录集成，宿主核实旧轮已经改版、原执行已停止、同一工作树干净且仍指向刚集成的候选，才将重叠路径交回原开发。原轮 rounds[].ownershipTransfer 记录接收节点、候选和集成轮。
+
+编辑未完成计划卡的需求或验收后，系统通知任务助理（未配置时通知管理员）读取最新卡片、更新受影响节点并继续派工；同一字段编辑重试复用通知。换版后，任务助理直接派发当前版本的就绪节点。派工事务核实同一开发人的旧执行已停止且无待处理的原派工消息、同一工作树干净、分支仍在旧轮开工提交或已有独立集成凭据，随新派工登记旧轮的 ownershipTransfer。同节点、同人、同一开工提交上的未提交修改若全部位于新旧两版共同授权的路径内，会原地保留并在派工消息中提示接续。旧回执保留在旧轮；新开工看当前版本轮次的 startedAt。
+
+### 功能分支只读测试回执
+
+独立只读功能测试开工时，宿主把已认可输入中的候选提交固定到 `rounds[].validation.candidates`。原执行者在该派工会话用 `project_task` 更新当前轮次，沿用卡号及轮号：
+
+- 开始某项验收，调用 `checkpoint` 并传 `checking`。通过时传 `passedCheck`（相同项名）及 `evidence`（实际观察、已存在的测试结果或证据路径）；可以在同次调用填入下一项 `checking`。最后一项通过时传 `checksComplete: true`，卡片显示验收已通过、待清理。失败使用原有返工或环境阻塞动作。
+- 全部验收通过后，调用 `submit` 并传 `cleanupEvidence`，说明已核实的清理结果。未创建资源时据实说明。若已在 checkpoint 登记清理证据，submit 只需卡号和轮号。宿主以原候选、各项已存结果和清理证据生成 `rounds[].result`；最后一项交付触发结单或人工终验；无需另建报告文件或填写代码提交字段。
+- `project-task-list` 的 `validationProgress` 给出当前轮次的进行项、最近通过项和回执状态；`project-task-detail` 的 `rounds[].validation` 含逐项证据。旧轮继续按已有 completed、remaining 和 result 回读。结果随原轮保存在群库。验证方法、环境和样本数量按本卡需要选取。
+
+当前计划的所有有效节点交付后，普通任务自动完成。要求人工终验的卡自动生成绑定最终轮次的验收请求；用户通过后完成。中间节点按依赖复核。
+
+
+## 显式协作与缺陷报告工具
+
+`work-protocol.js` 在既有团队工具中注册五项：`delegate_work(to,goal,request_id?,taskId?,card_round?)`、`ask_back(work_id?,question)`、`answer_work(work_id,answer)`、`cancel_work(work_id,reason?)`、`note_bot(to,message)`。它们不是新增 HTTP endpoint，使用当前 Bot 的工具身份、隐私保护与团队写锁。正式 card_round 派发转交现有 message_bot；其他委托存入团队基础 SQLite 的 works_json，带原调用/收件线程、taskId 和 dispatchId。追问保持 open，答复续原线程，最终回复自动返回；已取消回执禁止迟到回传。确定投递失败回滚等待，已入队后保存结果不明保留身份且不自动重发。note_bot 只注入消息和写账本，不启动模型。项目卡提交/复核/批准不变。
+
+`issue-report.js` 的 `prepare_ds_bot_issue(title,what,steps,diagnostics?)` 只准备脱敏草稿，需配合 show_view 的 report_issue 和用户确认；目标固定 cooker-code/DS-Bot。GitHub 连接器有写权限时才发布，没有时生成该仓库人工草稿链接。公开请求不允许调用者覆盖 API 目标。图片由用户在 GitHub 页面手动附加，接口不接收二进制上传。相关设计与验证见根目录 upstream-changelog.md。
+
+
+## 委托工作生命周期控制
+
+这些写入口沿用 `/api/bot` 的宿主认证、团队写锁和只读保护，不改变项目卡审批。`state.work.delegated[]` 返回 `id/ref/from/to/sessionId/toSession/roomId/taskId/dispatchId/status/goal/question/reason`，status 为 open、need_input、paused；已结束工作不再出现在此列表。完整正文只在团队存储保留，IM 路由信息不进入列表或会话事件。
+
+| 操作 | 业务与输入 | 服务和成功值 |
+| --- | --- | --- |
+| `answer-work` | `{id,answer}`，id 来自 delegated 列表，只答复 need_input 工作；空答和 paused 拒绝。 | `answerDelegatedWork` → 原 caller/worker 会话，返回原工具回执字符串。原 work 回到 open；同卡 taskId 和 dispatchId 不变。 |
+| `resume-work` | `{id}`，只继续 paused 工作。 | `resumePausedWork` 返回 true；追问暂停转 need_input 并把原问题交回 caller；委托暂停转 open 并投递原目标。重复 Continue 报错，不再发一次。 |
+| `cancel-work` | `{id,reason?}`，取消该 work 及其子树。 | `cancelDelegatedWork` 返回取消回执字符串。保存有界 cancelled receipt，移除精确 inbox/停止精确 active，迟到结果和项目提交被拒绝；其他卡与手动会话继续。 |
+| `resume-room-pause` | `{roomId}`，用户确认继续无进展暂停的群。 | `resumeRoomPause` 返回 true；通过现有群输入链路继续 parked calls。不是新建或删除项目卡。 |
+
+状态使用现有 split SQLite 的 `team.extra_json`（works、pairLoops、workOutbox、protocolSends、silentNotes）和 Bot openParts；没有改动项目卡 schema。`inflight.json` 同时保存 workProtocol、parentExchangeId、senderPart、workQuestion、workAnswer、protocolReturn、protocolDeliveryId。便笺只在空闲时 inject，source.silent 不构成恢复工作或未读提醒。结果 outbox 在 work 关闭时保存完整正文，恢复时按 protocolDeliveryId 对 receiving inbox/事件日志去重。
+
+回读：`python3 .agents/skills/ds-bot-doc/scripts/request.py state --desktop --jq '.work.delegated'`。仅在已授权目标实例验证，不将测试指向日用 profile；测试使用隔离目录和模拟模型。

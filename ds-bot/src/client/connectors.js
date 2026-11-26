@@ -103,20 +103,24 @@ function ClientPanel({ connector, actions, run }) {
     // The app on the service side has to know the address the browser comes back
     // to, and its own MCP features, before the pasted client can sign in.
     h('div', { className: 'bt-connector-setup' },
-      h('p', null, setup?.kind === 'slack'
-        ? t('In OAuth & Permissions at {app}, add this redirect URL:', { app })
-        : t('In the app settings, add this redirect URL:')),
-      uri ? h('div', { className: 'bt-connector-setup-uri' },
-        h('code', { className: 'bt-connector-uri' }, uri),
-        h('button', { type: 'button', className: 'bt-connector-link', onClick: () => void copyCode(uri) }, t('Copy')),
-        copies > 0 ? h('span', { className: 'bt-connector-copied', role: 'status' },
-          h('span', { key: copies, className: 'bt-connector-copied-text' }, h(CheckIcon), t('Copied to clipboard'))) : null) : null,
-      setup?.kind === 'slack' ? h('p', null, t('Turn on the MCP features and scopes the app needs.')) : null,
-      h('p', null, t('Copy the Client ID and Client Secret here.')),
-      setup?.appUrl ? h('button', { type: 'button', className: 'bt-connector-link', onClick: () => openPage(setup.appUrl) }, t('Open app settings')) : null),
+      h('ol', { className: 'bt-connector-steps' },
+        h('li', null,
+          h('span', null, setup?.kind === 'slack'
+            ? t('In OAuth & Permissions at {app}, add this redirect URL:', { app })
+            : t('In the app settings, add this redirect URL:')),
+          uri ? h('div', { className: 'bt-connector-setup-uri' },
+            h('code', { className: 'bt-connector-uri' }, uri),
+            h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => void copyCode(uri) }, t('Copy')),
+            copies > 0 ? h('span', { className: 'bt-connector-copied', role: 'status' },
+              h('span', { key: copies, className: 'bt-connector-copied-text' }, h(CheckIcon), t('Copied to clipboard'))) : null) : null),
+        setup?.kind === 'slack' ? h('li', null, t('Turn on the MCP features and scopes the app needs.')) : null,
+        h('li', null, t('Copy the Client ID and Client Secret here.')))),
     h('input', { className: 'bt-input', 'aria-label': t('Client ID'), placeholder: t('Client ID'), value: clientId, spellCheck: false, autoComplete: 'off', onChange: e => setClientId(e.target.value) }),
     h('label', { className: 'bt-q-field bt-secret-field' }, h(MaskedInput, { value: clientSecret, onChange: setClientSecret, label: t('Client secret (optional)') })),
     h('div', { className: 'bt-connector-form-row' },
+      setup?.appUrl
+        ? h('button', { type: 'button', className: 'bt-connector-link', onClick: () => openPage(setup.appUrl) }, t('Open app settings'))
+        : h('span', { className: 'bt-connector-wait' }),
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => void run(actions.connectorCancel(connector.id)) }, t('Cancel')),
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: clientId.trim() === '', onClick: () => void run(actions.connectorClient(connector.id, clientId.trim(), clientSecret.trim() || undefined)) }, t('Continue'))))
 }
@@ -173,7 +177,7 @@ export function ConnectorRow({ connector, actions }) {
   }
   const button = (label, onClick) => h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick }, label)
   let actionsNode = null
-  if (pending || form) actionsNode = null
+  if (pending || form || connector.state === 'needs-client') actionsNode = null
   else if (connector.state === 'needs-sign-in') actionsNode = [button(t('Sign in again'), signIn), button(t('Disconnect'), () => void run(actions.connectorDisconnect(connector.id)))]
   else if (connector.state === 'error') actionsNode = [button(t('Try again'), () => void run(actions.connectorRetry(connector.id))), button(connector.custom ? t('Remove') : t('Disconnect'), () => void run(actions.connectorDisconnect(connector.id)))]
   else if (on) actionsNode = button(connector.custom ? t('Remove') : t('Disconnect'), () => void run(actions.connectorDisconnect(connector.id)))
@@ -183,6 +187,8 @@ export function ConnectorRow({ connector, actions }) {
         ? h('button', { key: 'token', type: 'button', className: 'bt-connector-link', disabled: busy, onClick: () => setForm('token') }, t('Use a token instead'))
         : null,
       h('button', { key: 'connect', type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: connect }, busy ? t('Connecting…') : t('Connect')),
+      // An added server that has no sign-in token yet still needs a way to be removed.
+      connector.custom ? h('button', { key: 'remove', type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => void run(actions.connectorDisconnect(connector.id)) }, t('Remove')) : null,
     ]
   }
   return h('div', { ref: row, className: 'bt-connector', 'data-state': connector.state },
@@ -371,14 +377,17 @@ export function AddMenu({ actions, run }) {
   const [kind, setKind] = useState(null)
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
+  const [oauth, setOauth] = useState(false)
   const [command, setCommand] = useState('')
   const [found, setFound] = useState(null)
   const [picked, setPicked] = useState([])
   const row = useRef(null)
   useMorph(row, `${kind}:${found === null}`)
-  const reset = () => { setKind(null); setName(''); setUrl(''); setCommand(''); setFound(null); setPicked([]) }
+  const reset = () => { setKind(null); setName(''); setUrl(''); setOauth(false); setCommand(''); setFound(null); setPicked([]) }
   const choose = (next) => {
     setKind(next)
+    // Only an address can sign in, so leaving that kind drops the choice with it.
+    if (next !== 'url') setOauth(false)
     if (next === 'import' && found === null) void Promise.resolve(actions.connectorImportScan()).then(list => setFound(Array.isArray(list) ? list : list?.items ?? []), () => setFound([]))
   }
   const key = (item) => `${item.source}:${item.name}`
@@ -406,12 +415,14 @@ export function AddMenu({ actions, run }) {
           kind === 'url'
             ? h('input', { key: 'url', className: 'bt-input', 'aria-label': t('Server address'), placeholder: 'https://…', value: url, spellCheck: false, onChange: e => setUrl(e.target.value) })
             : h('input', { key: 'cmd', className: 'bt-input', 'aria-label': t('Command'), placeholder: t('Command, e.g. npx -y some-mcp'), value: command, spellCheck: false, onChange: e => setCommand(e.target.value) }),
+          // A command has nowhere to send a browser sign-in; only an address offers it.
+          kind === 'url' ? h(SwitchRow, { key: 'oauth', label: t('Sign in'), on: oauth, onChange: setOauth }) : null,
         ],
       h('div', { className: 'bt-secret-row-actions' },
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: reset }, t('Cancel')),
         kind === 'import'
           ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: picked.length === 0, onClick: () => void run(actions.connectorImport(picked), reset) }, t('Import {count}', { count: picked.length }))
-          : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: !ready, onClick: () => void run(kind === 'url' ? actions.connectorAdd({ name: name.trim(), url: url.trim() }) : actions.connectorAdd({ name: name.trim(), command: command.trim() }), reset) }, t('Add')))))
+          : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: !ready, onClick: () => void run(kind === 'url' ? actions.connectorAdd({ name: name.trim(), url: url.trim(), ...(oauth ? { oauth: true } : {}) }) : actions.connectorAdd({ name: name.trim(), command: command.trim() }), reset) }, t('Add')))))
 }
 
 // Bot details → Connectors: one switch per connected connector (default on).
@@ -656,6 +667,7 @@ export function MailDock({ sessionId, useRoster, useCards, useHeldCards, actions
 }
 
 export const CONNECTOR_CSS = `
+.bt-connector-form .bt-set-row{padding:0}
 .bt-connector-mono{display:inline-flex;width:20px;height:20px;border-radius:6px;align-items:center;justify-content:center;background:var(--bt-accent);color:var(--bt-card);font-size:12px;font-weight:600;filter:hue-rotate(calc(var(--bt-hue,0)*1deg))}
 .bt-connector-name{display:inline-flex;align-items:center;gap:6px}
 .bt-connector-search{display:flex;flex-direction:column;gap:8px;padding:12px}

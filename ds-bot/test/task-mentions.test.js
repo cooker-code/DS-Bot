@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { parseSessionReferenceText } from '@deepseek-ai/dsh-session-reference'
 import { indexRoster } from '../src/client/sources.js'
 import { readTaskReference } from '../src/host/task-reference.js'
-import { inboundScope } from '../src/host/task-routing.js'
+import { inboundScope, mentionedProjectCard } from '../src/host/task-routing.js'
 import { mentionSpans } from '../src/shared/mentions.js'
 
 const { outputFiles } = await build({
@@ -53,7 +53,7 @@ function fixture() {
 test('task suggestions search the current room or the private Bot’s groups, including completed work', async () => {
   const { search, reads } = fixture()
   for (const id of ['r', 'r-2', 'dev', 'dev-2']) {
-    assert.deepEqual(Array.from(await search(id, '核验'), row => row.name), ['核验 release', '核验 release', '补充核验'])
+    assert.deepEqual(Array.from(await search(id, '核验'), row => row.name), ['核验 release', '核验 release'])
     assert.equal((await search(id, 'Other')).length, 0)
     assert.equal((await search(id, cardId.slice(0, 8))).length, 1)
   }
@@ -79,6 +79,18 @@ test('same-name selections resolve by kind and ID at send time without routing t
   assert.deepEqual(parseSessionReferenceText(message).references, [])
   assert.match(inboundScope({ text: message }), /^intake-/)
   assert.match(inboundScope({ text: quote + '继续' }, 'prior-task'), /^intake-/)
+  const [groupCard] = await search('r-2', cardId)
+  const groupQuote = await source.codec.serialize(source.onPick({ candidate: groupCard }).insert.ref)
+  for (const body of ['推进任务', '请核对上次的阻塞原因后再交给助理', 'task 继续推进', '为什么受阻？'])
+    assert.deepEqual(mentionedProjectCard(groupQuote + body), { taskId: cardId, text: body })
+  assert.equal(mentionedProjectCard(quote + '继续'), undefined)
+  assert.equal(mentionedProjectCard(groupQuote).taskId, cardId)
+  const evidence = '> Quoted release notes\n\n请核对'
+  assert.deepEqual(mentionedProjectCard(groupQuote + evidence), { taskId: cardId, text: evidence })
+  const second = '22222222-2222-4222-8222-222222222222'
+  const pair = mentionedProjectCard('把' + groupQuote + '关联到' + groupQuote.replace(cardId, second))
+  assert.deepEqual(pair.referencedCards, [cardId, second])
+  assert.equal(pair.text.replace(/\s/g, ''), '把[task:' + cardId + ']关联到[task:' + second + ']')
   const memberQuote = await source.codec.serialize(member.ref)
   assert.match(memberQuote, /Testing/)
   assert.match(memberQuote, /Test Linux/)
@@ -89,8 +101,8 @@ test('same-name selections resolve by kind and ID at send time without routing t
 
 test('an intake reference follows its own card when accepted, and a deleted reference cannot send', async () => {
   const { search, source, room, rt } = fixture()
-  const [candidate] = await search('r', '补充')
-  const { ref } = source.onPick({ candidate }).insert
+  assert.equal((await search('r', '补充')).length, 0)
+  const ref = JSON.stringify({ sessionId: 'r', roomId: 'r', kind: 'intake', id: 'pending' })
   const intake = await source.codec.serialize(ref)
   assert.match(intake, /Verify the second line/)
   assert.match(intake, /Attachments: Screenshot.png, Report.md/)

@@ -1,16 +1,51 @@
-import { TASK_STATUS } from './task-board.js'
-import { TaskReply } from './task-reply.js'
-import { createElement as h, Fragment, useEffect, useId, useRef, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
-import { MarkdownText } from './dsh-primitives.js'
+import { SaveFileAction } from './file-save.js'
+import { MarkdownField } from './markdown-field.js'
 import { ChevronLeftIcon, CloseIcon } from './icons.js'
+import { TaskHandoffs } from './task-handoffs.js'
+import { TaskResults } from './task-results.js'
 import { TaskWorkspace } from './task-workspace.js'
+import { TaskStatusEditor } from './task-status-editor.js'
 import { stageTaskImage, TaskImage, taskImageTypes } from './task-images.js'
-import { mdLabels, t } from './i18n.js'
+import { t } from './i18n.js'
 
-function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
-  const id = useId()
-  const editButton = useRef(null)
+// Preserve authored Markdown blocks. Plain legacy notes can be listed without changing their saved text.
+function taskList(text) {
+  if (!text || /^(?: {4}|\t|#{1,6} |>|\x60\x60\x60|~~~|\|| {0,3}(?:[-*+]|\d+[.)])\s)/m.test(text)) return text
+  return text.split(/\n+/).map(line => line.trim()).filter(Boolean)
+    .map((line, index) => (index + 1) + '. ' + line).join('\n')
+}
+
+function requirementDocuments(sources) {
+  const documents = new Map()
+  for (const line of sources) {
+    for (const file of line.files ?? []) {
+      const id = file.attachmentId ?? file.id
+      if (id) documents.set(id + '/' + file.name, { id, name: file.name })
+    }
+    // The composer serializes local file chips as @path or @"path with spaces".
+    for (const match of (line.text ?? '').matchAll(/(?:^|\s)@(?:"([^"\n]+)"|([^\s"]+))/gu)) {
+      const path = match[1] ?? match[2].replace(/[.,;:!?，。；：！？]+$/u, '')
+      const name = path.split(/[\\/]/u).at(-1)
+      if (!name || !/\.[\p{L}\p{N}]+$/u.test(name) || path.startsWith('[')) continue
+      documents.set('path:' + path, { path, name })
+    }
+  }
+  return [...documents.values()]
+}
+
+function TaskField({ roomId, taskId, label, value, versions, sources, openReference, sourceImages = [], images = [], readOnly, maxLength, required, onSave }) {
+  const [version, setVersion] = useState(null)
+  const snapshot = version === null ? undefined : versions?.[version]
+  const currentVersion = versions?.length ?? 0
+  if (snapshot) {
+    value = snapshot.text
+    sourceImages = snapshot.images
+    sources = sources?.filter(line => snapshot.documentSources?.includes(line.seq))
+    images = []
+    readOnly = true
+  }
   const picker = useRef(null)
   const [draft, setDraft] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -18,15 +53,16 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
   const finish = () => {
     setDraft(null)
     setError('')
-    requestAnimationFrame(() => editButton.current?.focus())
   }
+  const markdown = taskList(value)
   const save = async () => {
     setBusy(true)
     setError('')
     try {
       const added = []
       for (const file of draft.files) added.push(await stageTaskImage(file))
-      await onSave(draft.original, draft.text, added, draft.removed)
+      const text = draft.text === draft.initialText ? draft.original : draft.text
+      await onSave(draft.original, text, added, draft.removed)
       finish()
     } catch (failure) {
       setError(failure.message)
@@ -48,53 +84,129 @@ function TaskField({ roomId, taskId, label, value, sourceImages = [], images = [
     onRemove: draft && !originals.has(image.attachmentId ?? image.id) ? () => setDraft({ ...draft, removed: [...draft.removed, image.attachmentId] }) : undefined })),
   ...(draft?.files ?? []).map((file, index) => h(TaskImage, { key: 'file-' + index, file, label: file.name,
     disabled: busy || readOnly, onRemove: () => setDraft({ ...draft, files: draft.files.filter(other => other !== file) }) }))]
-  const changed = draft && (draft.text !== draft.original || draft.files.length || draft.removed.length)
-  return h('section', { 'aria-labelledby': id, onKeyDown: event => {
-    if (draft && event.key === 'Escape' && !event.nativeEvent.isComposing) {
-      event.stopPropagation()
-      if (!busy) finish()
-    }
-  } },
-    h('div', { className: 'bt-project-field-head' },
-      h('h3', { id, className: 'bt-section-title' }, label),
-      !readOnly && !draft ? h('button', { ref: editButton, type: 'button', className: 'bt-mini',
-        onClick: () => setDraft({ original: value, text: value, removed: [], files: [] }) }, t('Edit')) : null),
-    draft ? h('textarea', { className: 'bt-input bt-input-area', autoFocus: true, 'aria-labelledby': id, value: draft.text,
-      readOnly: busy || readOnly, maxLength, onChange: event => setDraft({ ...draft, text: event.target.value }),
-      onPaste: event => {
-        const files = Array.from(event.clipboardData.files)
-        if (files.length) { event.preventDefault(); addFiles(files) }
-      } })
-      : value ? h('div', { className: 'bt-project-markdown' }, h(MarkdownText, { text: value, labels: mdLabels(), variant: 'compact' }))
-        : visible.length ? null : '—',
-    gallery,
-    draft ? h(Fragment, null,
-      h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
-        addFiles(Array.from(event.target.files))
-        event.target.value = ''
-      } }),
-      h('div', { className: 'bt-task-actions' },
-        h('button', { type: 'button', className: 'bt-soft-sm', disabled: busy || readOnly || !changed || (required && !draft.text.trim()),
-          onClick: save }, busy ? t('Saving…') : t('Save')),
-        h('button', { type: 'button', className: 'bt-mini', disabled: busy || readOnly, onClick: () => picker.current?.click() }, t('Add image')),
-        h('button', { type: 'button', className: 'bt-mini', disabled: busy, onClick: finish }, t('Cancel'))),
-      error ? h('p', { className: 'bt-error', role: 'alert' }, error) : null) : null)
+  const documents = requirementDocuments(sources ?? [])
+  const attachments = sources && (documents.length || gallery.length) ? h('div', { className: 'bt-requirement-attachments' },
+    h('h4', null, t('Attachments')),
+    documents.map(file => file.path
+      ? h('button', { key: file.path, type: 'button', className: 'bt-mini bt-reference-file', title: file.path,
+        onClick: () => setError(openReference(file.path) ? '' : t('File preview unavailable')) }, file.name)
+      : h(SaveFileAction, { key: file.id + '/' + file.name, attachmentTarget: { sessionId: roomId, attachmentId: file.id }, label: file.name })),
+    gallery) : gallery
+  const changed = draft && (draft.text !== draft.initialText || draft.files.length || draft.removed.length)
+  return h(MarkdownField, { title: label, autoSize: true, value: markdown,
+    headerControl: versions && h('select', { className: 'bt-select', 'aria-label': t('Requirement version'),
+      disabled: !!draft, value: snapshot ? version : currentVersion, onChange: event => {
+        const selected = Number(event.target.value)
+        setVersion(selected === currentVersion ? null : selected)
+      } }, Array.from({ length: currentVersion + 1 }, (_, index) => h('option', { key: index, value: index },
+        t('Requirement v{version}', { version: index + 1 }) + ' · ' + t(index === currentVersion ? 'Current' : 'Historical version')))),
+    placeholder: visible.length || documents.length ? null : '—', maxLength,
+    draft: draft?.text, busy, error, disableSave: !changed || (required && !draft?.text.trim()),
+    onEdit: readOnly ? undefined : () => {
+      // Generated numbering must not push a legacy criterion past its saved-text limit.
+      const initialText = maxLength && markdown.length > maxLength ? value : markdown
+      setDraft({ original: value, initialText, text: initialText, removed: [], files: [] })
+    },
+    onChange: text => setDraft({ ...draft, text }), onSave: save, onCancel: finish,
+    onPaste: event => {
+      const files = Array.from(event.clipboardData.files)
+      if (files.length) { event.preventDefault(); addFiles(files) }
+    },
+    tools: h('button', { type: 'button', className: 'bt-mini', disabled: busy || readOnly, onClick: () => picker.current?.click() }, t('Add image')),
+  }, attachments, draft ? h('input', { type: 'file', multiple: true, hidden: true, accept: taskImageTypes, ref: picker, onChange: event => {
+    addFiles(Array.from(event.target.files))
+    event.target.value = ''
+  } }) : null)
 }
 
-export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip, onBack, close }) {
-  const [savingAcceptance, setSavingAcceptance] = useState(false)
-  const [replying, setReplying] = useState(false)
+export function ValidationProgress({ detail }) {
+  // Use the plan's selected round so a late receipt cannot replace current progress.
+  const nodes = detail.plans?.at(-1)?.nodes ?? []
+  return nodes.filter(node => node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && node.round && node.status !== 'omitted').map(node => {
+    const round = detail.rounds?.[node.round - 1]
+    if (!round) return null
+    if (round.result) return h('details', { key: node.round },
+      h('summary', null, t('Test receipt submitted')), h('p', null, round.result))
+    const progress = round.validation
+    const checkpoint = round.planNode
+    if (!progress && !checkpoint?.completed) return null
+    return h('section', { key: node.round, 'aria-label': t('Validation progress') },
+      h('h3', { className: 'bt-section-title' }, t('Validation progress'), ' · ', node.title),
+      progress?.checking && !checkpoint?.block ? h('p', null, t('Testing: {check}', { check: progress.checking })) : null,
+      checkpoint?.block ? h('p', null, checkpoint.block.reason) : null,
+      progress?.passed.length ? h('ul', null, progress.passed.map(check => h('li', { key: check.name },
+        h('strong', null, t('Passed: {check}', { check: check.name })), ' · ', check.evidence))) : null,
+      progress?.checksComplete && !progress.cleanup && !checkpoint?.block ? h('p', null, t('Checks passed · awaiting cleanup')) : null,
+      progress?.cleanup ? h('p', null, t('Cleanup: {result}', { result: progress.cleanup })) : null,
+      progress ? h('p', null, t('Candidate'), ' · ', progress.candidates.join(', ')) : null,
+      !progress && checkpoint?.completed ? h('p', null, checkpoint.completed) : null,
+      !progress && checkpoint?.remaining ? h('p', null, checkpoint.remaining) : null)
+  })
+}
+
+function AcceptanceRequest({ roomId, card, actions, readOnly }) {
+  const [feedback, setFeedback] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const review = card.acceptanceRequest
+  const decide = async decision => {
+    setBusy(true)
+    setError('')
+    try {
+      await actions.decideAcceptance(roomId, card.taskId, review.id, decision, decision === 'return' ? feedback.trim() : undefined)
+    } catch (failure) {
+      setError(failure.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return h('div', { className: 'bt-task-acceptance' },
+    !readOnly ? h('div', null,
+      h('textarea', { className: 'bt-input', rows: 2, value: feedback, maxLength: 2000, disabled: busy,
+        placeholder: t('Requested changes'), 'aria-label': t('Requested changes'), onChange: e => setFeedback(e.target.value) }),
+      h('div', { className: 'bt-task-actions' },
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => decide('approve') }, t('Accept delivery')),
+        h('button', { type: 'button', className: 'bt-mini', disabled: busy || !feedback.trim(), onClick: () => decide('return') }, t('Request changes')))) : null,
+    error ? h('p', { className: 'bt-task-error', role: 'alert' }, error) : null)
+}
+
+export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openReference, move, hasStrip, onBack, close }) {
   const [detail, setDetail] = useState()
   const [error, setError] = useState('')
   const [attempt, retry] = useState(0)
   const activeRead = useRef(null)
   const taskId = card?.taskId
+  const [history, setHistory] = useState()
+  const readHistory = useRef(null)
+  useEffect(() => {
+    if (!taskId) return
+    const abort = new AbortController()
+    let loading = false
+    let pending = false
+    readHistory.current = async () => {
+      pending = true
+      if (loading) return
+      loading = true
+      while (pending && !abort.signal.aborted) {
+        pending = false
+        try {
+          const value = await call('project-task-detail', { roomId: room.id, taskId, interactionsOnly: true }, abort.signal)
+          if (!abort.signal.aborted) setHistory(value)
+        } catch {
+          if (!abort.signal.aborted) setHistory(current => ({ ...current, incomplete: true }))
+        }
+      }
+      loading = false
+    }
+    return () => { readHistory.current = null; abort.abort() }
+  }, [room.id, taskId])
+  useEffect(() => { void readHistory.current?.() }, [room.id, taskId, room.seq, roster?.revision, card?.updatedAt, attempt])
   useEffect(() => {
     if (!taskId) return
     const abort = new AbortController()
     activeRead.current = abort
     setError('')
-    call('project-task-detail', { roomId: room.id, taskId }, abort.signal).then(value => {
+    call('project-task-detail', { roomId: room.id, taskId, withResults: true }, abort.signal).then(value => {
       if (!abort.signal.aborted) setDetail(value)
     }, failure => {
       if (!abort.signal.aborted) setError(failure.message)
@@ -110,6 +222,13 @@ export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip
       retry(n => n + 1)
     }
   }
+  const saveStatus = async (previous, status, reason) => {
+    try {
+      const saved = await call('update-project-task-status', { roomId: room.id, taskId, previous, status, reason })
+      activeRead.current?.abort()
+      setDetail(current => ({ ...current, ...saved }))
+    } finally { retry(n => n + 1) }
+  }
   readOnly ||= room.taskManagementEnabled === false
   return h(Fragment, null,
     h('div', { className: 'bt-subhead', 'data-move': move },
@@ -120,41 +239,15 @@ export function ProjectTaskDetail({ room, card, roster, readOnly, move, hasStrip
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          !readOnly && room.taskManagementEnabled !== false ? replying ? h(TaskReply, { room, initialId: taskId, close: () => setReplying(false) })
-            : h('button', { type: 'button', className: 'bt-soft', onClick: () => setReplying(true) }, t('Continue this task')) : null,
-          h('label', { className: 'bt-set-row' }, h('input', { type: 'checkbox', checked: !!detail.humanAcceptanceRequired,
-            disabled: savingAcceptance || readOnly || !!detail.humanReview || detail.status === 'done' || !detail.supportsHumanAcceptance,
-            onChange: async event => {
-              setSavingAcceptance(true)
-              try {
-                const required = await call('set-task-human-acceptance', { roomId: room.id, taskId, required: event.target.checked })
-                setDetail(current => ({ ...current, humanAcceptanceRequired: required }))
-              } catch (failure) { setError(failure.message) }
-              finally { setSavingAcceptance(false) }
-            } }), t('Require human acceptance')),
-          h('p', null, t(TASK_STATUS[detail.status] ?? detail.status), ' · ',
-            (detail.owners?.length ? detail.owners : detail.ownerId ? [detail.ownerId] : []).map(id => roster?.byId[id]?.name ?? id).join(', ') || t('Unassigned')),
-          detail.clarification ? h('p', null, detail.clarification) : null,
-          detail.classificationReason ? h('p', null, t('Classification reason'), ' · ', detail.classificationReason) : null,
-          detail.plans?.at(-1)?.nodes.map(node => h('div', { className: 'bt-set-row', key: node.no },
-            h('span', null, node.title, ' · ', roster?.byId[node.ownerId]?.name ?? node.ownerId,
-              node.round ? ' · ' + t('Round {number}', { number: node.round }) : '',
-              detail.rounds[node.round - 1]?.planNode?.block?.reason ? ' · ' + detail.rounds[node.round - 1].planNode.block.reason : ''),
-            ...[['fixedOwner', 'Fixed owner'], ['independentReview', 'Independent review']].map(([field, label]) =>
-              h('label', { key: field }, h('input', { type: 'checkbox', checked: Boolean(node[field]),
-                disabled: readOnly || savingAcceptance || !!detail.rounds.length || !!detail.humanReview,
-                onChange: async event => {
-                  setSavingAcceptance(true)
-                  try {
-                    await call('set-task-node-constraint', { roomId: room.id, taskId, version: detail.version, node: node.no, field, value: event.target.checked })
-                    retry(n => n + 1)
-                  } catch (failure) { setError(failure.message) }
-                  finally { setSavingAcceptance(false) }
-                } }), t(label))))),
-          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement,
-            sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
+          h(TaskHandoffs, { detail, roster, history, roomId: room.id, taskId }),
+          h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
+            sources: detail.requirements ?? [], openReference, sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,
             images: detail.fieldImages?.acceptance, onSave: (...args) => save('acceptance', ...args) }),
-          h(TaskWorkspace, { room, card, readOnly }))
+          h(TaskResults, { key: room.id + taskId, roomId: room.id, taskId, detail }),
+          detail.acceptanceRequest ? h(AcceptanceRequest, { key: detail.acceptanceRequest.id, roomId: room.id, card: detail, actions, readOnly }) : null,
+          h(ValidationProgress, { detail }),
+          h(TaskWorkspace, { room, card, readOnly }),
+          h(TaskStatusEditor, { key: room.id + taskId, detail, readOnly, onSave: saveStatus }))
         : !error ? h('p', { role: 'status' }, t('Loading…')) : null)))
 }

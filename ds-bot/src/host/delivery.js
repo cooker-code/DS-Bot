@@ -1,5 +1,6 @@
 // Delivery: how one Bot, the user, or DS Bot itself puts a message into a Bot Session.
 import { scopeFields, scopeOf, tagged } from './task-routing.js'
+import { projectRoomForCard } from './project-tasks.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
@@ -43,7 +44,7 @@ export function install(rt) {
   }
 
   // Roles recorded as team exchanges.
-  const EXCHANGE_ROLES = new Set(['request', 'reply', 'stopped'])
+  const EXCHANGE_ROLES = new Set(['request', 'reply', 'stopped', 'note'])
 
   // What two Bots say to each other is in the book of the pair (ledger.js), whole, written
   // before the message goes out. A message is shown once a record says it was delivered.
@@ -82,7 +83,8 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ validateDestination, taskId, requirementVersion, retryOf, handoffText, parentExchangeId, workProtocol = false, silent = false, workQuestion, workAnswer = false, protocolReturn, protocolDeliveryId, controlNotice = false, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+    if (!controlNotice && [exchangeId, work, replyTo, workQuestion].some(id => rt.protocolCancelled?.(id))) return exchangeId
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -94,12 +96,21 @@ export function install(rt) {
     const source = {
       kind: SOURCE_KIND,
       form: 'relay',
+      ...(projectActorId && { projectActorId }),
+      ...(projectActorId && handoffText && { handoffText }),
+      ...(groupHandoffSeqs?.length && { groupHandoffSeqs }),
       ...scopeFields(key),
       ...(intakeSeq !== undefined ? { intakeSeq } : {}),
       role,
       exchangeId,
+      ...(silent ? { silent: true } : {}),
+      ...(workProtocol || state.works?.[exchangeId]?.protocol || state.works?.[exchangeId]?.protocolInherited || state.works?.[work]?.protocol ? { workProtocol: true } : {}),
       senderName: fromName,
       ...(work ? { work } : {}),
+      ...(workQuestion ? { workQuestion } : {}),
+      ...(workAnswer ? { workAnswer: true } : {}),
+      ...(protocolReturn ? { protocolReturn } : {}),
+      ...(protocolDeliveryId ? { protocolDeliveryId } : {}),
       ...(fromId ? { senderSessionId: fromId } : {}),
       ...(fromPart ? { senderPart: fromPart } : {}),
       ...(replyTo ? { replyTo } : {}),
@@ -108,6 +119,8 @@ export function install(rt) {
       ...(deferred ? { deferred: true } : {}),
       ...(resumed ? { resumed: true } : {}),
       ...(retried ? { retried: true } : {}),
+      ...(retryOf && { retryOf }),
+      ...(parentExchangeId && { parentExchangeId }),
       ...(askedBy ? { askedBy } : {}),
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
@@ -124,7 +137,7 @@ export function install(rt) {
     // replaces it with its added text.
     const book = fromId !== undefined && from !== undefined && recordExchange && EXCHANGE_ROLES.has(role) && !deferred && !resumed && !retried ? pairBook(fromId, toId) : undefined
     if (book !== undefined && (merged || !rt.ledger.records(book).some(record => record.event === undefined && record.id === exchangeId))) {
-      rt.ledger.append(book, { id: exchangeId, ...scopeFields(key), from: fromId, to: toId, role, text, time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
+      rt.ledger.append(book, { id: exchangeId, ...scopeFields(key), from: fromId, to: toId, role, text, ...(handoffText !== undefined && { handoffText }), ...(parentExchangeId && { parentExchangeId }), time: Date.now(), ...(length !== undefined ? { length, files } : {}), ...(replyTo ? { replyTo } : {}), ...(audience === 'user' ? { audience } : {}), ...(roomId ? { roomId } : {}) })
       await rt.ledger.written(book)
     }
     let agent, targetSessionId
@@ -143,10 +156,28 @@ export function install(rt) {
       ],
       source,
     })
+    if (!silent && (protocolDeliveryId || source.workProtocol || role === 'reply' && replyTo && rt.protocolClosed?.(replyTo))) {
+      const exists = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])].some(item => (protocolDeliveryId ? item.source?.protocolDeliveryId === protocolDeliveryId : item.source?.exchangeId === exchangeId))
+      let logged = exists
+      if (!logged) for await (const event of rt.eventsBackwards(targetSessionId, AbortSignal.timeout(HISTORY_TIMEOUT_MS))) {
+        if (event.type === 'user/message' && (protocolDeliveryId ? event.data?.source?.protocolDeliveryId === protocolDeliveryId : event.data?.source?.exchangeId === exchangeId && !resumed)) { logged = true; break }
+      }
+      if (logged) return exchangeId
+    }
+    if (silent) return rt.bufferProtocolNote(targetSessionId, message, book)
+    const retryRoom = taskId && (retried || resumed || retryFailedAt !== undefined)
+      ? room ?? (!roomId && projectRoomForCard(rt, taskId)) : undefined
+    const retryRound = retryRoom?.projectCards?.[taskId]?.rounds.find(r => r.dispatchId === exchangeId && r.ownerId === toId)
+    const previousFailure = retryRound?.failedAt ?? retryFailedAt
     const live = rt.live?.get(targetSessionId)
+    if (validateDestination && !validateDestination()) throw new Error('The project recipient changed before enqueue. Scan the original card again.')
     if (steer && scopeOf(live?.info) === key) agent.steer(message)
     else agent.followup(message)
-    await ctx.sessions.flush(agent.session)
+    try { await ctx.sessions.flush(agent.session) } catch (error) {
+      // followup/steer already accepted the message: callers must not create a
+      // second work item when persistence of the receiving Session is uncertain.
+      throw Object.assign(error, { deliveryUncertain: true })
+    }
     if (book !== undefined) {
       rt.ledger.append(book, { event: 'delivered', id: exchangeId, sessionId: targetSessionId, time: Date.now() })
       // The message went out either way; a mark that is lost only hides it from the dialog.
@@ -164,6 +195,26 @@ export function install(rt) {
       if (earlier === -1) state.exchanges.push(entry)
       else if (merged) state.exchanges[earlier] = entry
       void rt.save().catch(() => {})
+    }
+    if (cardRound !== undefined) {
+      // The group may have advanced to another session or round during delivery.
+      const round = rt.roomOf(roomId)?.projectCards?.[taskId]?.rounds[cardRound - 1]
+      if (round?.dispatchId !== exchangeId || round.ownerId !== toId) throw new Error('The dispatched round is no longer available.')
+      round.executionSession = targetSessionId
+      round.sentAt ??= Date.now()
+      round.dispatchInput ??= dispatchInput ?? text
+      if (Number.isSafeInteger(requirementVersion)) round.requirementVersion ??= requirementVersion
+      const names = [...images, ...files].map(file => file.name).filter(Boolean)
+      if (names.length) round.inputFiles ??= names
+      await rt.save({ required: true })
+    }
+    if (retryRound) {
+      const run = rt.roomOf(retryRoom.id)?.projectCards?.[taskId]?.rounds.find(r => r.dispatchId === exchangeId && r.ownerId === toId)
+      if (run) {
+        ;(run.retries ??= []).push({ at: Date.now(), input: text, ...(previousFailure && { failedAt: previousFailure }),
+          ...(previousOutput && { previousOutput }), ...(resumed && { restart: true }) })
+        await rt.save({ required: true })
+      }
     }
     return exchangeId
   }
@@ -240,5 +291,5 @@ export function install(rt) {
     return { ...record, ledger: true }
   }
 
-  Object.assign(rt, { resolveAgent, deliver, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
+  Object.assign(rt, { resolveAgent, deliver, taskPairMessages: pairMessages, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
 }

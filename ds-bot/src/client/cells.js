@@ -18,7 +18,7 @@ import { call } from './api.js'
 import { modelFailureLine } from './diagnostics.js'
 import { turnReasoning, thinkingStep, opensReply, stepActivity } from './turn-reasoning.js'
 import { taskCaption, taskMessage } from '../shared/task-message.js'
-import { parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
+import { compressedRelayPreview, parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
 import { ReplyGuide } from './reading.js'
 import { noHover, useViewport, viewBottom } from './motion.js'
@@ -170,7 +170,7 @@ function MessageTools({ text, quoteText = text, name, sessionId, react, actions,
   const [copied, setCopied] = useState(false)
   const tools = useRef(null)
   const pop = useRef(null)
-  const tick = useViewport()
+  const tick = useViewport(panel !== null)
   const close = () => setPanel(null)
   useDismiss(panel !== null, close, [tools, pop])
   const open = (kind, event) => { if (panel?.kind === kind) { close(); return } setPanel({ kind, node: event.currentTarget }) }
@@ -423,7 +423,7 @@ export function GroupMessage({ bot, text, texts = [text], room, sessionId, roste
     scheduleGroupChains(flow)
     return () => scheduleGroupChains(flow)
   }, [bot.id])
-  const lead = h('button', { type: 'button', className: 'bt-lead', 'aria-label': t("Open {name}'s chat", { name: bot.name }), onClick: () => actions.openSession(bot.id) },
+  const lead = h('button', { type: 'button', className: 'bt-lead', 'aria-label': t("Open {name}'s chat", { name: bot.name }), onClick: () => room?.members?.includes(bot.id) ? actions.openMemberSession(room.id, bot.id) : actions.openSession(bot.id) },
     h(BotMark, { bot, size: 22 }))
   const flat = layoutOf(roster.prefs) === 'flat'
   const took = Number.isFinite(duration) && duration >= 1000 ? elapsedLabel(duration) : undefined
@@ -742,6 +742,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
     : (body ?? h(CellEmpty))
 
   function triggerBody() {
+    if (source.silent === true) return null
     if (source.kind === 'bot') {
       // A part opens with its handoff package, so the earlier parts go right above it.
       if (source.handoff === true) return h(EarlierParts, { sessionId, roster, actions })
@@ -935,6 +936,8 @@ function toolActivity(name, arg, findBot, self) {
     case 'list_secrets': return { label: t('Checking the keys'), state: 'searching' }
     case 'ask_user_question': return { label: t('Waiting for your answer'), state: 'alert' }
     case 'group_relay': return { relay: true, state: 'orbit' }
+    case 'delegate_work':
+    case 'note_bot':
     case 'message_bot': {
       const target = findBot(arg('to'))
       return { label: target ? t('Asking {name}', { name: target.name }) : t('Asking another Bot'), state: 'sending' }
@@ -1086,6 +1089,16 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
   // the ledger carries them in its result.
   const resultText = done ? contentText(content) : ''
   const range = done ? relayRange(resultText) : undefined
+  const preview = compressedRelayPreview(resultText)
+  const [recovered, setRecovered] = useState(null)
+  useEffect(() => {
+    if (preview === undefined) return undefined
+    let stop = false
+    void actions.groupRelayReplies(sessionId, preview).then(replies => {
+      if (!stop) setRecovered({ sessionId, preview, replies })
+    })
+    return () => { stop = true }
+  }, [sessionId, preview])
   const rowsKey = range === undefined ? undefined : `${sessionId}:${range.from}:${range.to ?? ''}:${range.anchor ?? ''}`
   const [view, setView] = useState(() => (rowsKey === undefined ? null : settledRows.get(rowsKey) ?? null))
   // An open cell that is quiet is read again when the team changes, not on a clock.
@@ -1118,9 +1131,13 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
   if (range !== undefined) {
     replies = view?.rows ?? live
   } else if (done) {
-    const parsed = parseReplies(resultText)
-    replies = parsed.replies.length ? parsed.replies : live
-    broken = parsed.broken
+    const restored = recovered?.sessionId === sessionId && recovered.preview === preview ? recovered.replies : null
+    if (Array.isArray(restored)) replies = restored
+    else {
+      const parsed = parseReplies(resultText)
+      replies = parsed.replies.length ? parsed.replies : live
+      broken = parsed.broken
+    }
   }
   const feedback = range?.errors?.map(message => h('div', { key: message, className: 'bt-event', role: 'alert' }, t(message)))
   const called = view?.calledIds?.map(id => roster.byId[id]?.name ?? t('Deleted Bot')).join(t(', '))
@@ -1156,7 +1173,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
 // The calls ToolCell draws. A PTC program (`run_code`) dispatches the real tools as
 // its sub-calls, so a call draws by its own name wherever it sits in the tree.
 const isComputerCall = name => name === 'cua'
-const DRAWN = new Set(['message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
+const DRAWN = new Set(['ask_back', 'answer_work', 'cancel_work', 'delegate_work', 'note_bot', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
 // Calls whose card a dock above the composer carries when the call is not drawn.
 const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'browser_handoff', 'computer_handoff'])
 
@@ -1193,10 +1210,18 @@ function renderCall(call, { turn, sessionId, roster, actions, useUi, findBot, he
   const { text: arg, value: argValue } = toolArgs(call)
   const self = roster.byId[sessionId]
   switch (tool) {
+    case 'ask_back':
+    case 'answer_work':
+    case 'cancel_work': {
+      const label = tool === 'ask_back' ? t('Asked for clarification') : tool === 'answer_work' ? t('Answered delegated work') : t('Cancelled delegated work')
+      return h('div', { className: 'bt-event', role: done && call.isError ? 'alert' : undefined }, `${label} · ${arg('work_id') ?? arg('target') ?? ''}`, arg('question') ? ` · ${arg('question')}` : '')
+    }
+    case 'delegate_work':
+    case 'note_bot':
     case 'message_bot': {
       const target = findBot(arg('to')) ?? { name: arg('to') ?? '…', color: 'gray' }
       if (done && call.isError) return h('div', { className: 'bt-event' }, t("Couldn't message {name}", { name: target.name }))
-      return h(EventLine, { prefix: t('Messaged'), bots: [target], onOpen: bot => bot.id && actions.openExchange(self?.id ?? sessionId, bot.id), whole: true })
+      return h(EventLine, { prefix: t(tool === 'delegate_work' ? 'Delegated' : tool === 'note_bot' ? 'Noted' : 'Messaged'), bots: [target], onOpen: bot => bot.id && actions.openExchange(self?.id ?? sessionId, bot.id), whole: true })
     }
     case 'stop_bot': {
       const target = findBot(arg('bot')) ?? { name: arg('bot') ?? '…', color: 'gray' }

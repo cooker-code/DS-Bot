@@ -64,6 +64,26 @@ function runtime(t, saved) {
   return { rt, home, statePath, warnings, dispose }
 }
 
+test('refresh waits for subscribed consumers and keeps the existing sync callback', async (t) => {
+  const { rt } = runtime(t, { version: 1 })
+  await rt.load()
+  let legacy = 0
+  rt.onStoreSync = () => { legacy += 1 }
+  let release, started
+  const gate = new Promise(resolve => { release = resolve })
+  const entered = new Promise(resolve => { started = resolve })
+  let finished = false
+  const off = rt.onStoreSynced(async () => { started(); await gate })
+  const refreshing = rt.refresh().then(() => { finished = true })
+  await entered
+  assert.equal(finished, false)
+  release()
+  await refreshing
+  off()
+  await rt.refresh()
+  assert.equal(legacy, 2)
+})
+
 test('after migration the database is authoritative and the legacy snapshot is never refreshed', async t => {
   const { rt, statePath } = runtime(t, { version: 1, prefs: { marker: 'original' } })
   const original = fs.readFileSync(statePath)

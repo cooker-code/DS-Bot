@@ -21,7 +21,7 @@ import { LlmError, createUserMessage, isContextWindowExceededError } from '@deep
 import { openTurnAt } from './btw.js'
 import { HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './constants.js'
 import { assembleLlmStream } from './models.js'
-import { parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
+import { compressedRelayPreview, parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
 import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, checkpointTailNote, checkpointText, linesFor, parseDecision, stewardRequest } from './steward.js'
 import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, textOf } from './text.js'
@@ -113,7 +113,9 @@ export function readReply(text) {
     return { handoff: { callId: value.callId, reason: value.reason, note: typeof value.note === 'string' ? value.note : '', outcome: value.outcome === 'skipped' || value.outcome === 'returned' ? value.outcome : 'done' } }
   }
   const viewReplyData = readViewReply(text)
-  if (viewReplyData !== undefined) return viewReplyData
+  if (viewReplyData !== undefined) {
+    return typeof value.issueReportResult === 'string' ? { ...viewReplyData, issueReportResult: value.issueReportResult } : viewReplyData
+  }
   const questions = Array.isArray(value?.questions) ? value.questions.filter(item => typeof item?.id === 'string' && typeof item.question === 'string') : []
   if (questions.length === 0) return undefined
   const answers = (Array.isArray(value.answers) ? value.answers : []).filter(item => typeof item?.id === 'string' && Array.isArray(item.selected))
@@ -127,7 +129,10 @@ export function replyText(text) {
     const { reason, note, outcome } = reply.handoff
     return `[Browser handoff] ${note === '' ? reason : `${reason} — ${note}`}\nAnswer: ${outcome}`
   }
-  if (reply.views !== undefined) return viewReplyText(text)
+  if (reply.views !== undefined) {
+    const answer = viewReplyText(text)
+    return reply.issueReportResult === undefined ? answer : `${answer}\n${reply.issueReportResult}`
+  }
   return reply.questions.map((question) => {
     const answer = reply.answers.find(item => item.id === question.id)
     const values = [...(answer?.selected ?? []), ...(answer?.custom ? [answer.custom] : [])]
@@ -297,7 +302,7 @@ export function install(rt) {
   const condensing = new Set()
   // The range of a Bot Session DSH is condensing for a model switch, where the route the
   // Session used last is the one being switched away from.
-  const switchRanges = new Set()
+  const switchRanges = new Map()
   const refuseCompaction = () => Promise.reject(new Error(
     'A Bot conversation makes room on its own, and read_own_chat searches all of it.'))
   const isBotTarget = (target) => {
@@ -308,10 +313,10 @@ export function install(rt) {
   // Condenses a range of a Bot Session the way DS Bot condenses its own parts: the
   // session counts as condensing, so the summary hook writes DS Bot's checkpoint rather
   // than the backend writing one of its own.
-  async function condenseRange(target, run, { forSwitch = false } = {}) {
+  async function condenseRange(target, run, { forSwitch = false, range } = {}) {
     const sessionId = target.session.id
     condensing.add(sessionId)
-    if (forSwitch) switchRanges.add(sessionId)
+    if (forSwitch) switchRanges.set(sessionId, range)
     try {
       return await run()
     } finally {
@@ -350,7 +355,7 @@ export function install(rt) {
       // Without the summary hook the backend would summarize a Bot conversation itself,
       // so that case keeps the refusal.
       if (original.summarize === undefined) return refuseCompaction()
-      return condenseRange(target, () => original.compactRegion.call(this, start, end, target, signal), { forSwitch: true })
+      return condenseRange(target, () => original.compactRegion.call(this, start, end, target, signal), { forSwitch: true, range: { start, end } })
     }
     if (original.summarize !== undefined) {
       engine.summarize = function summarizeForBots(input, agent, signal) {
@@ -629,6 +634,15 @@ export function install(rt) {
     // of the Bot's own replies.
     const maxTokens = route.maxTokens
     const head = input.messages
+    // DSH compares against these selected nodes' route prices, not the attachment
+    // references' structural estimates. Snapshot before the summary request runs.
+    const range = switchRanges.get(session.id)
+    const nodes = range === undefined ? undefined : measureOf(session)?.nodes
+    const start = nodes?.findIndex(node => node.seq === range.start) ?? -1
+    const end = nodes?.findIndex(node => node.seq === range.end) ?? -1
+    const rangeTokens = start >= 0 && end >= start
+      ? nodes.slice(start, end + 1).reduce((total, node) => total + node.tokens, 0)
+      : undefined
     const tail = checkpointTail(head, session.deriveMessages())
     const prompt = tail.length === 0 ? CHECKPOINT_PROMPT : `${CHECKPOINT_PROMPT}\n\n${checkpointTailNote(tail)}`
     const written = await summaryThrough(session, route, { input, head, tail, prompt, maxTokens, signal })
@@ -642,12 +656,31 @@ export function install(rt) {
       group: place?.roomId !== undefined,
       number,
     })
-    const text = checkpointText({
-      number: checkpointCount(input.messages) + 1,
-      summary: written?.summary ?? NO_SUMMARY,
-      kept,
-      more,
-    })
+    const checkpoint = (summary, kept, more) => checkpointText({ number: checkpointCount(input.messages) + 1, summary, kept, more })
+    let summary = written?.summary ?? NO_SUMMARY
+    let text = checkpoint(summary, kept, more)
+    const meter = ctx.get?.('tokenMeter')
+    if (switchRanges.has(session.id) && typeof meter?.estimateMessage === 'function') {
+      // DSH prepends the system prompt to the summarizer input, but does not replace
+      // it. Reserve 112 tokens for its three-block checkpoint framing and headroom.
+      const replacedTokens = rangeTokens ?? input.messages.filter(message => message.role !== 'system')
+        .reduce((total, message) => total + meter.estimateMessage(message), 0)
+      const budget = Math.floor(replacedTokens * 0.95) - 112
+      const cost = text => meter.estimateMessage(createUserMessage({ content: [{ type: 'text', text }] }))
+      while (kept.length > 0 && cost(text) > budget) {
+        kept.shift()
+        text = checkpoint(summary, kept, true)
+      }
+      while (summary.length > 0 && cost(text) > budget) {
+        summary = summary.slice(0, Math.floor(summary.length * 0.75)).trimEnd()
+        text = checkpoint(summary, [], true)
+      }
+      if (cost(text) > budget) {
+        const minimal = 'Earlier context: read_own_chat.'
+        const marked = `[Checkpoint ${checkpointCount(input.messages) + 1}] ${minimal}`
+        text = cost(marked) <= budget ? marked : minimal
+      }
+    }
     return {
       summary: [{ type: 'text', text }],
       rawOutput: written?.rawOutput ?? [{ type: 'text', text: NO_SUMMARY }],
@@ -671,7 +704,7 @@ export function install(rt) {
     const routes = [{ provider: route.provider, model: route.model, ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}) }]
     if (forSwitch) {
       const bot = rt.selfOf(session.id) === undefined ? undefined : rt.botOf(rt.selfOf(session.id))
-      const ref = bot === undefined ? undefined : await Promise.resolve(rt.desiredModel?.(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId))).catch(() => undefined)
+      const ref = bot === undefined ? undefined : await Promise.resolve(rt.desiredModel?.(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId) ?? rt.protocolRoomOf?.(session.id))).catch(() => undefined)
       const wanted = splitRef(ref)
       if (wanted !== undefined && routes.every(one => one.provider !== wanted.provider || one.model !== wanted.model)) routes.push(wanted)
     }
@@ -957,7 +990,7 @@ export function install(rt) {
 
   const placeOf = (sessionId) => {
     const botId = rt.chatOwners.get(sessionId)
-    if (botId !== undefined) return { botId }
+    if (botId !== undefined) return { botId, ...(rt.protocolRoomOf?.(sessionId) ? { workRoomId: rt.protocolRoomOf(sessionId).id } : {}) }
     const owner = rt.groupOwners.get(sessionId)
     if (owner !== undefined) return { botId: owner.botId, roomId: owner.roomId }
     const roomId = rt.roomOwners.get(sessionId)
@@ -974,7 +1007,20 @@ export function install(rt) {
     const bot = rt.botOf(owner.botId)
     return owner.next ?? threadCurrentOfPart(bot, sessionId) ?? rt.chatOf(owner.botId)
   }
-  const grown = (sessionId, tokens, lines) => tokens >= (partBase.get(sessionId) ?? 0) + lines.check / 4
+  // Compaction sets partBase from an immediate estimate before the next provider
+  // response reports real usage; lower it when measured context shrinks so stale
+  // estimates cannot keep checkContext suppressed above the line.
+  const lowerPartBase = (sessionId, tokens) => {
+    if (tokens === undefined) return
+    const base = partBase.get(sessionId)
+    if (base !== undefined && tokens < base) partBase.set(sessionId, tokens)
+  }
+  const grown = (sessionId, tokens, lines) => {
+    const base = partBase.get(sessionId) ?? 0
+    // Crossing the hard line from below must still act even when base + check / 4 overshoots it.
+    if (tokens >= lines.hard && base < lines.hard) return true
+    return tokens >= base + lines.check / 4
+  }
   // A read-only process (another dsh holds the team) neither condenses nor switches.
   const readOnly = () => rt.readOnly() !== undefined
 
@@ -1177,7 +1223,7 @@ export function install(rt) {
   // earlier part's route. That route is what its last request used, which misses a model
   // the user picked since. A group's own Session has no Bot: see selectRoomSession.
   async function freshRoute(bot, session) {
-    const ref = await rt.desiredModel(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId))
+    const ref = await rt.desiredModel(bot, rt.roomOf(rt.groupOwners?.get(session.id)?.roomId) ?? rt.protocolRoomOf?.(session.id))
     if (ref !== undefined) return { ref, effort: await rt.desiredEffort(bot, ref) }
     const route = session.requestHeader()?.config
     return route?.provider && route?.model ? { ref: `${route.provider}/${route.model}`, effort: route.reasoningEffort } : undefined
@@ -1288,7 +1334,7 @@ export function install(rt) {
     if (bot === undefined) await rt.selectRoomSession(freshId)
     const picked = bot === undefined ? undefined : await freshRoute(bot, session)
     if (picked !== undefined && !await selectRoute({ name }, freshId, picked) && job.engine) engineRetry.set(freshId, Date.now() + FOLDER_RETRY_MS)
-    if (bot !== undefined) await rt.applyPermission(bot, freshId, room)
+    if (bot !== undefined) await rt.applyPermission(bot, freshId, room ?? rt.protocolRoomOf?.(agent.id))
       .catch(error => rt.warn('ds-bot: permission for the fresh part of %s not applied: %s', name, error))
     // The fresh part took several awaits: a Bot or group deleted meanwhile, a member that
     // left, or a part that is no longer the current one gets no fresh part.
@@ -1334,6 +1380,7 @@ export function install(rt) {
         delete state.views[agent.id]
       }
     }
+    rt.advanceProtocolPart?.(agent.id, freshId)
     await rt.save()
     // A model the user picked until now went to the earlier part, which was still the
     // Bot's; from here on a change goes to the fresh one.
@@ -1431,6 +1478,7 @@ export function install(rt) {
     if (localPart(agent.session)) return next()
     const lines = await contextLines(agent.session).catch(() => undefined)
     const tokens = tokensOf(agent.session)
+    if (fresh === undefined && tokens !== undefined && tokens > 0) lowerPartBase(agent.id, tokens)
     if (lines === undefined || tokens === undefined || tokens < lines.hard || !grown(agent.id, tokens, lines) || readOnly()) return next()
     if (await decide(agent, { midTurn: payload.step > 1 }) === 'compact' && await condense(agent, lines, { inTurn: true, signal: payload.signal })) return next()
     if (!await canMakeRoom(agent, payload.messages)) return next()
@@ -1616,6 +1664,7 @@ export function install(rt) {
     }
     const lines = await contextLines(agent.session)
     const tokens = tokensOf(agent.session)
+    lowerPartBase(agent.id, tokens)
     if (lines === undefined || tokens === undefined || tokens < lines.check || !grown(agent.id, tokens, lines)) return
     const hard = tokens >= lines.hard
     if ((!hard || summaryMode(agent.id)) && Date.now() < (noteFailures.get(agent.id)?.until ?? 0)) return
@@ -1642,6 +1691,7 @@ export function install(rt) {
     const lines = await contextLines(agent.session).catch(() => undefined)
     if (context === undefined || lines === undefined) return
     const tokens = context.used
+    lowerPartBase(agent.id, tokens)
     const condensed = context.compactions > (cliCompactions.get(agent.id) ?? 0)
     cliCompactions.set(agent.id, context.compactions)
     // Condensed past the check line and still there: a checkpoint that did not make
@@ -1858,7 +1908,10 @@ export function install(rt) {
         const text = textOf(message?.content)
         const range = relayRange(text)
         const room = range === undefined ? undefined : rt.roomOf(partId) ?? rt.roomOf(rt.pastOwners.get(partId)?.roomId)
-        const replies = range === undefined ? parseReplies(text).replies : room === undefined ? [] : rt.groupRows(room.id, range.from, range.to, range.anchor)
+        const preview = compressedRelayPreview(text)
+        const replies = range === undefined
+          ? (preview === undefined ? null : rt.groupRelayReplies(partId, preview)) ?? parseReplies(text).replies
+          : room === undefined ? [] : rt.groupRows(room.id, range.from, range.to, range.anchor)
         for (const { reply, texts, time, duration, claims, changes } of stackReplies(replies)) {
           // Reply rows take the reply's own time, and no seq: several rows share
           // the result event's seq, which the chat keys a post's anchor by.
@@ -1872,6 +1925,7 @@ export function install(rt) {
       }
       if (event.type !== 'user/message') continue
       const source = event.data?.source
+      if (source?.silent) continue
       if (source?.kind === 'user') {
         const content = Array.isArray(event.data.content) ? event.data.content : []
         const imageRefs = content.filter(block => block?.type === 'image' && block.attachment !== undefined)
@@ -2130,13 +2184,13 @@ export function install(rt) {
     return true
   }
 
-  async function makeBlankPart(bot, agent) {
-    const dir = rt.workDirOf({ botId: bot.id }) ?? rt.sessionFolder(agent.session)
-    const freshId = await rt.createSession(bot.name, { dir })
+  async function makeBlankPart(bot, agent, room) {
+    const dir = rt.workDirOf({ botId: bot.id, roomId: room?.id }) ?? rt.sessionFolder(agent.session)
+    const freshId = await rt.createSession(bot.name, { dir, groupMember: room !== undefined })
     try {
       const picked = await freshRoute(bot, agent.session)
       if (picked !== undefined) await selectRoute(bot, freshId, picked)
-      await rt.applyPermission(bot, freshId, undefined)
+      await rt.applyPermission(bot, freshId, room)
       return { freshId, picked }
     } catch (error) {
       await ctx.workspaceRegistry.archiveSession(freshId, { stopActivity: true })
@@ -2197,5 +2251,5 @@ export function install(rt) {
   }
   const deleteParts = (bot, ids) => deleteChatSessions(rt, bot, ids, switches, makeBlankPart)
 
-  Object.assign(rt, { editSessionList, deleteParts, clock, partsOf, partsOfThread, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, applySteps, followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
+  Object.assign(rt, { editSessionList, deleteParts, makeWorkPart: makeBlankPart, clock, partsOf, partsOfThread, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, applySteps, followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
 }

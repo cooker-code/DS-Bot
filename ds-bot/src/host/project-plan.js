@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { assistantId } from './project-assistant.js'
 import { workspacePolicyOf, usesGitWorkspace } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
@@ -28,6 +29,8 @@ export const planParameters = {
       writePaths: { type: 'array', items: { type: 'string' }, description: 'Exclusive files or directory subtrees relative to workDir. Use [] for read-only work. Include generated files.' },
       fixedOwner: { type: 'boolean', description: 'Require the planned owner across recoveries when the requirement names that person.' },
       independentReview: { type: 'boolean', description: 'The executor must not have produced any direct input.' },
+      mergeToDev: { type: 'boolean', description: 'Legacy integration node only. For new feature tasks use independentReview=true and writePaths=[] to test the fixed feature commit.' },
+      candidateCommit: { type: 'string', description: 'Only for testing an existing candidate from an older round without a verified code receipt. Pin its full commit in the revised plan.' },
       reuseRound: { type: 'integer', description: 'Revision only: reuse the identified, already approved output from this card.' },
     } } },
 }
@@ -109,6 +112,18 @@ export function savePlan(card, args, room, actor) {
     if (raw.workspaceReason != null) node.workspaceReason = field(raw.workspaceReason, 'the reason for the workspace choice', 500)
     if (raw.workspaceMode) node.workspaceMode = raw.workspaceMode
     if (raw.writePaths) node.writePaths = raw.writePaths
+    if (raw.mergeToDev) {
+      if (!prior?.mergeToDev) throw new Error('Keep feature validation on the feature branch. Plan an independent read-only test and arrange integration separately.')
+      if (!node.independentReview || !usesGitWorkspace(node) || node.writePaths?.length !== 0 || ['dev', 'main', 'master'].includes(node.workRef))
+        throw new Error('Test and merge requires independent review on a read-only candidate feature checkout.')
+      if (raw.candidateCommit) {
+        if (!latest || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(raw.candidateCommit) ||
+            dependsOn.some(no => args.nodes[no - 1]?.writePaths?.length))
+          throw new Error('Pin an existing candidate from a previous developer round.')
+        node.candidateCommit = raw.candidateCommit
+      } else if (!dependsOn.length) throw new Error('Depend on the developer candidate round.')
+      node.mergeToDev = 1
+    }
     if (raw.reuseRound != null) {
       const previous = card.rounds[raw.reuseRound - 1]?.planNode
       if (!Number.isSafeInteger(raw.reuseRound) || !previous?.acceptedAt || previous.version >= v) throw new Error('Reuse an approved artifact from an earlier plan of this card.')
@@ -116,7 +131,7 @@ export function savePlan(card, args, room, actor) {
     }
     return node
   })
-  if (latest?.nodes.slice(nodes.length).some(node => node.fixedOwner || node.independentReview))
+  if (latest?.nodes.slice(nodes.length).some(node => (node.fixedOwner || node.independentReview) && !(card.finishAfterIntegration?.version === latest.version && node.no > card.finishAfterIntegration.node)))
     throw new Error('A plan revision must preserve the existing constrained nodes.')
   for (const node of nodes.filter(n => n.reuseRound)) {
     const reused = card.rounds[node.reuseRound - 1]
@@ -146,7 +161,7 @@ export function savePlan(card, args, room, actor) {
   if (changesTree || gitNodes.some(n => !sameCheckout(n, first)))
     throw new Error('Use the same task worktree and branch for every Git step.')
   checkParallelScopes(nodes)
-  if (latest && nodeViews(card, latest).every(node => node.status === 'verified')) throw new Error('This task is complete.')
+  if (latest && nodeViews(card, latest).every(node => ['verified','omitted'].includes(node.status))) throw new Error('This task is complete.')
   if ((card.humanAcceptanceRequired || (card.humanReview && card.humanReview.status !== 'approved')) && nodes.every(node => node.reuseRound))
     throw new Error('Keep a final deliverable for the requested human acceptance.')
   const at = Date.now()
@@ -171,7 +186,9 @@ export function nodeViews(card, plan) {
     const number = numberOf(node)
     const round = card.rounds[number - 1]
     const waiting = node.dependsOn.filter(no => !card.rounds[numberOf(plan.nodes[no - 1]) - 1]?.planNode?.acceptedAt)
-    const status = round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
+    const omitted = card.finishAfterIntegration?.version === plan.version && node.no > card.finishAfterIntegration.node
+    const needsReceipt = card.finishAfterIntegration?.version === plan.version && node.no === card.finishAfterIntegration.node && card.finishAfterIntegration.needsReceiptRound
+    const status = omitted ? 'omitted' : needsReceipt ? 'blocked' : round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
     const workspace = round ? round.workspace : plan === card.plans.at(-1) ? taskWorkspaceFor(card, node) : undefined
     return { ...node, ...workspace, ownerId: round?.ownerId ?? node.ownerId, status, round: number || undefined, waiting }
   })
@@ -185,7 +202,35 @@ export function taskWorkspaceFor(card, node) {
   return pick
 }
 
+// Replace changed cards so the caller can roll the entire room mutation back.
+export function completeRelatedCards(cards) {
+  const children = new Map()
+  for (const [id, card] of Object.entries(cards ?? {})) {
+    if (!card.parentTaskId) continue
+    if (!children.has(card.parentTaskId)) children.set(card.parentTaskId, [])
+    children.get(card.parentTaskId).push(id)
+  }
+  const done = new Set()
+  for (const id of children.keys()) {
+    const card = cards[id]
+    if (card && (card.plans?.length ? plannedSummary(card).status : taskPhase(card, projectStatus(card.rounds?.at(-1)))) === 'done') done.add(id)
+  }
+  let changed = false
+  for (const parent of done) {
+    for (const id of children.get(parent) ?? []) {
+      const card = cards[id]
+      if (!card.completedWithTaskId) {
+        cards[id] = { ...card, completedWithTaskId: parent }
+        changed = true
+      }
+      done.add(id)
+    }
+  }
+  return changed
+}
+
 export function planStage(views) {
+  views = views.filter(n => n.status !== 'omitted')
   return ['active', 'blocked', 'failed', 'review', 'delivered', 'assigned'].find(s => views.some(n => n.status === s))
     ?? (views.every(n => n.status === 'verified') ? 'verified' : views.some(n => n.status === 'ready') ? 'planned' : 'blocked')
 }
@@ -199,13 +244,19 @@ export function plannedSummary(card) {
   const started = current.filter(r => Number.isFinite(r.startedAt))
   const submissions = current.map(r => r.submittedAt).filter(Number.isFinite)
   const stops = (started.length ? started : current).map(r => r.planNode?.block?.at ?? r.failedAt).filter(Number.isFinite)
-  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.planNode?.acceptedAt ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
+  const updatedAt = card.rounds.reduce((time, r) => Math.max(time, r.retries?.at(-1)?.at ?? 0, r.planNode?.acceptedAt ?? 0, r.mergeReceipt?.at ?? 0, r.submittedAt ?? 0, r.failedAt ?? 0, r.planNode?.checkpointAt ?? 0, r.planNode?.lateAt ?? 0, r.planNode?.block?.at ?? 0, r.planNode?.block?.decisions.at(-1)?.at ?? 0, r.startedAt ?? 0, r.sentAt ?? 0, r.assignedAt ?? 0), plan.at)
   const awaitingCode = status === 'review' && views.some(node => {
     const run = card.rounds[node.round - 1]
     return codeDelivery(card, run, node) && !run?.mainReview
   })
-  return { status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
-    startedAt: started.length ? Math.min(...started.map(r => r.startedAt)) : undefined,
+  const validating = status === 'active' && current.find(r => r.mergeReceipt && !r.submittedAt)
+  const validationProgress = views.filter(n => n.status !== 'omitted').flatMap(n => {
+    const run = card.rounds[n.round - 1]
+    if (!run?.validation) return []
+    const { checking, passed } = run.validation
+    return [{ round: n.round, checking: n.status === 'active' ? checking : undefined, checksComplete: run.validation.checksComplete, cleaned: Boolean(run.validation.cleanup), lastPassed: passed.at(-1)?.name, passedCount: passed.length, submitted: Boolean(run.submittedAt) }]
+  })
+  return { ...(validationProgress.length && { validationProgress }), ...(validating && { validatingMerge: validating.mergeReceipt }), status: taskPhase(card, status, awaitingCode), version: plan.version, owners: [...new Set(current.map(r => r.ownerId))], ownerId: round?.ownerId,
     submittedAt: submissions.length && submissions.length === current.length ? Math.max(...submissions) : undefined,
     stoppedAt: stops.length ? Math.max(...stops) : undefined, updatedAt }
 }
@@ -224,6 +275,8 @@ export function dispatchNode(card, args, room, actor, assignment) {
   checkOwner(room, actor, node.ownerId)
   const inputs = node.dependsOn.map(no => ({ node: no, round: views[no - 1].round }))
   if (node.independentReview && inputs.some(i => card.rounds[i.round - 1].ownerId === node.ownerId)) throw new Error('The review must be independent of upstream producers. Revise the plan before dispatch.')
+  if (node.mergeToDev && !node.candidateCommit && inputs.filter(i => card.rounds[i.round - 1].mainReview?.commit).length !== 1)
+    throw new Error('Test and merge requires one approved code candidate.')
   const round = assignment(node.ownerId, node.instructions)
   const workspace = taskWorkspaceFor(card, plan.nodes[node.no - 1])
   if (workspace) round.workspace = workspace
@@ -254,14 +307,57 @@ export function nodeHandoff(card, round) {
       'Completed checks: ' + (old.planNode.completed || 'No checks recorded'), 'Remaining checks: ' + decision.remaining,
       'Verified working folder: ' + decision.targetTree.dir, 'Worktree review: ' + decision.worktreeReview,
       ...(decision.targetTree.commit ? ['Expected commit: ' + decision.targetTree.commit] : [])] : []),
+    ...(card.rounds.some(r => r.ownershipTransfer?.version === binding.version && r.ownershipTransfer.node === node.no && r.ownershipTransfer.retainedChanges)
+      ? ['Continue with the existing uncommitted changes in this checkout. Inspect the diff against the revised requirement and preserve the previous work.'] : []),
+    ...(node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && binding.inputs.some(i => card.rounds[i.round - 1].mainReview?.commit)
+      ? ['Validate the approved feature candidate against the acceptance criteria. Choose only checks needed to answer them; label extra coverage as a test method. Use project_task checkpoint with checking when a check begins and passedCheck plus evidence when it passes. Reuse existing results and artifact paths. Set checksComplete on the final passing check. After cleanup is verified, submit with cleanupEvidence only. The host creates the receipt; no separate report file or code commit is required.'] : []),
     'Plan v' + binding.version + ' · Node ' + node.no + ': ' + node.title,
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),
     ...(node.writePaths || round.workspace ? ['Before starting, use working_directory to enter the assigned working folder above. Confirm the branch and run project_task start before editing.'] : []),
-    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. It must be contained in local main or master. If integration needs authorization, report the blocker.' : 'Read-only assignment. Do not edit files.'] : []),
+    ...(node.writePaths ? [node.writePaths.length ? 'Edit only these files or subtrees (including generated output): ' + node.writePaths.join(', ') + '. Stage and commit only your own paths. Supply the full delivery commit on submit. The host verifies it on your assigned branch. Keep the candidate on the feature branch for independent testing.' : node.mergeToDev ? 'Keep the candidate checkout read-only.' : 'Read-only assignment. Do not edit files.'] : []),
+    ...(node.mergeToDev ? ['Test the exact candidate ' + (node.candidateCommit ?? binding.inputs.map(i => card.rounds[i.round - 1].mainReview?.commit).filter(Boolean).join(', ')) +
+      ' using the assigned checkout. After passing, merge that immutable commit into local dev in its verified checkout, preserve other work, and immediately call record_merge with commit and mergeCommit. Then verify the integrated result. The candidate checkout remains read-only. Submit the test report, candidate commit and exact testedCommit on dev. Later changes to dev do not invalidate that snapshot. If tests fail, call return_for_changes with evidence and concrete feedback for the developer. Use block for an environment impediment.'] : []),
     ...binding.inputs.map(input => {
       const prev = card.rounds[input.round - 1]
       return 'Approved input from node ' + input.node + ', round ' + input.round + ': ' + prev.planNode.artifact + '\n' + prev.result
     }),
   ].join('\n')
+}
+
+export function finishSubmittedPlan(card) {
+  const plan = card.plans?.at(-1)
+  if (!plan || card.completedWithTaskId || card.clarification || card.humanReview?.version === plan.version) return false
+  const views = nodeViews(card, plan)
+  if (views.some(n => !['verified', 'review', 'omitted'].includes(n.status))) return
+  const pending = views.filter(n => n.status === 'review')
+  if (pending.some(node => {
+    const round = card.rounds[node.round - 1]
+    return !round?.result || (codeDelivery(card, round, node) && !round.mainReview) || (node.mergeToDev && !round.integration)
+  })) return false
+  for (const node of pending) {
+    const round = card.rounds[node.round - 1]
+    const delivery = { version: plan.version, node: node.no, round: node.round,
+      artifact: round.mainReview?.commit ?? (round.result.length <= 2000 ? round.result : 'Task ' + card.id + ', plan v' + plan.version + ', round ' + node.round) }
+    if (node === pending.at(-1) && card.humanAcceptanceRequired) requestAcceptance(card, delivery)
+    else approveRound(card, delivery, 'system')
+  }
+  return pending.length > 0
+}
+
+export function requestAcceptance(card, args) {
+  const plan = card.plans.at(-1)
+  const nodes = nodeViews(card, plan)
+  const node = nodes.find(n => n.no === args.node)
+  if (plan.version !== args.version || !node || node.round !== args.round || node.status !== 'review' ||
+      nodes.some(n => n !== node && !['verified', 'omitted'].includes(n.status))) throw new Error('Request human acceptance for the final submitted node.')
+  const artifact = field(args.artifact, 'the artifact to review', 2000)
+  const current = card.humanReview
+  if (current?.version === args.version && current.round === args.round) {
+    if (current.artifact === artifact && current.status === 'pending') return
+    throw new Error('Revise the plan before requesting acceptance of a different delivery.')
+  }
+  if (current) (card.previousReviews ??= []).push(current)
+  card.humanReview = { id: randomUUID(), version: args.version, node: args.node, round: args.round,
+    artifact, requestedAt: Date.now(), status: 'pending' }
 }

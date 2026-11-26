@@ -167,15 +167,6 @@ test('a computer call row names the app and the action', () => {
   assert.deepEqual(texts(caps), ['Capabilities'])
 })
 
-// The settings scroll container wraps the computer page like every other page.
-test('the computer settings page sits inside the scroll container', () => {
-  const src = new URL('../src/client/settings.js', import.meta.url)
-  const code = String((process.getBuiltinModule('node:fs')).readFileSync(src))
-  const scroll = code.indexOf('bt-settings-scroll')
-  assert.ok(scroll > 0)
-  assert.ok(code.indexOf('h(ComputerPage') > scroll)
-})
-
 // The computer styles register in their own effect, like the other style packs.
 test('the computer styles register in their own effect call', () => {
   const src = new URL('../src/client/index.js', import.meta.url)

@@ -6,6 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LEGACY_THEMES, MAX_EXCHANGES, ROOM_MODES, SECTION_COLORS, SECTION_NAME_MAX, TEXT_KEPT } from './constants.js'
 import { splitTeamStorage } from './team-storage/split.js'
+import { completeRelatedCards, finishSubmittedPlan } from './project-plan.js'
 import { teamSnapshot } from './team-storage/member-settings.js'
 import { homeLock } from './home-lock.js'
 import { currentColor, headOf, normalize, unquote } from './text.js'
@@ -28,6 +29,14 @@ export function install(rt) {
   let loaded = null
   let storeReady = false
   let writing = Promise.resolve()
+  const syncListeners = new Set()
+  const onStoreSynced = listener => { syncListeners.add(listener); return () => syncListeners.delete(listener) }
+  const notifyStoreSync = () => {
+    rt.onStoreSync?.()
+    return Promise.all([...syncListeners].map(async (listener) => {
+      try { await listener() } catch (error) { rt.warn('ds-bot: store sync listener failed: %s', error?.code ?? 'unknown') }
+    }))
+  }
   const { warn } = rt
   const sessionIdOf = id => (typeof id === 'string' && id !== '' ? id : undefined)
 
@@ -181,6 +190,10 @@ export function install(rt) {
         }
         migrated = true
       }
+      for (const card of Object.values(room.projectCards ?? {})) {
+        if (typeof card.humanAcceptanceRequired === 'boolean' && finishSubmittedPlan(card)) migrated = true
+      }
+      if (completeRelatedCards(room.projectCards)) migrated = true
       for (const task of Object.values(room.tasks ?? {})) {
         if (task?.status === 'blocked' && task.blocked?.cause === 'failed') {
           task.status = 'failed'
@@ -317,7 +330,7 @@ export function install(rt) {
   const syncReadOnly = () => {
     if (storeReady && adopting === undefined && (stuck !== undefined || holder !== undefined) && stamp() !== seen) {
       adopt(readFileState())
-      rt.onStoreSync?.()
+      void notifyStoreSync()
     }
   }
 
@@ -326,7 +339,7 @@ export function install(rt) {
     if (holder !== undefined) warn('ds-bot: %s', readOnly())
     const { migrated, stale } = adopt(readFileState())
     storeReady = true
-    rt.onStoreSync?.()
+    void notifyStoreSync()
     if (holder !== undefined) return
     if (migrated && stuck === undefined) {
       // A failed write must not poison `loaded`: the migrated state stays in
@@ -388,7 +401,7 @@ export function install(rt) {
         warn('ds-bot: the other dsh has closed; this one now saves the Bot team')
         warnedReadOnly = false
         adopt(readFileState())
-        rt.onStoreSync?.()
+        await notifyStoreSync()
         return
       }
     } else if (!lockBroken && !lock.owns()) {
@@ -399,21 +412,21 @@ export function install(rt) {
       if (lockBroken) return
       if (holder === undefined) {
         await reclaimHeld()
-        rt.onStoreSync?.()
+        await notifyStoreSync()
         return
       }
       warn('ds-bot: %s', readOnly())
     }
     if (adopting !== undefined) {
       await adopting
-      rt.onStoreSync?.()
+      await notifyStoreSync()
       return
     }
     if (stamp() !== seen) {
       if (stuck !== undefined || holder !== undefined) adopt(readFileState())
       else await adoptAfterReclaim()
     }
-    rt.onStoreSync?.()
+    await notifyStoreSync()
   }
 
   const warnReadOnly = () => {
@@ -673,7 +686,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    teamStorage: storage, state, load, save, refresh, readOnly, hasLoaded, syncReadOnly, own, onSaved, closeCard,
+    teamStorage: storage, state, load, save, refresh, readOnly, hasLoaded, syncReadOnly, onStoreSynced, own, onSaved, closeCard,
     botOf, roomOf, isMain, chatOf, sessionOfRoom, selfOf, isBotSession,
     indexSessions, chatOwners, groupOwners, roomOwners, pastOwners,
     groupSessionsOf, dropGroupSession, retireGroupSession, findBot, findRooms, isAdminOf,

@@ -6,9 +6,8 @@ import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PROVIDER = 'ds-bot-goal'
-const SKILL = 'goal-grill'
-const DIRECTORY = join(dirname(fileURLToPath(import.meta.url)), 'skills', SKILL)
-const LOCATOR = join(DIRECTORY, 'SKILL.md')
+const SKILLS = ['goal-grill', 'report-ds-bot-issue']
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), 'skills')
 
 function parseSkill(raw, path) {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(raw)
@@ -20,10 +19,12 @@ function parseSkill(raw, path) {
   return { description: metadata.description, content: raw.slice(frontmatter[0].length).trim() }
 }
 
-function candidate() {
+function candidate(name) {
+  const DIRECTORY = join(ROOT, name)
+  const LOCATOR = join(DIRECTORY, 'SKILL.md')
   const { description } = parseSkill(readFileSync(LOCATOR, 'utf8'), LOCATOR)
   return {
-    name: SKILL, description,
+    name, description,
     invocation: { modelInvocable: true, userInvocable: true },
     provider: PROVIDER, source: 'bundled', rank: 550,
     resourceBase: { kind: 'directory', path: DIRECTORY.split(sep).join('/') },
@@ -32,7 +33,7 @@ function candidate() {
 }
 
 export function goalProvider() {
-  const all = [candidate()]
+  const all = SKILLS.map(candidate)
   return {
     name: PROVIDER,
     list: () => Promise.resolve(all),

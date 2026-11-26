@@ -101,7 +101,8 @@ const bot = { id: 'a', name: 'Chief', sessionId: 'a' }
 const room = { id: 'g', name: 'Writers', named: true, members: ['a'] }
 const roster = { byId: { a: bot }, roomsById: { g: room }, bots: [], exchangeTurns: {}, questions: {}, memory: false }
 const hook = value => select => select(value)
-const drawer = (sessionId, actions, liveRoster = roster) => DetailsDrawer({
+const drawer = (sessionId, actions, liveRoster = roster, options = {}) => DetailsDrawer({
+  ...options,
   sessionId, roster: liveRoster, actions,
   useSessions: hook({ byId: {} }),
   useSessionStatus: hook(new Map()),
@@ -131,37 +132,32 @@ const menuItem = (node, key) => {
   return [...(button?.children.flat(Infinity).find(child => child?.props?.items)?.props?.items ?? [])].find(item => item.key === key)
 }
 
-test('the drawer `···` lists browser, a side chat, and the column tabs', () => {
-  const picks = { openBrowser: 0, newSideChat: 0, newTerminal: 0, openFiles: 0 }
-  const actions = {
-    ...Object.fromEntries(Object.keys(picks).map(name => [name, () => { picks[name] += 1 }])),
-    canOpenTerminal: () => true,
-    canOpenFiles: () => true,
-  }
-  const browseRoster = { ...roster, browser: true }
-  const withBrowser = drawer('a', actions, browseRoster)
-  assert.deepEqual(menuKeys(withBrowser), ['browser', 'side', 'sep', 'terminal', 'files'])
-  for (const key of ['browser', 'side', 'terminal', 'files']) {
-    const action = { browser: 'openBrowser', side: 'newSideChat', terminal: 'newTerminal', files: 'openFiles' }[key]
-    menuItem(withBrowser, key).onPick()
-    assert.equal(picks[action], 1, `${key} runs ${action}`)
-  }
-})
-
 test('a bot in a window without a browser still gets Side chat in the `···`', () => {
   assert.deepEqual(menuKeys(drawer('a', {})), ['side'])
 })
 
-test('a group keeps only the column tabs, and nothing when they are absent', () => {
-  const actions = { canOpenTerminal: () => true, canOpenFiles: () => true, newTerminal: () => {}, openFiles: () => {} }
-  assert.deepEqual(menuKeys(drawer('g', actions)), ['terminal', 'files'])
-  let opened = 0
-  const withBrowser = drawer('g', { ...actions, canOpenSidebarBrowser: () => true, openSidebarBrowser: () => { opened += 1 } })
-  assert.deepEqual(menuKeys(withBrowser), ['terminal', 'files', 'sidebar-browser'])
-  menuItem(withBrowser, 'sidebar-browser').onPick()
-  assert.equal(opened, 1)
-  assert.equal(moreButton(drawer('g', {})), null)
-  assert.equal(moreButton(drawer('g', { canOpenTerminal: () => false })), null)
+test('the group menu follows the host guide and opens the chosen kind for the room', () => {
+  const entries = [
+    { providerId: 'files', kind: 'files', id: 'new', title: () => '文件' },
+    { providerId: 'extension', kind: 'diagnostics', id: 'new', title: () => '会话数据诊断' },
+  ]
+  const picks = []
+  const actions = {
+    sidebarGuide: { getSnapshot: () => entries, subscribe: () => () => {} },
+    openConversationTab: (...args) => picks.push(args),
+  }
+  const group = drawer('g', actions)
+  const keys = entries.map(entry => JSON.stringify([entry.providerId, entry.id]))
+  assert.deepEqual(menuKeys(group), keys)
+  assert.equal(menuItem(group, keys[1]).label, '会话数据诊断')
+  menuItem(group, keys[1]).onPick()
+  assert.deepEqual(picks, [['diagnostics', 'g']])
+  const privateChat = drawer('a', { ...actions, openBrowser() {} }, { ...roster, browser: true })
+  assert.deepEqual(menuKeys(privateChat), ['browser', 'side', 'sep', ...keys])
+  menuItem(privateChat, keys[1]).onPick()
+  assert.deepEqual(picks[1], ['diagnostics', 'a'])
+  entries.length = 0
+  assert.equal(moreButton(drawer('g', actions)), null)
 })
 
 test('a non-team surface shows no `···`', () => {
@@ -233,8 +229,11 @@ const hostStrings = (node, out = []) => {
   return out
 }
 const editable = (patch, actions = {}) => drawer('a', actions, { ...roster, byId: { a: { ...bot, ...patch } } })
-const aboutOf = (tree) => { const [about] = named(tree, 'About'); return about.type(about.props) }
-const fieldOf = about => about.children.find(child => child?.props?.onSave)
+const markdownSetting = tree => named(tree, 'MarkdownSetting')[0] ?? named(tree, 'MarkdownSetting', true)[0]
+const readSetting = setting => {
+  const field = setting.type(setting.props)
+  return field.type(field.props)
+}
 
 test('the drawer label is a field that saves the Bot role, like the Settings page', async () => {
   const saved = []
@@ -253,18 +252,17 @@ test('a refused save of the label or the instructions does not throw out of the 
   const tree = editable({ role: 'Writer', instructions: '' }, { updateBot: () => Promise.reject(new Error('refused')) })
   const [label] = named(tree, 'BotLabel')
   await label.type(label.props).props.onSave('Editor')
-  await fieldOf(aboutOf(tree)).props.onSave('Drafts notes.')
+  await markdownSetting(tree).props.onSave('Drafts notes.')
 })
 
-test('a Bot without instructions gets a field in the drawer, not a way into Settings', async () => {
+test('empty instructions start in reading mode and save to the selected Bot', async () => {
   const saved = []
   const tree = editable({ instructions: undefined }, { updateBot: (id, patch) => { saved.push(JSON.stringify([id, patch])); return Promise.resolve() } })
   assert.equal(hostStrings(tree).some(text => text.includes('Bot settings')), false)
-  const field = fieldOf(aboutOf(tree))
-  assert.equal(field.props.multiline, true)
+  const field = markdownSetting(tree)
+  assert.ok(buttonsOf(readSetting(field)).some(button => textOf(button) === 'Edit'))
   assert.equal(field.props.label, 'Instructions')
   assert.equal(field.props.placeholder, 'What this Bot is responsible for…')
-  assert.equal(field.props.autoFocus, false)
   assert.equal(field.props.value, '')
   const instructions = '## Writing\n\n- Draft **release notes**.'
   await field.props.onSave(instructions)
@@ -272,26 +270,25 @@ test('a Bot without instructions gets a field in the drawer, not a way into Sett
 })
 
 test('a Bot renders its Markdown instructions with a separate edit button for keyboard users', () => {
-  const instructions = '## Writing\n\n- Draft **notes** from the [brief](https://example.org/brief).'
-  const read = aboutOf(editable({ instructions }))
-  assert.equal(fieldOf(read), undefined)
-  const text = read.children.find(child => child?.props?.className === 'bt-about')
+  const instructions = '## Writing\n\n' + '- Draft **notes** from the [brief](https://example.org/brief).\n'.repeat(12)
+  const read = readSetting(markdownSetting(editable({ instructions })))
+  const text = read.children.find(child => child?.props?.className === 'bt-project-markdown')
   assert.equal(text.props.role, undefined)
-  assert.equal(typeof text.props.onClick, 'function')
+  assert.equal(text.props.onClick, undefined)
   const [markdown] = named(text, 'MarkdownText')
   assert.equal(markdown.props.text, instructions)
   assert.equal(markdown.props.variant, 'compact')
   assert.ok(buttonsOf(read).some(button => textOf(button) === 'Edit'))
 })
 
-test('the drawer renders the complete group notice as read-only Markdown', () => {
-  const notice = '## Release\n\n- **Review** the [plan](https://example.org/plan).\n- Keep `[taskId]` in the notice.'
+test('the drawer renders the complete group notice as editable Markdown', () => {
+  const notice = '## Release\n\n' + '- **Review** the [plan](https://example.org/plan).\n'.repeat(12)
   const noticeRoster = { ...roster, roomsById: { g: { ...room, notice } } }
   const tree = drawer('g', {}, noticeRoster)
-  const [about] = named(tree, 'About', true)
-  assert.equal(about.props.onSave, undefined)
-  const shown = about.type(about.props)
-  const text = shown.children.find(child => child?.props?.className === 'bt-about')
+  const about = markdownSetting(tree)
+  assert.equal(typeof about.props.onSave, 'function')
+  const shown = readSetting(about)
+  const text = shown.children.find(child => child?.props?.className === 'bt-project-markdown')
   assert.equal(text.props.role, undefined)
   assert.equal(text.props['data-editable'], undefined)
   const [markdown] = named(text, 'MarkdownText')
@@ -302,13 +299,13 @@ test('the drawer renders the complete group notice as read-only Markdown', () =>
 test('the Bot label and instructions are keyed by Bot id and stay read-only when another dsh holds the team', () => {
   const writable = editable({ role: 'Writer', instructions: 'Drafts notes.' })
   assert.equal(named(writable, 'BotLabel')[0].props.key, 'role:a')
-  assert.equal(named(writable, 'About')[0].props.key, 'about:a')
+  assert.equal(markdownSetting(writable).props.key, 'about:a')
 
   const locked = drawer('a', {}, { ...roster, readOnly: 'Another dsh holds this team.', byId: { a: { ...bot, role: 'Writer', instructions: 'Drafts notes.' } } })
   assert.equal(named(locked, 'BotLabel').length, 0)
-  const [about] = named(locked, 'About')
+  const about = markdownSetting(locked)
   assert.equal(about.props.onSave, undefined)
-  const read = about.type(about.props)
+  const read = readSetting(about)
   assert.equal(named(read, 'MarkdownText')[0].props.text, 'Drafts notes.')
   assert.equal(buttonsOf(read).length, 0)
 })
@@ -404,7 +401,7 @@ test('one activity-sorted list names each private or group part by owner and num
     { id: 'data', name: 'Data', memberSessions: { a: [{ id: 'd-now', number: 1, current: true }] } },
   ]
   const rendered = sessions.type({ ...sessions.props, rooms, running: { 'd-now': true },
-    actions: { ...sessions.props.actions, openSession: id => opened.push(id) },
+    actions: { openMemberSession: (...args) => opened.push(args) },
     useSessions: hook({ byId: Object.fromEntries(['a', 'g-old', 'g-now', 'd-now'].map((id, i) =>
       [id, { createdAt: 1000, updatedAt: 2000 + i }])) }) })
   assert.equal(named(rendered, 'section').length, 0)
@@ -420,6 +417,68 @@ test('one activity-sorted list names each private or group part by owner and num
   assert.match(textOf(rows[0]), /Running/)
   assert.doesNotMatch(textOf(rows[2]), /Current|Running/)
   for (const row of rows.slice(0, 3)) row.props.onClick()
-  assert.deepEqual(opened, ['data', 'eng', 'eng'])
+  assert.deepEqual(opened, [['data', 'a', 'd-now'], ['eng', 'a', 'g-now'], ['eng', 'a', 'g-old']])
   assert.equal(rows[3].props.disabled, true)
+})
+
+test('a member in group details opens that group’s current member session', () => {
+  const calls = []
+  const actions = { openMemberSession: (...args) => calls.push(args) }
+  const [overview] = named(drawer('g-part2', actions, movedRoster()), 'GroupOverview')
+  const [section] = named(overview.type(overview.props), 'MembersSection')
+  const [row] = named(section.children, 'MemberRow')
+  const open = buttonsOf(row.type(row.props)).find(button => button.props.className === 'bt-member-open')
+  open.props.onClick()
+  assert.deepEqual(calls, [['g', 'a']])
+})
+
+test('member details highlight the viewed segment and let the user return to the current private chat', async () => {
+  const calls = []
+  const [sessions] = named(editable({}), 'BotSessions')
+  const rooms = [{ id: 'eng', name: 'Engineering', memberSessions: { a: [
+    { id: 'old', number: 1 }, { id: 'now', number: 2, current: true },
+  ] } }]
+  const rendered = sessions.type({ ...sessions.props, rooms, viewingMember: true, memberSessionId: 'old',
+    actions: { openSession: id => calls.push(id) } })
+  const rows = buttonsOf(rendered).filter(row => row.props.className?.split(' ').includes('bt-agent-session'))
+  assert.deepEqual(rows.filter(row => row.props.className.includes('is-current')).map(row => row.props.key), ['old'])
+  const personal = rows.find(row => row.props.key === 'a')
+  assert.equal(Boolean(personal.props.disabled), false)
+  await personal.props.onClick()
+  assert.deepEqual(calls, ['a'])
+})
+
+test('context uses the visible group part or private chat without substituting the Bot identity', () => {
+  const calls = []
+  const guide = [{ providerId: 'context', kind: 'ctx', id: 'inspect', title: () => 'Context' }]
+  const actions = {
+    sidebarGuide: { getSnapshot: () => guide, subscribe: () => () => {} },
+    openConversationTab: (...args) => calls.push(args),
+  }
+  const key = JSON.stringify(['context', 'inspect'])
+  for (const memberSessionId of ['group-2', 'group-1']) {
+    menuItem(drawer('a', actions, roster, { viewingMember: true, memberSessionId }), key).onPick()
+  }
+  const privateRoster = { ...roster, byId: { a: { ...bot, sessionId: 'private-3' } } }
+  menuItem(drawer('a', actions, privateRoster), key).onPick()
+  assert.deepEqual(calls, [['ctx', 'group-2'], ['ctx', 'group-1'], ['ctx', 'private-3']])
+  assert.equal(menuItem(drawer('a', actions, roster, { viewingMember: true }), key).disabled, true)
+})
+
+test('archived member menus keep embedded Context available and explain disabled native plugins', () => {
+  const kinds = ['dsh-context', 'files', 'terminal', 'other-extension']
+  const guide = kinds.map(kind => ({ kind, id: kind, title: () => kind }))
+  const actions = { sidebarGuide: { getSnapshot: () => guide, subscribe: () => () => {} }, hasContextView: () => true }
+  const reason = 'This session is archived.'
+  const items = options => kinds.map(kind => menuItem(drawer('a', actions, roster, options), JSON.stringify([kind, kind])))
+  const old = { viewingMember: true, memberSessionId: 'group-1', archivedReason: reason }
+  const [context, ...native] = items(old)
+  assert.equal(context.disabled, false)
+  assert.ok(native.every(item => item.disabled && item.reason === reason))
+  for (const options of [{ viewingMember: true, memberSessionId: 'group-2' }, {}]) {
+    assert.ok(items(options).every(item => !item.disabled && !item.reason))
+  }
+  actions.hasContextView = () => false
+  assert.equal(items(old)[0].disabled, true)
+  assert.match(items(old)[0].reason, /Enable the conversation tab/)
 })
