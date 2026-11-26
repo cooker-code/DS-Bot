@@ -8,5 +8,20 @@
   "pageErrors": [],
   "remainingChromeFiles": [],
   "remainingOwnedProcesses": [],
-  "scriptExited": true
+  "scriptExited": true,
+  "deployment": {
+    "url": "http://127.0.0.1:4179",
+    "branch": "chore/upstream-weight-help",
+    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+    "assetsMatchCandidate": true,
+    "previewStopped": true,
+    "devUnchanged": true,
+    "scoresUnchanged": true
+  },
+  "independentReview": {
+    "result": "passed",
+    "candidate": "6d273daffb46c2b0308082df22afbc7b4590fdc7",
+    "recordedAt": "2026-11-26T14:59:55+08:00",
+    "scope": "评分说明、4个入口、ARIA、互斥与旧帮助行为；复用真实浏览器证据"
+  }
 }
