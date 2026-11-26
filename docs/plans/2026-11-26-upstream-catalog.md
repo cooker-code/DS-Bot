@@ -1,7 +1,7 @@
-# 上游同步台账、增量更新与PR管理页（设计草案）
+# 上游同步台账、增量更新与PR管理页
 
 - 日期：2026-11-26
-- 状态：规则修改与现状复核已完成；本设计待用户确认，SQLite、服务和HTML尚未实现。
+- 状态：用户2026-11-26批准方案；SQLite、本地服务、HTML和PR2028已实施，固定候选验收与部署结果另记。
 - 相关：[PR2028复核](../reviews/2026-11-26-upstream-2028-review.md)、[同步技能](../../.agents/skills/sync-upstream/SKILL.md)。
 
 ## 为什么
@@ -14,7 +14,7 @@
 - 每个PR提供问题/触发场景、改了什么、实际用法与例子、本地价值和限制、来源链接；暂缓和需讨论给具体差异、原因、解法与验收条件。
 - 同步不动dev，在专用分支进行；实际采用结果、验证与版本继续记录upstream-changelog.md。
 
-## 待确认的具体方案
+## 实现方案
 
 ### 本地SQLite与HTML
 
@@ -53,7 +53,7 @@
 
 ## 数据模型草案
 
-以下DDL是拟实现契约，尚未执行。所有时间保存含时区的ISO8601，展示用Asia/Taipei；历史不明时间为NULL，不用本次导入时间假充原发生时间。
+以下DDL描述当前数据契约，具体建表由scripts/upstream_catalog/store.py统一维护。所有时间保存含时区的ISO8601，展示用Asia/Taipei；历史不明时间为NULL，不用本次导入时间假充原发生时间。
 
 ```sql
 CREATE TABLE sources (
@@ -88,6 +88,7 @@ CREATE TABLE prs (
   analyzed_at TEXT, -- 最近实质评估时间
   updated_at TEXT NOT NULL, -- 当前记录变更时间
   revision INTEGER NOT NULL DEFAULT 1, -- 并发编辑版本
+  needs_review INTEGER NOT NULL DEFAULT 0, -- 本地变化后需重审
   PRIMARY KEY(repo_id,number)
 );
 CREATE TABLE preferences (
@@ -109,7 +110,7 @@ CREATE TABLE sync_runs (
   local_sha TEXT NOT NULL, -- 本地比较基线
   started_at TEXT NOT NULL, -- 开始时间
   completed_at TEXT, -- 完成时间
-  outcome TEXT NOT NULL CHECK(outcome IN ('running','complete','failed')), -- 运行结果，不是采用状态
+  outcome TEXT NOT NULL CHECK(outcome IN ('running','complete','failed','needs_analysis')), -- 运行结果，不是采用状态
   error TEXT -- 失败原因
 );
 CREATE TABLE events (
@@ -123,6 +124,10 @@ CREATE TABLE events (
   recorded_at TEXT NOT NULL, -- 发生/记录时间
   run_id INTEGER REFERENCES sync_runs(id), -- 可选关联批次
   FOREIGN KEY(repo_id,pr_number) REFERENCES prs(repo_id,number)
+);
+CREATE TABLE metadata (
+  key TEXT PRIMARY KEY, -- 台账元数据名称
+  value TEXT NOT NULL -- JSON值：Markdown摘要、导出事件游标和按SHA缓存的直接提交
 );
 CREATE INDEX prs_status_weight ON prs(status,weight DESC,number);
 CREATE INDEX prs_group ON prs(dependency_group);
@@ -145,4 +150,4 @@ CREATE INDEX prs_group ON prs(dependency_group);
 
 ## 变更
 
-- 2026-11-26：按用户要求确定四状态和逐PR功能解释，提出增量台账与筛选/标记页面；等待实施方案确认。
+- 2026-11-26：按用户要求确定四状态和逐PR功能解释，提出增量台账与筛选/标记页面；用户批准后实现，包含去重、选择、增量、导出和来源/本地变更校验。

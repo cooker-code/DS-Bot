@@ -1,6 +1,16 @@
 // German (de) localization for DS Bot client and DSH settings namespaces.
 
 export const DE = {
+  "Switch Bots to {model}…": "Bots auf {model} umstellen…",
+  "Team": "Team",
+  "Could not load status": "Status konnte nicht geladen werden",
+  "Not available": "Nicht verfügbar",
+  "{provider} needs an API key": "{provider} braucht einen API-Schlüssel",
+  "Add a model provider": "Modellanbieter hinzufügen",
+  "Last 7 days": "Letzte 7 Tage",
+  "On this page": "Auf dieser Seite",
+  "Switch {names} to {model}?": "{names} auf {model} umstellen?",
+
   "Delegated work": "Delegierte Arbeit",
   "Group paused": "Gruppe pausiert",
   "Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.": "Die Bots haben einen Kontrollpunkt für automatische Übergaben erreicht. Setzen Sie fort, wenn sie weiterarbeiten sollen.",

@@ -88,7 +88,18 @@ PR 表使用“原因类型”“实际差异与采用范围”“解决方式�
 
 ## 结构化记录与增量查询
 
-当前仍以upstream-changelog.md保存正式记录；SQLite与HTML管理页的设计见[增量台账方案](../../../docs/plans/2026-11-26-upstream-catalog.md)，**该管理页尚未实现，不得声称已有数据库、启动命令或可用URL**。实现后接入本节时须遵循：
+SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明](../../../docs/upstream-catalog.md)。在本批专用工作树先查台账，不再从头重复查所有历史PR：
+
+```sh
+python3 scripts/upstream-catalog.py inspect
+# 尚无台账时先bootstrap，默认固定为既有完整盘点终点bb1b1592，不能改成未覆盖的新终点。
+python3 scripts/upstream-catalog.py bootstrap
+python3 scripts/upstream-catalog.py serve --port 4179
+# 同步新进展才明确fetch；补记历史时不fetch。
+python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
+```
+
+结构化事实和用户选择存于公共Git目录，upstream-changelog.md继续作为可提交审计。根据pendingAnalysis为每个新PR补齐功能/场景/效果/原因/方案与验证，用annotate登记；再重跑sync完成对账、export更新记录。不得把“已缓存”当作“已评估/采用”。无新变化不建重复批次；来源错误、历史不连续或写失败不推进游标。设计见[台账设计](../../../docs/plans/2026-11-26-upstream-catalog.md)。
 
 - 首次从既有来源键导入，后续复用缓存的PR正文、合入SHA、文件列表、设计证据、功能说明和本地判断；先查记录，不重复全历史网络检索。
 - 新区间按上次完整盘点终点→本次固定终点补增量，成功对账后才推进游标；失败不跳过。来源历史不连续或本地基线变化时重审受影响项，不能因上游没变就沿用失效的本地结论。

@@ -1,6 +1,16 @@
 // Japanese (ja) localization for DS Bot client and DSH settings namespaces.
 
 export const JA = {
+  "Switch Bots to {model}…": "Bot を {model} に切り替え…",
+  "Team": "チーム",
+  "Could not load status": "状態を読み込めません",
+  "Not available": "利用できません",
+  "{provider} needs an API key": "{provider} には API キーが必要です",
+  "Add a model provider": "モデルプロバイダーを追加",
+  "Last 7 days": "過去 7 日間",
+  "On this page": "このページ",
+  "Switch {names} to {model}?": "{names} を {model} に切り替えますか？",
+
   "Delegated work": "委任した作業",
   "Group paused": "グループを一時停止中",
   "Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.": "Bot間の自動引き継ぎが確認地点に達しました。続行する場合は再開してください。",

@@ -14,6 +14,11 @@ import { DSH_NARROW } from './frame-layout.js'
 // CONVERSATION_CSS re-skins the shell's own conversation DOM and styles what only
 // the conversation renders.
 export const SHELL_CSS = `
+.bt-settings-anchors{display:flex;gap:8px;flex-wrap:wrap;padding:8px 28px;border-bottom:1px solid var(--bt-line)}
+.bt-settings-anchors [aria-current]{color:var(--bt-accent);background:var(--bt-hover)}
+.bt-settings-domain{display:flex;flex-direction:column;gap:22px;scroll-margin-top:12px}
+.bt-settings-domain>h3{margin:8px 0 0;font-size:14px;color:var(--bt-ink-2)}
+[data-setting]{scroll-margin-top:12px}
 .bt-look{flex:none;display:flex;height:232px;border-radius:16px;overflow:hidden;background:var(--bt-main);color:var(--bt-ink);box-shadow:var(--bt-card-shadow);pointer-events:none;user-select:none}
 .bt-look-side{width:148px;flex:none;display:flex;flex-direction:column;gap:4px;padding:12px 8px;box-sizing:border-box;background:var(--bt-sidebar)}
 .bt-look-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:8px;font-size:12px;line-height:16px;color:var(--bt-ink-2)}

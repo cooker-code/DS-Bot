@@ -4,6 +4,8 @@ import { SearchIcon, ChevronRightIcon } from './icons.js'
 import { flatWidthOf, layoutOf, thinkingShown, widthOf } from './themes.js'
 import { useEscape } from './overlay-hooks.js'
 import { t } from './i18n.js'
+import { OverviewStatus } from './settings-overview.js'
+import { isLocalRoute } from './agent-routes.js'
 
 export const SETTINGS_SEARCH_EVENT = 'ds-bot:settings-search'
 const KEYWORDS = {
@@ -24,9 +26,39 @@ const KEYWORDS = {
   feedback: 'feedback issue bug diagnostics 反馈 缺陷 诊断 报告', about: 'about version 关于 版本',
 }
 
+export const SETTINGS_FIELDS = [
+  ['default-model', 'Default model', 'general', '默认 新建 模型'],
+  ['enter-send', 'Enter sends message', 'general', '回车 发送 输入'],
+  ['theme', 'Theme', 'general', '主题 深色 浅色'],
+  ['accent', 'Accent', 'general', '强调色 自定义 颜色'],
+  ['layout', 'Message layout', 'general', '气泡 平铺 布局 正文 宽度'],
+  ['width', 'Bubble width', 'general', '气泡 宽度'],
+  ['flat-width', 'Text width', 'general', '正文 宽度 平铺'],
+  ['effects', 'Interface motion', 'general', '界面 动效'],
+  ['thinking', 'Show thinking', 'general', '思考 过程'],
+  ['memory', 'Memory', 'general', '记忆 额度 自动召回'],
+  ['locations', 'Locations', 'general', '总工作区 数据 位置 目录'],
+]
+
+export function focusSettingsTarget(root, page, id) {
+  if (!root) return false
+  const field = typeof id === 'string' && id.startsWith('setting:') ? id.slice(8) : null
+  const candidates = root.querySelectorAll(field ? '[data-setting]' : '[data-settings-page]')
+  const target = (!field && root.getAttribute?.('data-settings-page') === page ? root : null) ?? [...candidates].find(node => node.getAttribute(field ? 'data-setting' : 'data-settings-page') === (field ?? page))
+  if (!target) return false
+  target.scrollIntoView?.({ block: 'start' })
+  if (field) (target.querySelector('input,select,button,textarea') ?? target).focus?.({ preventScroll: true })
+  return true
+}
+
 export function settingsSearchRows(pages, extra, roster) {
   return [
     ...pages.map(([page, label]) => ({ key: `page:${page}`, page, label: t(label), words: KEYWORDS[page] ?? '' })),
+    ...SETTINGS_FIELDS.filter(([id, , page]) => (id !== 'flat-width' || roster.prefs?.layout === 'flat') && pages.some(([key]) => key === page)).map(([id, label, page, words]) => ({ key: `field:${id}`, page, id: `setting:${id}`, label: t(label), words })),
+    ...(pages.some(([key]) => key === 'models') ? (roster.models ?? []).filter(model => !isLocalRoute(model.ref)).flatMap(model => [
+      { key: `model:${model.ref}`, page: 'models', id: `provider:${model.provider ?? model.ref.split('/')[0]}`, label: model.name ?? model.ref, words: `${model.ref} ${model.providerName ?? ''} Models 模型` },
+      ...(model.needsKey !== true && pages.some(([key]) => key === 'bot-models') && (roster.bots ?? []).some(bot => !isLocalRoute(bot.model ?? bot.appliedModel) && (bot.model ?? bot.appliedModel) !== model.ref) ? [{ key: `switch:${model.ref}`, page: 'bot-models', id: model.ref, label: t('Switch Bots to {model}…', { model: model.name ?? model.ref }), words: `${model.ref} batch 批量 切换 模型` }] : []),
+    ]) : []),
     ...extra.map(item => ({ key: `dsh:${item.id}`, page: 'dsh', id: item.id, label: item.label, words: item.id })),
     ...(roster.bots ?? []).map(bot => ({ key: `bot:${bot.id}`, page: 'bots', id: bot.id, label: bot.name, words: `${t('Bots')} ${bot.role ?? ''} Bot 机器人` })),
     ...(roster.rooms ?? []).map(room => ({ key: `room:${room.id}`, page: 'groups', id: room.id, label: room.name, words: `${t('Group chats')} 群 项目` })),
@@ -39,6 +71,13 @@ export function filterSettings(rows, query) {
   return rows.filter(row => {
     const haystack = normalize(`${row.label} ${row.words}`).replace(/\s+/g, '')
     return terms.every(term => haystack.includes(term))
+  }).sort((a, b) => {
+    const score = row => {
+      if (!terms.length) return 0
+      const label = normalize(row.label).replace(/\s+/g, ''), words = normalize(row.words).replace(/\s+/g, ''), joined = terms.join('')
+      return label === joined ? 4 : terms.every(term => label.includes(term)) ? 3 : words.startsWith(joined) ? 2 : words.includes(joined) ? 1 : 0
+    }
+    return score(b) - score(a)
   })
 }
 
@@ -58,22 +97,26 @@ export function SettingsSearch({ rows, onPick, close }) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const input = useRef(null)
+  const list = useRef(null)
+  const picked = useRef(false)
   const listId = useId()
   const matches = filterSettings(rows, query)
   const selected = matches.length ? Math.min(active, matches.length - 1) : -1
   useEscape(close)
+  useEffect(() => { list.current?.querySelector('[aria-selected=true]')?.scrollIntoView?.({ block: 'nearest' }) }, [selected, query])
   useEffect(() => {
     const previous = document.activeElement
     input.current?.focus()
-    return () => { if (previous?.isConnected) previous.focus() }
+    return () => { if (!picked.current && previous?.isConnected) previous.focus() }
   }, [])
   const keys = event => {
-    if (event.isComposing) return
+    if (event.isComposing || event.keyCode === 229) return
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       if (matches.length) setActive((selected + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length)
     } else if (event.key === 'Enter' && selected >= 0) {
       event.preventDefault()
+      picked.current = true
       onPick(matches[selected])
     }
   }
@@ -84,18 +127,19 @@ export function SettingsSearch({ rows, onPick, close }) {
         'aria-activedescendant': selected < 0 ? undefined : `${listId}-${selected}`, value: query,
         onChange: event => { setQuery(event.target.value); setActive(0) }, onKeyDown: keys }),
       h('button', { type: 'button', className: 'bt-mini', onClick: close }, t('Close'))),
-    h('div', { id: listId, role: 'listbox', 'aria-label': t('Settings results'), className: 'bt-settings-find-list' },
+    h('div', { ref: list, id: listId, role: 'listbox', 'aria-label': t('Settings results'), className: 'bt-settings-find-list' },
       matches.map((item, at) => h('button', { id: `${listId}-${at}`, key: item.key, type: 'button', role: 'option',
-        'aria-selected': at === selected, className: 'bt-set-row bt-bs-row', onClick: () => onPick(item) },
+        'aria-selected': at === selected, className: 'bt-set-row bt-bs-row', onClick: () => { picked.current = true;onPick(item) } },
       h('span', { className: 'bt-set-copy' }, item.label), h(ChevronRightIcon))),
       matches.length ? null : h('p', { className: 'bt-set-hint', role: 'status' }, t('No matching settings'))))
 }
 
-export function SettingsOverview({ roster, actions, pages, Section, Row }) {
+export function SettingsOverview({ roster, actions, run, pages, Section, Row }) {
   const bots = roster.bots ?? []
   const rooms = roster.rooms ?? []
   const pending = Object.keys(roster.questions ?? {}).length + Object.keys(roster.views ?? {}).length
   return [
+    h(OverviewStatus, { key: 'full-status', roster, actions, run, Section, Row }),
     h(Section, { key: 'attention', title: t('Needs your attention') },
       h(Row, { label: t('Pending questions and views'), hint: String(pending) },
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('bots') }, t('Bots')))),

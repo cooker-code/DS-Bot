@@ -11,6 +11,16 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Switch Bots to {model}…": "把 Bot 换成 {model}…",
+  "Team": "团队",
+  "Could not load status": "无法读取状态",
+  "Not available": "不可用",
+  "{provider} needs an API key": "{provider} 需要 API key",
+  "Add a model provider": "添加模型服务商",
+  "Last 7 days": "近 7 天",
+  "On this page": "本页",
+  "Switch {names} to {model}?": "把 {names} 换成 {model}？",
+
   'Delegated work': '委托工作',
   'Group paused': '群聊已暂停',
   'Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.': 'Bot 的自动交接已到确认点。需要时可继续。',

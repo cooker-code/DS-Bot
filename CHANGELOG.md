@@ -6,6 +6,14 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
+### v0.3.10.29-upstream — settings console and upstream catalog candidate (2026-11-26)
+
+- Complete PR2028 in the existing settings shell: configuration attention and repair, model/connection/tool/schedule/usage summaries, field and model search, explicit batch model changes, domain anchors and immediate appearance preview. Preserve local prompts, routes, unsaved search drafts, project cards and parallel sessions.
+- Flush pending width and accent edits when settings closes, and restore failed optimistic preview edits. Service failures remain visible; narrow overview does not fetch its hidden usage summary.
+- Add a local SQLite upstream catalog and browser page with 265 Chinese PR explanations, combined filters, persistent wanted/not-wanted choices, incremental Git caching, scoped local reassessment and conflict-aware Markdown export. Source refresh never overwrites user decisions or merges code.
+
+Candidate validation and deployment are recorded in [upstream-changelog.md](upstream-changelog.md). The local dev branch remains separate.
+
 ### v0.3.10.28-upstream — complete collaboration lifecycle (2026-11-26)
 
 - Connect formal project dispatch and auxiliary delegation to one work lifecycle. Clarifications, answers and child results retain their original card, dispatch and conversation; only the original project owner submits, and project approval stays separate.

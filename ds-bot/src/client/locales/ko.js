@@ -1,6 +1,16 @@
 // Korean (ko) localization for DS Bot client and DSH settings namespaces.
 
 export const KO = {
+  "Switch Bots to {model}…": "Bot을 {model}(으)로 전환…",
+  "Team": "팀",
+  "Could not load status": "상태를 불러올 수 없습니다",
+  "Not available": "사용할 수 없음",
+  "{provider} needs an API key": "{provider}에 API 키가 필요합니다",
+  "Add a model provider": "모델 제공자 추가",
+  "Last 7 days": "최근 7일",
+  "On this page": "이 페이지",
+  "Switch {names} to {model}?": "{names}을(를) {model}(으)로 전환할까요?",
+
   "Delegated work": "위임한 작업",
   "Group paused": "그룹 일시 중지",
   "Bots reached an automatic handoff checkpoint. Continue when you want them to proceed.": "Bot 간 자동 전달이 확인 지점에 도달했습니다. 계속하려면 재개하세요.",

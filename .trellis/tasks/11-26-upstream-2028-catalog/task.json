@@ -3,7 +3,7 @@
   "name": "upstream-2028-catalog",
   "title": "上游PR完整适配与SQLite管理页",
   "description": "核对PR2028完整缺口，取消部分采用状态，约束功能讲解并设计增量SQLite和筛选标记页面",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "fullstack",
   "scope": "upstream-sync",
   "package": "ds-bot",
@@ -32,6 +32,7 @@
     "state_lifecycle_change": "true",
     "security_compatibility_rollout_change": "true",
     "technical_tradeoff": "true",
-    "planning_tier": "complex"
+    "planning_tier": "complex",
+    "prototype_manifest": "prototype/manifest.json"
   }
 }
