@@ -14,7 +14,7 @@
   "completedAt": "2026-11-25",
   "branch": "chore/upstream-1125",
   "base_branch": "dev",
-  "worktree_path": "/Users/blank/wangliang/gitcode/DS-Bot/.worktrees/chore%2Fupstream-1125",
+  "worktree_path": "/Users/<user>/wangliang/gitcode/DS-Bot/.worktrees/chore%2Fupstream-1125",
   "commit": "b2635615",
   "pr_url": null,
   "subtasks": [],

@@ -187,11 +187,15 @@ export function requirementHistory(room, card, sources) {
 }
 
 function reviseRequirement(room, card, sources, value, previous = card) {
-  const current = projectRequirement(room, previous, sources)
-  if (current === value) return
-  card.requirementHistory = [...requirementHistory(room, previous, sources), {
-    ...documentSources(sources), text: current,
-    images: uniqueImages([...sources.flatMap(line => line.images ?? []), ...(previous.fieldImages?.requirement ?? [])]),
+  const covered = new Set(previous.requirementSources ?? sources.slice(0, 1).map(line => line.seq))
+  const previousSources = sources.filter(line => covered.has(line.seq))
+  const current = projectRequirement(room, previous, previousSources)
+  const beforeImages = uniqueImages([...previousSources.flatMap(line => line.images ?? []), ...(previous.fieldImages?.requirement ?? [])])
+  const afterImages = uniqueImages([...sources.flatMap(line => line.images ?? []), ...(card.fieldImages?.requirement ?? [])])
+  const imageIds = images => images.map(image => image.attachmentId ?? image.id).sort()
+  if (current === value && isDeepStrictEqual(imageIds(beforeImages), imageIds(afterImages))) return
+  card.requirementHistory = [...requirementHistory(room, previous, previousSources), {
+    ...documentSources(previousSources), text: current, images: beforeImages,
   }]
   card.goal = value
   card.requirementSources = sources.map(line => line.seq)

@@ -30,4 +30,4 @@ Chrome 中点击实际 TaskResults 的 Markdown disclosure，真实 useEffect �
 
 ## 日用安装
 
-已将固定候选合入 dev，分配版本 0.3.10.25（npm 0.3.10-local.25），从 dev 构建并打包。安装包为 `/Users/blank/wangliang/gitcode/DS-Bot/ds-bot/ds-bot-0.3.10-local.25.tgz`。日用 desktop profile 已由 0.3.10-local.24 更新，包内全部 171 个文件与安装目录逐字节一致，包括客户端构建产物和本次宿主文件。原 DSH 后端仍运行，未重启或中断会话。当前窗口加载状态未核实；用户从 Dock 正常重启后可加载新版。此安装回执不代表已向企微发送文件。
+已将固定候选合入 dev，分配版本 0.3.10.25（npm 0.3.10-local.25），从 dev 构建并打包。安装包为 `/Users/<user>/wangliang/gitcode/DS-Bot/ds-bot/ds-bot-0.3.10-local.25.tgz`。日用 desktop profile 已由 0.3.10-local.24 更新，包内全部 171 个文件与安装目录逐字节一致，包括客户端构建产物和本次宿主文件。原 DSH 后端仍运行，未重启或中断会话。当前窗口加载状态未核实；用户从 Dock 正常重启后可加载新版。此安装回执不代表已向企微发送文件。

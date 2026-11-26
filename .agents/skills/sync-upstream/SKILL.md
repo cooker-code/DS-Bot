@@ -88,7 +88,7 @@ PR 表使用“原因类型”“实际差异与采用范围”“解决方式�
 
 ## 结构化记录与增量查询
 
-**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；upstream-changelog.md是该台账可提交的审计导出。** 数据库通过`git rev-parse --git-common-dir`定位为`upstream-sync/upstream.sqlite3`（本机主库`/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3`），所有专用工作树共用；不是DSH团队数据库，不提交SQLite二进制。
+**PR来源、功能评估、验证、用户选择和时间以SQLite台账保存；upstream-changelog.md是该台账可提交的审计导出。** 数据库通过`git rev-parse --git-common-dir`定位为`upstream-sync/upstream.sqlite3`（本机主库`/Users/<user>/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3`），所有专用工作树共用；不是DSH团队数据库，不提交SQLite二进制。
 
 SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明](../../../docs/upstream-catalog.md)。在本批专用工作树先查台账，不再从头重复查所有历史PR：
 

@@ -42,7 +42,7 @@
     "previewExited": true,
     "previewPortClosed": true,
     "deliveryBranch": "chore/upstream-catalog-times",
-    "deliveryDatabase": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3",
+    "deliveryDatabase": "/Users/<user>/wangliang/gitcode/DS-Bot/.git/upstream-sync/upstream.sqlite3",
     "deliveryURL": "http://127.0.0.1:4179",
     "deliveryPID": 80764,
     "pendingExport": 0

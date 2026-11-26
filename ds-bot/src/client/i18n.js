@@ -11,6 +11,7 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  "Result": "结果",
   "Switch Bots to {model}…": "把 Bot 换成 {model}…",
   "Team": "团队",
   "Could not load status": "无法读取状态",

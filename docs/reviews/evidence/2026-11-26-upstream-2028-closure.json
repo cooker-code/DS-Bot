@@ -19,5 +19,5 @@
   "registeredWorktrees": 20,
   "unregisteredSingularWorktreeDirs": [],
   "worktreeCleanupPerformed": false,
-  "sqliteBackup": "/Users/blank/wangliang/gitcode/DS-Bot/.git/upstream-sync/backups/2026-11-26-upstream-2028.sqlite3"
+  "sqliteBackup": "/Users/<user>/wangliang/gitcode/DS-Bot/.git/upstream-sync/backups/2026-11-26-upstream-2028.sqlite3"
 }

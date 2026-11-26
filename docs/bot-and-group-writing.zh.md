@@ -64,7 +64,7 @@ Bot 简介以一句岗位定位起头，再分条写清接单输入、工作步�
 
 **环境与授权**
 
-- 本群配置项目目录为 `/Users/blank/wangliang/gitcode/data-analysis-template`；执行前确认各自实际工作目录，遵循该目录的项目指引和适用技能，不混用其他项目环境。
+- 本群配置项目目录为 `/Users/<user>/wangliang/gitcode/data-analysis-template`；执行前确认各自实际工作目录，遵循该目录的项目指引和适用技能，不混用其他项目环境。
 - 平台操作前加载适用技能，基于真实元数据，不虚构表字段；使用项目允许的 MCP 或 CLI，禁止回退到 TablePro MCP。
 - 提交、合并、推送、生产数据改写、回刷、发布、删除及调度变更均按用户具体授权执行，不因角色分工自动获得操作授权。
 - 不默认创建 Trellis task；仅在用户明确要求时启用，DS Bot 协作记录与 Trellis 任务分别处理。

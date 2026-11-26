@@ -14,7 +14,7 @@
   "completedAt": "2026-11-25",
   "branch": "dev-upsteam",
   "base_branch": "dev-upsteam",
-  "worktree_path": "/Users/blank/wangliang/gitcode/DS-Bot/.worktrees/dev-upsteam",
+  "worktree_path": "/Users/<user>/wangliang/gitcode/DS-Bot/.worktrees/dev-upsteam",
   "commit": "44b3e7997772657e5a0ca1b8910b82c5f0ec83c8",
   "pr_url": null,
   "subtasks": [],

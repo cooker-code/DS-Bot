@@ -246,6 +246,28 @@ test('normalizing and revising the original card preserves requirement versions 
   assert.equal(f.deliveries.length, 2)
 })
 
+for (const changedText of [false, true]) test('new source images preserve their previous version with changed text: ' + changedText, async t => {
+  const f = fixture(t)
+  const sources = f.rt.ledger.records()
+  sources[0].images = [{ id: 'image-a' }]
+  await f.call({ action: 'retry_handoff', taskId: 'one', ...document })
+  f.room.projectCards.one.plans = [{ version: 1, nodes: [{ no: 1, ownerId: 'c', title: 'Source check',
+    instructions: 'Inspect sources', deliverable: 'Evidence', acceptance: 'Verified', dependsOn: [] }] }]
+  sources.push({ seq: 2, who: 'User', text: 'Additional source image.', intakeId: 'intake-one', images: [{ id: 'image-b' }] })
+  f.rt.live.set('ga', { info: { role: 'request', roomId: 'r', intakeSeq: 2, intakeId: 'intake-one', taskId: 'one' } })
+  const revision = { action: 'delegate', taskId: 'one', plan: changedText ? '1. Inspect the revised source.' : document.plan,
+    acceptance: document.acceptance }
+  await f.call(revision)
+  const saved = f.room.projectCards.one
+  assert.equal(saved.requirementHistory.length, 2)
+  assert.equal(saved.requirementHistory[1].text, document.plan)
+  assert.deepEqual(saved.requirementHistory[1].images, [{ id: 'image-a' }])
+  assert.deepEqual(saved.requirementSources, [1, 2])
+  await f.call(revision)
+  assert.equal(f.room.projectCards.one.requirementHistory.length, 2)
+  assert.equal(f.deliveries.length, 2)
+})
+
 test('an exhausted old delivery does not suppress recovery of revised requirements', async t => {
   const f = fixture(t)
   f.fail('before')
