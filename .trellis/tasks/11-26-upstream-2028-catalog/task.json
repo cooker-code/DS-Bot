@@ -14,7 +14,7 @@
   "completedAt": "2026-11-26T12:59:52+08:00",
   "branch": "chore/upstream-2028-catalog",
   "base_branch": "chore/upstream-2130-complete",
-  "worktree_path": "/Users/<user>/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-2028-catalog",
+  "worktree_path": "<repo>/.worktree/chore%2Fupstream-2028-catalog",
   "commit": "e25f6caf0b8bc3962b1ef30c27a793bdec1ab116",
   "pr_url": null,
   "subtasks": [],

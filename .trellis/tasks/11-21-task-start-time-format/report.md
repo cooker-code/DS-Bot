@@ -20,7 +20,7 @@ IMPECCABLE_PREFLIGHT: context=pass product=pass command_reference=pass shape=not
 - `npm run build`：通过。
 - `node scripts/build-client.mjs --check`：通过。
 - `npm test -- test/project-start-time.test.js test/client-bundle.test.js test/tasks.test.js`：24/24 通过。任务测试夹具输出 workspaceRegistry.list 缺失等诊断，但没有失败。
-- `DSH_HARNESS=/Users/<user>/wangliang/gitcode/DS-Bot/ds-bot/dev/harness npm run lint`：退出 0；既有非本次修改文件警告，本次源码/新增测试没有警告。默认 lint 首次因当前树无 oxlint 退出 2，随后复用主树既有 harness 依赖成功。
+- `DSH_HARNESS=<repo>/ds-bot/dev/harness npm run lint`：退出 0；既有非本次修改文件警告，本次源码/新增测试没有警告。默认 lint 首次因当前树无 oxlint 退出 2，随后复用主树既有 harness 依赖成功。
 - `git diff --check`：通过。
 - package.json、锁文件顶层及 packages[""] 版本程序化比较一致。
 

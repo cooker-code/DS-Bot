@@ -14,7 +14,7 @@
   "completedAt": "2026-11-26T11:23:00+08:00",
   "branch": "chore/upstream-2130-complete",
   "base_branch": "docs/upstream-2130-complete-flow",
-  "worktree_path": "/Users/<user>/wangliang/gitcode/DS-Bot/.worktree/chore%2Fupstream-2130-complete",
+  "worktree_path": "<repo>/.worktree/chore%2Fupstream-2130-complete",
   "commit": "eb05224a2ceefc8cd8050c21340bbd4891658cb0",
   "pr_url": null,
   "subtasks": [],

@@ -15,9 +15,11 @@ test('repository scanning distinguishes product drafts from unfinished documents
   writeFileSync(join(root, 'ds-bot/package.json'), JSON.stringify({ name: 'ds-bot', files: ['LICENSE'],
     repository: 'https://example.invalid/repo', homepage: 'https://example.invalid', bugs: 'https://example.invalid/issues' }))
   const report = join(root, 'result.json')
-  const scan = text => {
+  const scan = (text, extra = '') => {
     writeFileSync(join(root, 'feature.md'), text)
-    const result = spawnSync(process.execPath, [resolve('../scripts/scan.mjs'), root, '--json', report], { encoding: 'utf8' })
+    const result = spawnSync(process.execPath, [resolve('../scripts/scan.mjs'), root, '--json', report], {
+      encoding: 'utf8', env: { ...process.env, SCAN_EXTRA_PATTERNS: extra },
+    })
     return { status: result.status, findings: JSON.parse(readFileSync(report, 'utf8')).filter(row => row.level === 'must fix') }
   }
   const draft = String.fromCodePoint(0x8349, 0x7a3f)
@@ -31,4 +33,8 @@ test('repository scanning distinguishes product drafts from unfinished documents
   const result = scan('Editor ' + draft + ' contains ' + secret)
   assert.equal(result.status, 1)
   assert.ok(result.findings.some(row => row.id === 'secret-openai-style'))
+  const privateDirectory = ['private', 'account'].join('-')
+  const nested = scan('/Users/<user>/' + privateDirectory + '/project', privateDirectory)
+  assert.equal(nested.status, 1)
+  assert.ok(nested.findings.some(row => row.id === 'extra-pattern'))
 })
