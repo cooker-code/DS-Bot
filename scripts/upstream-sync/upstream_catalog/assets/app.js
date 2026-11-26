@@ -20,6 +20,15 @@ const groupLabel = group => group ? `${group} · ${meta?.groupNames?.[group] || 
 async function loadMeta() {
   meta = await request('/api/meta')
   $('context').textContent = `${meta.branch} · 本地 SQLite · 共 ${meta.total} 个 PR`
+  const coverage = meta.coverage, panel = $('coverage')
+  panel.replaceChildren()
+  const date = value => value ? new Date(value).toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }) : '尚未记录'
+  if (coverage) {
+    panel.append(element('p', `台账覆盖至：${date(coverage.coveredAt)}（Asia/Taipei） · 提交 ${(coverage.checkpoint || '').slice(0, 8)}`))
+    panel.append(element('p', `远端最近核对：${date(coverage.checkedAt)} · 当时上游最新提交时间：${date(coverage.checkedTipAt)}`))
+    const state = coverage.error ? `核对异常：${coverage.error}，不能判定当前已同步` : !coverage.checkedAt ? '尚未核对远端，不能判定是否有遗漏。' : coverage.unseenCommits === null ? '无法确认与上游的差距，请重新核对。' : coverage.unseenCommits ? `待同步：${coverage.unseenPRs} 个 PR、${coverage.unseenDirectCommits} 个直接提交（共 ${coverage.unseenCommits} 个主线提交）。已缓存但未评估完整的条目也属于待同步。` : '截至上述核对时间，未同步项为 0；这不是实时检查。'
+    panel.append(element('p', state), element('p', '覆盖指功能盘点和来源资料已完整登记，不代表已把这些功能合入本地。'))
+  }
   $('counts').textContent = Object.entries(meta.statuses).map(([name, count]) => `${name} ${count}`).join(' / ')
   $('pending').textContent = meta.pendingExport ? `${meta.pendingExport} 次变更待更新记录` : '同步记录已对齐'
   $('export').disabled = !meta.pendingExport
@@ -56,7 +65,7 @@ async function loadRows() {
       if (row.needs_review) title.append(element('span', '需重新评估', { class: 'stale' }))
       const status = element('td');status.append(element('span', row.status, { class: 'status', 'data-status': row.status }))
       tr.append(number, title, status, element('td', row.wanted === 0 ? '不需要' : row.wanted === 1 ? '需要' : '待评估'), element('td', row.weight), element('td', groupLabel(row.dependency_group), { class: 'dependency-group' }))
-      for (const value of [row.pr_created_at, row.synced_at]) { const cell = element('td');cell.append(timestamp(value));tr.append(cell) }
+      for (const value of [row.pr_created_at, row.pr_merged_at, row.synced_at]) { const cell = element('td');cell.append(timestamp(value));tr.append(cell) }
       return tr
     })
     $('rows').replaceChildren(...nodes)
@@ -80,7 +89,7 @@ async function showDetail(number, focus = false) {
     const head = element('div', null, { class: 'detail-head' })
     const titles = element('div');titles.append(element('a', `PR #${number} ↗`, { href: row.url, target: '_blank', rel: 'noopener noreferrer' }), element('h2', row.title), element('p', `${row.status} · 权重 ${row.weight} · ${row.dependency_group ? groupLabel(row.dependency_group) : '未分组'}`))
     const close = element('button', '关闭', { class: 'secondary' });close.addEventListener('click', () => { selected = null; $('detail').replaceChildren(element('p', '选择一项 PR，查看功能和本地差异。')); loadRows() })
-    const dates = element('p', null, { class: 'detail-dates' });dates.append(element('span', 'PR 提交时间（Asia/Taipei）'), timestamp(row.pr_created_at), element('span', '来源同步时间（Asia/Taipei）'), timestamp(row.synced_at));titles.append(dates)
+    const dates = element('p', null, { class: 'detail-dates' });dates.append(element('span', 'PR 创建时间（Asia/Taipei）'), timestamp(row.pr_created_at), element('span', '上游合并时间（Asia/Taipei）'), timestamp(row.pr_merged_at), element('span', '来源同步时间（Asia/Taipei）'), timestamp(row.synced_at));titles.append(dates)
     head.append(titles, close)
     const choice = element('form', null, { class: 'choice' })
     const pickLabel = element('label', '我的选择'), pick = element('select', null, { 'aria-label': '我的选择' })

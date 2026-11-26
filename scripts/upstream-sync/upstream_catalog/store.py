@@ -182,7 +182,15 @@ class Store:
         if not 1 <= limit <= 100 or offset < 0:raise CatalogError('Invalid pagination')
         join = ' FROM prs p LEFT JOIN preferences c ON c.repo_id=p.repo_id AND c.pr_number=p.number WHERE ' + ' AND '.join(conditions)
         total = self.db.execute('SELECT count(*)' + join, params).fetchone()[0]
-        order = 'p.updated_at DESC,p.number' if args.get('sort') == 'time' else RANK + ',p.weight DESC,p.number'
+        orders = {
+            'created': "datetime(json_extract(p.upstream_json,'$.createdAt')) DESC,p.number DESC",
+            'merged': "datetime(coalesce(json_extract(p.upstream_json,'$.githubMergedAt'),json_extract(p.upstream_json,'$.mergedAt'))) DESC,p.number DESC",
+            'time': 'datetime(p.updated_at) DESC,p.number',
+            'status': RANK + ',p.weight DESC,p.number',
+        }
+        sort = args.get('sort') or 'status'
+        if sort not in orders:raise CatalogError('Invalid sort')
+        order = orders[sort]
         rows = self.db.execute('SELECT p.*,c.wanted,c.reason choice_reason,c.decided_at,c.revision choice_revision' + join + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', [*params, limit, offset]).fetchall()
         return {'total': total, 'offset': offset, 'rows': [self.public_row(r) for r in rows]}
 
@@ -191,6 +199,7 @@ class Store:
         out = dict(row)
         source = json.loads(out.get('upstream_json') or '{}')
         out['pr_created_at'] = source.get('createdAt')
+        out['pr_merged_at'] = source.get('githubMergedAt') or source.get('mergedAt')
         out['synced_at'] = source.get('sourceSyncedAt')
         return out
 
@@ -268,7 +277,11 @@ class Store:
         for number in sorted(affected - seen):
             r = self.detail(number)
             if not lines[-1].startswith('| [#'):lines += ['', '| PR | 状态 | 权重 | 上游改动 | 原因类型 | 实际差异与采用范围 | 解决方式与通过条件 |', '| --- | --- | --- | --- | --- | --- | --- |']
-            cells = [f'[#'+str(number)+f']({r["url"]})', r['status'], str(r['weight']), r['title'], r['reason'] or '待评估', r['purpose'] or '说明尚待补齐', r['solution'] or '需完成评估与验证']
+            choice = '待评估' if r['wanted'] is None else '需要' if r['wanted'] else '不需要'
+            details = f'功能：{r["purpose"] or "说明尚待补齐"}。场景：{r["scenario"] or "待补齐"}。本地差异：{r["local_difference"] or "待核对"}。验证：{r["verification"] or "尚未验证"}。我的选择：{choice}（{r["choice_reason"] or "未填理由"}）。'
+            details = html.escape(details,quote=False).replace('|','&#124;').replace('\n','<br>')
+            exported_details[number] = details
+            cells = [f'[#'+str(number)+f']({r["url"]})', r['status'], str(r['weight']), r['title'], r['reason'] or '待评估', details, r['solution'] or '需完成评估与验证']
             lines.append('| ' + ' | '.join(str(c).replace('|', '&#124;').replace('\n', '<br>') for c in cells) + ' |')
         for item in direct_pending:
             key = f'[{item["sha"][:7]}]'

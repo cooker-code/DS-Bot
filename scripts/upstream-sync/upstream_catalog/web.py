@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from .store import Store, CatalogError, Conflict
 from . import community
-from .source import branch, writable, group_names, ledger_path
+from .source import branch, writable, group_names, ledger_path, coverage
 
 ASSETS = Path(__file__).parent / 'assets'
 
@@ -40,7 +40,7 @@ def server(repo, database, port):
                     return self.send(200, file.read_bytes(), (mimetypes.guess_type(str(file))[0] or 'text/plain') + '; charset=utf-8')
                 with Store(database, readonly=True) as db:
                     if url.path == '/api/meta':
-                        result = db.stats();result.update(branch=branch(repo), repo=str(repo), database=str(database), groupNames=group_names(repo), groups=[r[0] for r in db.db.execute('SELECT DISTINCT dependency_group FROM prs WHERE dependency_group IS NOT NULL ORDER BY dependency_group')])
+                        result = db.stats();result.update(branch=branch(repo), repo=str(repo), database=str(database), coverage=coverage(db,repo), groupNames=group_names(repo), groups=[r[0] for r in db.db.execute('SELECT DISTINCT dependency_group FROM prs WHERE dependency_group IS NOT NULL ORDER BY dependency_group')])
                         return self.send(200, result)
                     if url.path == '/api/community':return self.send(200,community.list_entries(db,{k:v[0] for k,v in parse_qs(url.query).items()}))
                     if url.path.startswith('/api/design/') and url.path[12:].isdigit():return self.send(200,community.design_detail(db,int(url.path[12:])))

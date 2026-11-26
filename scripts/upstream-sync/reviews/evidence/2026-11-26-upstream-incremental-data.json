@@ -1,0 +1,30 @@
+{
+  "PRs": 315,
+  "oldPRStatesAndWeightsPreserved": 265,
+  "preferencesPreserved": 3,
+  "uniqueLedgerPRKeys": 315,
+  "newPRs": 50,
+  "newStatuses": {
+    "暂缓": 35,
+    "需讨论": 3,
+    "跳过": 12
+  },
+  "designRecords": 48,
+  "designVersions": 129,
+  "designPRRelations": 224,
+  "integrity": "ok",
+  "foreignKeys": "ok",
+  "checkpoint": "cc46d679af85eeba76855fc56c57785582ec1b1a",
+  "oldPRSourceDatesPreserved": 265,
+  "coverage": {
+    "checkpoint": "cc46d679af85eeba76855fc56c57785582ec1b1a",
+    "coveredAt": "2026-11-25T23:10:44-08:00",
+    "checkedAt": "2026-11-26T15:18:38+08:00",
+    "checkedTip": "cc46d679af85eeba76855fc56c57785582ec1b1a",
+    "checkedTipAt": "2026-11-25T23:10:44-08:00",
+    "unseenPRs": 0,
+    "unseenDirectCommits": 0,
+    "unseenCommits": 0,
+    "error": null
+  }
+}

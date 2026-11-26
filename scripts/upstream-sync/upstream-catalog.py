@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 from upstream_catalog.store import Store, CatalogError, REPO_ID, now
-from upstream_catalog.source import database_path, ledger_path, bootstrap, sync, reassess, git, writable, complete_metadata, validate_source
+from upstream_catalog.source import database_path, ledger_path, bootstrap, sync, reassess, git, writable, complete_metadata, validate_source, coverage, check_upstream
 from upstream_catalog.web import server
 from upstream_catalog import community
 
@@ -27,6 +27,7 @@ def main(argv=None):
     design = sub.add_parser('design', help='只读某设计主题的说明与固定版本原文');design.add_argument('id',type=int)
     note = sub.add_parser('design-annotate', help='为新版设计补完整中文评估后才能推进游标');note.add_argument('id',type=int);note.add_argument('file',type=Path)
     sub.add_parser('inspect', help='只读统计和游标，不联网')
+    sub.add_parser('check-upstream', help='核对远端dev并保存核对时间和待同步数量，不推进完整盘点终点')
     query = sub.add_parser('list', help='只读筛选缓存PR摘要，不重新检索上游')
     for field in ['q','status','wanted','group','category','min','max','stale','sort','limit','offset']:
         query.add_argument('--'+field, default='20' if field=='limit' else None)
@@ -62,7 +63,8 @@ def main(argv=None):
             elif args.command == 'community':result = community.list_entries(db,vars(args))
             elif args.command == 'design':result = community.design_detail(db,args.id)
             elif args.command == 'design-annotate':result = community.annotate(db,args.id,json.loads(args.file.read_text()))
-            elif args.command == 'inspect':result = db.stats()
+            elif args.command == 'inspect':result = db.stats() | {'coverage':coverage(db,repo)}
+            elif args.command == 'check-upstream':result = check_upstream(db,repo)
             elif args.command == 'show':result = db.detail(args.number)
             elif args.command == 'list':
                 result = db.list(vars(args))

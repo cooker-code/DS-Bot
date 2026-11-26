@@ -32,9 +32,9 @@ python3 scripts/upstream-sync/upstream-catalog.py serve --port 4179
 
 终端返回本地URL、实际执行分支和数据库位置。浏览器打开`http://127.0.0.1:4179`，停止服务用该终端的Ctrl+C。无需安装第三方Python依赖。主目录仍在dev时，从专用工作树运行这些命令；写命令拒绝dev/main/master及detached HEAD。
 
-主表新增“PR提交时间”和“同步时间”，均显示为Asia/Taipei。提交时间取GitHub创建PR时间（createdAt），同步时间取来源资料实际写入本台账的时间；仅修改选择或分析不刷新它，代码采用和安装时间另记。缺失显示“待补齐”，不拿合并时间替代。时间缓存在prs.upstream_json的createdAt/sourceSyncedAt字段，查询接口提供pr_created_at/synced_at；无需修改现有SQLite表结构。
+主表新增“PR创建时间”和“同步时间”，均显示为Asia/Taipei。提交时间取GitHub创建PR时间（createdAt），同步时间取来源资料实际写入本台账的时间；仅修改选择或分析不刷新它，代码采用和安装时间另记。缺失显示“待补齐”，不拿合并时间替代。时间缓存在prs.upstream_json的createdAt/sourceSyncedAt字段，查询接口提供pr_created_at/synced_at；无需修改现有SQLite表结构。
 
-主表显示265个历史PR及其中文作用和来源，详情提供具体场景、差异、方案、验证和历史。可组合筛选关键词/PR号、状态、我的选择、权重、依赖组、类型与需重审；默认状态→权重降序→PR号升序，也能按最近变更排序。
+主表显示265个历史PR及其中文作用和来源，详情提供具体场景、差异、方案、验证和历史。可组合筛选关键词/PR号、状态、我的选择、权重、依赖组、类型与需重审；默认状态→权重降序→PR号升序，排序可明确选择PR创建时间、上游合并时间、本地评估更新时间，均新到旧；旧URL的sort=time仍表示本地评估更新时间。缺少日期排在最后，按实际时刻比较时区。
 
 筛选框、表格和PR详情的依赖组统一显示“编号 · 中文名称”，例如“G01 · 测试基线、翻译与测试维护”和“G16 · 设置导航、搜索与组件入口”。中文名称直接取自scripts/upstream-sync/docs/upstream-remaining-review.md的分组标题，由/api/meta的groupNames提供；数据库及筛选参数仍使用Gxx。未分组显示“—”，缺少名称的编号明确显示“名称待补齐”。
 
@@ -96,3 +96,15 @@ python3 scripts/upstream-sync/upstream-catalog.py --help
 这些是独立管理工具的只读接口，DSH插件API不变。写选择和导出的原同源接口继续使用。首次升级schema v2应先备份、community-sync，再用本批或后继版本启动管理页；旧v1工具不支持新库。
 
 本次完整结果见[实施回执](reviews/2026-11-26-upstream-community-implementation.md)。
+
+## 台账覆盖与远端核对
+
+顶部覆盖时间取完整盘点终点提交的时间，不是PR创建时间、缓存入库或管理页更新时间。远端核对保留独立的checkedAt/tip；只有来源、PR说明和设计评估完整后才推进checkpoint。未同步数量按checkpoint→最近核对tip的第一父链去重统计PR与直接提交，已缓存但未评估完整也属于未同步。零项只表示截至核对时间已登记完整，不承诺实时，也不表示功能已合入。未核对、网络失败或历史不连续时明确显示未知/异常，不用0代替未知。
+
+```sh
+python3 scripts/upstream-sync/upstream-catalog.py check-upstream
+python3 scripts/upstream-sync/upstream-catalog.py list --sort created
+python3 scripts/upstream-sync/upstream-catalog.py list --sort merged
+```
+
+check-upstream核对远端dev（缺少Git对象时获取），只保存观察，不推进完整盘点，不合并代码。只读页面与inspect不联网；常规sync --fetch也保存远端观察。GET /api/meta追加coverage；PR查询增加pr_merged_at（GitHub合并时间，缺失时回退固定合入提交时间），createdAt/sourceSyncedAt/updated_at含义不变。新增PR导出包含场景、本地差异、验证与用户选择，按仓库ID+PR号去重。

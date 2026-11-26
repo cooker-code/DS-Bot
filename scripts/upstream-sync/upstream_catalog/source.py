@@ -47,6 +47,43 @@ def database_path(repo):
     return catalog_directory(Path(fields['worktree']).resolve()) / 'upstream.sqlite3'
 
 
+def coverage(store, repo):
+    source = store.stats()['source']
+    checkpoint = source.get('checkpoint_sha')
+    observation = store.meta('upstream_check', {})
+    result = {'checkpoint': checkpoint, 'coveredAt': git(repo,'show','-s','--format=%cI',checkpoint) if checkpoint else None,
+              'checkedAt': observation.get('checkedAt'), 'checkedTip': observation.get('tip'),
+              'checkedTipAt': observation.get('tipAt'), 'unseenPRs': None, 'unseenDirectCommits': None, 'unseenCommits': None,
+              'error': store.meta('upstream_check_error')}
+    if checkpoint and observation:
+        ancestor = subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',checkpoint,observation['tip']],capture_output=True)
+        if ancestor.returncode:
+            result['error'] = '来源历史不连续，请重新核对上游';return result
+        lines = git(repo,'log','--first-parent','--format=%s',checkpoint+'..'+observation['tip']).splitlines()
+        numbers = [m[1] for line in lines if (m := re.match(r'Merge pull request #(\d+)\b',line) or re.search(r'\(#(\d+)\)$',line))]
+        result.update(unseenPRs=len(set(numbers)),unseenDirectCommits=len(lines)-len(numbers),unseenCommits=len(lines))
+    return result
+
+
+def check_upstream(store, repo):
+    """Observe the remote tip without advancing the fully reviewed checkpoint."""
+    writable(repo);validate_source(repo)
+    try:
+        remote = git(repo,'ls-remote','upstream','refs/heads/dev').splitlines()
+        if len(remote) != 1:raise CatalogError('上游dev不存在或不唯一')
+        tip = remote[0].split()[0]
+        if not re.fullmatch(r'[0-9a-f]{40}',tip):raise CatalogError('上游提交无效')
+        exists = subprocess.run(['git','-C',str(repo),'cat-file','-e',tip+'^{commit}'],capture_output=True)
+        if exists.returncode:git(repo,'fetch','upstream','dev')
+        observed = {'checkedAt':now(),'tip':tip,'tipAt':git(repo,'show','-s','--format=%cI',tip)}
+        with store.db:
+            store.set_meta('upstream_check',observed);store.set_meta('upstream_check_error',None)
+    except CatalogError as exc:
+        with store.db:store.set_meta('upstream_check_error',str(exc))
+        raise
+    return coverage(store,repo)
+
+
 def merges(repo, endpoint):
     out = {}
     for line in git(repo, 'log', '--first-parent', '--format=%H%x09%s', endpoint).splitlines():
@@ -75,7 +112,7 @@ def github_metadata(numbers):
     numbers = sorted(set(numbers))
     for start in range(0, len(numbers), 50):
         batch = numbers[start:start + 50]
-        fields = ' '.join(f'p{n}:pullRequest(number:{n}){{number createdAt mergedAt url}}' for n in batch)
+        fields = ' '.join(f'p{n}:pullRequest(number:{n}){{number title body createdAt mergedAt url}}' for n in batch)
         query = 'query { repository(owner:"Fei-Craft",name:"DS-Bot") { databaseId ' + fields + ' } }'
         try:
             result = subprocess.run(['gh','api','graphql','-f','query=' + query], capture_output=True, text=True, timeout=30)
@@ -93,6 +130,7 @@ def github_metadata(numbers):
                 created = datetime.fromisoformat(item['createdAt'].replace('Z','+00:00'))
                 if created.utcoffset() is None:raise ValueError('timezone missing')
                 out[number] = {'createdAt':item['createdAt'], 'githubMergedAt':item['mergedAt']}
+                if item.get('title') is not None:out[number].update(prTitle=item['title'],prBody=re.sub(r'https?://[^\s<>"()]*(?:token=|X-Amz-|signature=)[^\s<>"()]*','[附件地址省略，请从原PR查看]',item.get('body',''),flags=re.I))
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise CatalogError('GitHub返回的PR来源或提交时间无效；本批时间未写入') from exc
     return out
@@ -183,7 +221,9 @@ def reassess(store, repo):
 def _sync(store, repo, endpoint, fetch=False):
     current = writable(repo)
     validate_source(repo)
-    if fetch:git(repo, 'fetch', 'upstream', 'dev')
+    if fetch:
+        git(repo, 'fetch', 'upstream', 'dev')
+        check_upstream(store,repo)
     end = git(repo, 'rev-parse', endpoint + '^{commit}')
     source = store.db.execute('SELECT * FROM sources WHERE repo_id=?', (REPO_ID,)).fetchone()
     if not source:raise CatalogError('先运行 bootstrap 导入已有台账')

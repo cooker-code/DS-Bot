@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from upstream_catalog.store import Store, Conflict, CatalogError, REPO_ID
-from upstream_catalog.source import sync, reassess, writable, database_path, complete_metadata, github_metadata, bootstrap as bootstrap_source
+from upstream_catalog.source import sync, reassess, writable, database_path, complete_metadata, github_metadata, bootstrap as bootstrap_source, coverage, check_upstream, git as source_git
 from upstream_catalog.web import server
 
 
@@ -247,6 +247,57 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(database_path(self.repo),(self.repo / 'scripts/upstream-sync/upstream.sqlite3').resolve())
         self.run_git('switch','-c','dev')
         with self.assertRaises(CatalogError):writable(self.repo)
+
+    def test_time_sorts_use_distinct_dates_and_normalize_timezones(self):
+        a={'createdAt':'2026-11-22T23:00:00-08:00','githubMergedAt':'2026-11-24T01:00:00Z'}
+        b={'createdAt':'2026-11-23T06:30:00Z','githubMergedAt':'2026-11-25T01:00:00Z'}
+        with self.store.db:
+            self.store.db.execute('UPDATE prs SET upstream_json=?,updated_at=? WHERE number=1',(json.dumps(a),'2026-11-26T00:00:00Z'))
+            self.store.db.execute('UPDATE prs SET upstream_json=?,updated_at=? WHERE number=2',(json.dumps(b),'2026-11-25T00:00:00Z'))
+        for sort,expected in [('created',[1,2]),('merged',[2,1]),('time',[1,2])]:
+            self.assertEqual([r['number'] for r in self.store.list({'sort':sort})['rows']],expected)
+        self.assertEqual(self.store.detail(2)['pr_merged_at'],b['githubMergedAt'])
+        with self.store.db:self.store.db.execute("UPDATE prs SET upstream_json='{}' WHERE number=1")
+        self.assertEqual([r['number'] for r in self.store.list({'sort':'created'})['rows']],[2,1])
+        with self.assertRaises(CatalogError):self.store.list({'sort':'unrecognized'})
+
+    def test_remote_observation_does_not_advance_reviewed_coverage(self):
+        self.assertIsNone(coverage(self.store,self.repo)['unseenPRs'])
+        (self.repo/'next.js').write_text('next')
+        self.run_git('add','next.js');self.run_git('commit','-m','Merge pull request #9001 from fixture/new')
+        tip=self.run_git('rev-parse','HEAD')
+        def remote(repo,*args):
+            if args[:1]==('ls-remote',):return tip+'\trefs/heads/dev'
+            return source_git(repo,*args)
+        with patch('upstream_catalog.source.git',side_effect=remote):
+            observed=check_upstream(self.store,self.repo)
+        self.assertEqual(observed['unseenPRs'],1)
+        self.assertEqual(observed['unseenDirectCommits'],0)
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'],self.base)
+        with self.store.db:self.store.db.execute('UPDATE sources SET checkpoint_sha=?',(tip,))
+        self.assertEqual(coverage(self.store,self.repo)['unseenCommits'],0)
+        def failed(repo,*args):
+            if args[:1]==('ls-remote',):raise CatalogError('remote unavailable')
+            return source_git(repo,*args)
+        with patch('upstream_catalog.source.git',side_effect=failed):
+            with self.assertRaises(CatalogError):check_upstream(self.store,self.repo)
+        state=coverage(self.store,self.repo)
+        self.assertEqual(state['checkedTip'],tip)
+        self.assertEqual(state['error'],'remote unavailable')
+
+    def test_new_pr_export_includes_difference_scenario_and_not_wanted(self):
+        self.store.annotate(2,{'purpose':'新功能','scenario':'两个项目并行','local_difference':'保留本地项目归属','solution':'隔离验证'},self.base)
+        self.store.preference(2,0,'本地不需要',0)
+        text=self.ledger.read_text()
+        shortened='\n'.join(line for line in text.splitlines() if not line.startswith('| [#2]'))+'\n'
+        self.ledger.write_text(shortened)
+        from upstream_catalog.store import digest
+        with self.store.db:self.store.set_meta('ledger_digest',digest(shortened))
+        self.store.export(self.ledger)
+        exported=self.ledger.read_text()
+        for value in ['两个项目并行','保留本地项目归属','不需要','本地不需要']:self.assertIn(value,exported)
+        self.assertEqual(exported.count('/2)'),1)
+        self.assertEqual(self.store.export(self.ledger)['changed'],0)
 
     def test_linked_worktree_reuses_main_catalog_and_choices(self):
         linked = self.repo / '.worktree/catalog-other'
