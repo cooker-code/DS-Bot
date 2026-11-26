@@ -1,0 +1,189 @@
+{
+  "nativeUI": {
+    "pid": 37887,
+    "overviewMissingKey": true,
+    "readonlyRepairFallsBack": true,
+    "providerFailureVisible": true,
+    "inlineKeySavedThroughPublicAPI": true,
+    "fieldSearchFocusesInput": true,
+    "previewBeforeSave": true,
+    "closeFlushesExactlyOneSave": true,
+    "escapeKeepsLocalPromptDraft": true,
+    "modelSearchTargetsProvider": true,
+    "domainAnchors": true,
+    "batchSearchDoesNotMutate": true,
+    "explicitBatchSwitch": true,
+    "narrow390": true,
+    "narrowOverviewSkipsUsage": true,
+    "pageErrors": []
+  },
+  "catalogUI": {
+    "pid": 32386,
+    "total265": true,
+    "filterAndSort": true,
+    "choicePersistsAcrossReloadAndServerRestart": true,
+    "undo": true,
+    "exportUpdatesFixtureOnly": true,
+    "xssRemainsText": true,
+    "narrow390": true,
+    "pageErrors": []
+  },
+  "realHistoryIncremental": {
+    "actualPR": 2216,
+    "from": "533222c78abc8cdfb2a57816f9a491a1756ff182",
+    "to": "bb1b1592472084c32278c12287944ee40b8087c5",
+    "commitsExamined": 1,
+    "newEntryCreatedOnce": true,
+    "pendingExplanationPreventsCursorAdvance": true,
+    "annotationThenAdvances": true,
+    "notWantedPreserved": true,
+    "repeatExaminesZeroCommits": true,
+    "formalCheckpointUnchanged": true,
+    "formalSourceNotDeleted": true,
+    "networkFetch": false,
+    "temporaryCopyRemoved": true
+  },
+  "isolatedRestart": {
+    "isolatedRuntimeVersion": "0.3.10-local.29-upstream",
+    "widthPersists": 65,
+    "writerModelPersists": true,
+    "dailyDSHRestarted": false
+  },
+  "installed": {
+    "web": {
+      "version": "0.3.10-local.29-upstream",
+      "matchedFiles": 177,
+      "mismatches": [],
+      "runtimeLoaded": "not verified; daily DSH not restarted"
+    },
+    "desktop": {
+      "version": "0.3.10-local.29-upstream",
+      "matchedFiles": 177,
+      "mismatches": [],
+      "runtimeLoaded": "not verified; daily DSH not restarted"
+    }
+  },
+  "cleanup": {
+    "ownedGroups": {
+      "web": 39800,
+      "mock": 39792
+    },
+    "groupsExited": {
+      "web": true,
+      "mock": true
+    },
+    "portsClosed": {
+      "3985": true,
+      "8985": true,
+      "4180": true
+    },
+    "ui": [
+      {
+        "pid": 37887,
+        "browserConnected": false,
+        "temporaryChromeFiles": [],
+        "ownedRemoved": true,
+        "scriptExited": true
+      },
+      {
+        "pid": 32386,
+        "serverPids": [
+          32424,
+          32452
+        ],
+        "browserConnected": false,
+        "temporaryChromeFiles": [],
+        "ownedRemoved": true,
+        "scriptExited": true
+      }
+    ],
+    "temporaryCatalogServerExited": true,
+    "dailyDSHStopped": false
+  },
+  "package": {
+    "tarball": "/tmp/ds-bot-0.3.10-local.29-upstream.tgz",
+    "version": "0.3.10-local.29-upstream",
+    "files": 177,
+    "sourceMismatches": [],
+    "changedPackedPathsSinceAcceptedCandidate": [],
+    "applicationCandidate": "e25f6caf0b8bc3962b1ef30c27a793bdec1ab116"
+  },
+  "recordedAt": "2026-11-26T12:59:52+08:00",
+  "branch": "chore/upstream-2028-catalog",
+  "pluginCandidate": "e25f6caf0b8bc3962b1ef30c27a793bdec1ab116",
+  "catalogCandidate": "118245cfab979e71ea64b61a6f4d82a0829d9261",
+  "dev": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d",
+  "source": "bb1b1592472084c32278c12287944ee40b8087c5",
+  "checks": {
+    "settings": {
+      "passed": 113,
+      "total": 113
+    },
+    "catalog": {
+      "passed": 18,
+      "total": 18
+    },
+    "full": {
+      "passed": 3469,
+      "total": 3475,
+      "existingFailures": 6
+    },
+    "smoke": {
+      "passed": 56,
+      "total": 57,
+      "existingFailures": 1
+    },
+    "lintErrors": 0,
+    "apiNamesExactlyOnce": 188
+  },
+  "catalog": {
+    "database": "<repo>/.git/upstream-sync/upstream.sqlite3",
+    "total": 265,
+    "statuses": {
+      "采用": 95,
+      "需讨论": 5,
+      "暂缓": 108,
+      "跳过": 57
+    },
+    "pending": 113,
+    "wanted2028": true,
+    "notWanted": [
+      2039,
+      2042
+    ]
+  },
+  "deployment": {
+    "version": "0.3.10.29-upstream",
+    "npm": "0.3.10-local.29-upstream",
+    "tarball": "/tmp/ds-bot-0.3.10-local.29-upstream.tgz",
+    "dailyRuntimeLoaded": "not verified",
+    "dailyRestarted": false
+  },
+  "deliveryService": {
+    "url": "http://127.0.0.1:4179",
+    "intentionalLongRunningService": true
+  },
+  "deliveryUI": {
+    "pid": 68954,
+    "formalDatabaseReadOnlyCheck": true,
+    "branch": "chore/upstream-2028-catalog",
+    "total": 265,
+    "adopted": 95,
+    "wanted2028": true,
+    "notWanted2039": true,
+    "pageErrors": []
+  },
+  "deliveryUICleanup": {
+    "pid": 68954,
+    "browserConnected": false,
+    "temporaryChromeFiles": [],
+    "ownedRemoved": true,
+    "scriptExited": true,
+    "deliveryServer": {
+      "pid": 67899,
+      "command": "/opt/homebrew/Cellar/python@3.15/3.15.0/Frameworks/Python.framework/Versions/3.15/Resources/Python.app/Contents/MacOS/Python scripts/upstream-catalog.py serve --port 4179",
+      "url": "http://127.0.0.1:4179",
+      "intentionalLongRunningService": true
+    }
+  }
+}

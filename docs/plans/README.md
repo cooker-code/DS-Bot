@@ -38,6 +38,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| [本地上游适配](2026-11-25-local-upstream-decisions.md) | 保留并行会话和项目卡；协作完整流程交付条件及.27断点、设置搜索与预览、二开缺陷报告 |
 | [DSH 让步总账](2026-10-13-dsh-concessions.md) | 因 DSH 本身的限制而做的妥协。判断「是 DS Bot 的 bug 还是 DSH 的限制」先看这里 |
 | [角色与权限](2026-10-07-roles-and-permissions.md) | 用户、Main Bot、群管理员、普通 Bot 各能做什么；Bot 的权限预设和群的统一权限 |
 | [隐私 Bot](2026-10-27-private-bots.md) | 只有用户能开关；其他 Bot 读不到它的文件夹、记忆和会话，外发由用户批准；独立文件夹、删除后的保护和隔离边界 |
@@ -72,3 +73,5 @@
 | [Office 文档](2026-10-27-office-documents.md) | Bot 离线处理 .docx/.pptx/.xlsx：应用带的 payload、`office.js` 命令行、office 路由换成带 `office-tools` 的版本 |
 | [连接器](2026-11-04-connectors.md) | 通用连接器引擎、OAuth、网关、邮箱 |
 | [功能结单与异步集成](2026-11-21-async-dev-integration.md) | 功能卡独立结单、Git 管理师更新本地 dev、快照回执和中断恢复 |
+
+本地已定设计：[上游增量台账与PR管理页](2026-11-26-upstream-catalog.md)，2026-11-26已实施、独立复核并安装.29；[实施回执](../reviews/2026-11-26-upstream-2028-implementation.md)。

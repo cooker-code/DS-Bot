@@ -1636,14 +1636,14 @@ test('a late member that passes on the promise retry still hands the work back (
 // Progress-based loop guard: consecutive 0-tool ack/repetitive relays pause after 6
 // turns and park the next call in room.paused, whereas tool calls reset the counter.
 // #872: the parked calls wait for the user, not for the next round of any kind.
-test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only when the user writes', async (t) => {
+test('consecutive 0-tool ack ping-pong relays pause after 2 turns and go on only when the user writes', async (t) => {
   const host = await start(t)
   const first = host.round('c1', host.say('@Chief 开始'))
   await settle(() => host.agentOf('ga').calls.length === 1)
   host.begin('ga')
   host.finish('ga', '@Writer 收到，辛苦了')
 
-  for (let step = 1; step <= 6; step += 1) {
+  for (let step = 1; step <= 2; step += 1) {
     const isWriter = step % 2 === 1
     const sessionId = isWriter ? 'gb' : 'ga'
     const target = isWriter ? '@Chief' : '@Writer'
@@ -1659,17 +1659,17 @@ test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only
   const saved = () => savedTeam(host.home).rooms.r1
   assert.deepEqual(saved().paused.map(entry => [entry.id, entry.idle]), [['b', true]])
   assert.match(await host.tool('read_group_chat', { group: 'Ops' }, 'a'),
-    /\[Paused: Chief and Writer went back and forth 6 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
+    /\[Paused: Chief and Writer went back and forth 2 times without progress \(no tool used, only thanks or repeats\)\. The calls to @Writer wait until the user writes here; do not call them again\.\]/)
 
   // A Bot's quiet late result opens a round, which leaves the parked call alone.
   const second = host.round('c2', { content: [{ type: 'text', text: '[Group post from Tester]\n测试跑完了' }], source: { kind: 'bot', form: 'relay', role: 'post', exchangeId: 'x2', senderSessionId: 'c', senderName: 'Tester', roomId: 'r1', late: true, quiet: true } })
   await settle(() => second() !== undefined)
-  assert.equal(host.agentOf('gb').calls.length, 3)
+  assert.equal(host.agentOf('gb').calls.length, 1)
   assert.equal(saved().paused.length, 1)
 
   // The user's message brings the parked call back with the admin.
   const third = host.round('c3', host.say('好了，说正事'))
-  await settle(() => host.agentOf('gb').calls.length === 4 && host.agentOf('ga').calls.length === 5)
+  await settle(() => host.agentOf('gb').calls.length === 2 && host.agentOf('ga').calls.length === 3)
   assert.match(text(host.begin('gb')), /Chief mentioned you/)
   host.finish('gb', '')
   host.begin('ga')
@@ -3081,7 +3081,7 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   assert.equal(accepted.acceptance, handoff.acceptance)
   assert.match(text(intake), /two separate, concise Markdown numbered lists/)
   const delegated = host.begin('gc')
-  assert.equal(delegated.source.intakeId, intake.source.intakeId)
+  assert.equal(delegated.source.taskId, accepted.id)
   assert.match(text(delegated), /Change the empty label into a dash/)
   assert.match(text(delegated), /keep the candidate on the feature branch/)
   const plan = { action: 'plan', version: 1, title: 'Empty label', acceptance: handoff.acceptance,
@@ -3117,6 +3117,135 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   await rt.updateRoom(room.id, { remove: ['c'] })
   assert.equal(room.projectAssistantId, 'c')
   await assert.rejects(project('ga', { action: 'plan' }), { code: 'TASK_ASSISTANT_INVALID' })
+})
+
+test('appointing an assistant automatically finds an accepted unassigned card and starts its original work', async t => {
+  const host = await start(t, taskNotice)
+  const sent = host.round('unassigned-user', host.say('Create a daily chat detail table.'))
+  await until(() => sent() !== undefined)
+  host.begin('ga')
+  await host.tool('project_task', { action: 'reply', acceptWork: true, classificationReason: 'Deliver the new daily table.', message: 'I will identify its sources and plan the work.' }, 'ga')
+  const room = rt.roomOf('r1')
+  const [original] = Object.values(room.projectCards)
+  host.finish('ga', 'Accepted')
+  await rt.updateRoom(room.id, { projectAssistantId: 'c' })
+  await until(() => host.agentOf('ga').calls.some(message => text(message).includes(original.id) && text(message).includes('unassigned cards')))
+  const recovery = host.agentOf('ga').calls.find(message => text(message).includes(original.id) && text(message).includes('unassigned cards'))
+  host.begin('ga', recovery)
+  const scan = JSON.parse(await host.tool('project_task', { action: 'scan' }, 'ga'))
+  assert.equal(scan.unassigned.find(row => row.taskId === original.id).status, 'needs_document')
+  const normalized = { title: 'Daily chat details', plan: '1. Create the daily chat detail table.', acceptance: '1. Verify its source, grain and daily update.' }
+  const result = JSON.parse(await host.tool('project_task', { action: 'retry_handoff', taskId: original.id, ...normalized }, 'ga'))
+  assert.equal(result.delegated, true)
+  assert.equal(savedTeam(host.home).rooms.r1.projectCards[original.id].goal, normalized.plan)
+  host.finish('ga', 'Handed the original card to the appointed assistant.')
+  const assistant = host.begin('gc')
+  assert.equal(assistant.source.taskId, original.id)
+  const plan = { action: 'plan', taskId: original.id, version: 1, title: normalized.title, plan: normalized.plan, acceptance: normalized.acceptance,
+    nodes: [{ ownerId: 'b', title: 'Read source assets', instructions: 'Inspect available source assets read-only.', deliverable: 'Source inventory', acceptance: 'Sources and missing business definitions are explicit.' }] }
+  await host.tool('project_task', plan, 'gc')
+  const dispatch = JSON.parse(await host.tool('project_task', { action: 'dispatch', taskId: original.id, version: 1, node: 1 }, 'gc'))
+  await host.tool('message_bot', { to: 'Writer', taskId: original.id, card_round: dispatch.dispatchRound, reply_to: 'user', request_id: 'recovered-original-card', message: 'Start the source inventory.' }, 'gc')
+  host.finish('gc', 'Dispatched the source inventory.')
+  host.begin('gb')
+  await host.tool('project_task', { action: 'start', taskId: original.id, round: dispatch.dispatchRound }, 'gb')
+  const stored = savedTeam(host.home).rooms.r1.projectCards
+  assert.equal(Object.keys(stored).length, 1)
+  assert.ok(stored[original.id].rounds[0].startedAt)
+  assert.equal(stored[original.id].managementHandoff.status, 'delivered')
+  host.finish('gb', 'Source investigation started.')
+})
+
+test('failed assistant delivery preserves the original document and the admin can retry without the original intake turn', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const sent = host.round('failed-handoff-user', host.say('Create a daily table.'))
+  await until(() => sent() !== undefined)
+  host.begin('ga')
+  const deliver = rt.deliver
+  rt.deliver = async args => {
+    if (args.toId === 'c') throw new Error('Temporary assistant delivery failure')
+    return deliver(args)
+  }
+  const accepted = JSON.parse(await host.tool('project_task', { action: 'reply', acceptWork: true, title: 'Daily table', plan: '1. Create the daily table.', acceptance: '1. Daily data is verifiable.', message: 'Accepted the daily table.' }, 'ga'))
+  assert.equal(accepted.delegated, false)
+  const room = rt.roomOf('r1')
+  const [card] = Object.values(room.projectCards)
+  const stored = savedTeam(host.home).rooms.r1.projectCards[card.id]
+  assert.equal(stored.goal, '1. Create the daily table.')
+  assert.match(stored.managementHandoff.error, /Temporary assistant delivery failure/)
+  host.finish('ga', 'Delivery failed; the original card is retained.')
+  rt.deliver = deliver
+  rt.eventsBackwards = async function* () {}
+  card.managementHandoff.nextAttemptAt = Date.now() - 1
+  await rt.recoverProjectHandoffs()
+  const recovery = host.agentOf('ga').calls.find(message => text(message).includes(card.id) && text(message).includes('unassigned cards'))
+  assert.ok(recovery)
+  host.begin('ga', recovery)
+  assert.equal(JSON.parse(await host.tool('project_task', { action: 'retry_handoff', taskId: card.id }, 'ga')).delegated, true)
+  assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.equal(savedTeam(host.home).rooms.r1.projectCards[card.id].managementHandoff.status, 'delivered')
+  host.finish('ga', 'Original card successfully delivered.')
+})
+
+test('changing the assistant during capability loading cannot enqueue to the old recipient', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Daily table', goal: 'Create a daily table.', acceptance: 'Verify daily data.', intakes: [], plans: [], rounds: [] } }
+  const ensure = rt.ensureCapabilities
+  let release, entered
+  const ready = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  rt.ensureCapabilities = async id => { if (id === 'gc') { entered(); await gate }; return ensure(id) }
+  const pending = host.tool('project_task', { action: 'retry_handoff', taskId: cardA }, 'ga')
+  await ready
+  await rt.updateRoom(room.id, { projectAssistantId: 'b' })
+  release()
+  assert.equal(JSON.parse(await pending).delegated, false)
+  assert.equal(host.agentOf('gc').calls.length, 0)
+  rt.ensureCapabilities = ensure
+  assert.equal(JSON.parse(await host.tool('project_task', { action: 'retry_handoff', taskId: cardA }, 'ga')).delegated, true)
+  assert.equal(host.agentOf('gb').calls.length, 1)
+})
+
+test('changing the admin during recovery capability loading does not notify the old admin', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  room.projectCards = { [cardA]: { id: cardA, title: 'Daily table', goal: 'Create a daily table.', acceptance: 'Verify daily data.', intakes: [], plans: [], rounds: [] } }
+  const ensure = rt.ensureCapabilities
+  let release, entered
+  const ready = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  rt.ensureCapabilities = async id => { if (id === 'ga') { entered(); await gate }; return ensure(id) }
+  const pending = rt.recoverProjectHandoffs()
+  await ready
+  await rt.updateRoom(room.id, { admin: 'b' })
+  release()
+  await pending
+  assert.equal(host.agentOf('ga').calls.length, 0)
+  rt.ensureCapabilities = ensure
+  await rt.recoverProjectHandoffs()
+  assert.equal(host.agentOf('gb').calls.length, 1)
+})
+
+test('a revised handoff supersedes the old document before it can enter the assistant inbox', async t => {
+  const host = await start(t, { ...taskNotice, projectAssistantId: 'c' })
+  const room = rt.roomOf('r1')
+  const card = { id: cardA, title: 'Daily table', goal: 'Create the old daily table.', acceptance: 'Verify daily data.', intakes: [], plans: [], rounds: [] }
+  room.projectCards = { [cardA]: card }
+  const ensure = rt.ensureCapabilities
+  let release, entered, paused = false
+  const ready = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  rt.ensureCapabilities = async id => { if (id === 'gc' && !paused) { paused = true; entered(); await gate }; return ensure(id) }
+  const old = rt.retryProjectHandoff(room, card)
+  await ready
+  card.goal = 'Create the revised daily table.'
+  assert.equal((await rt.retryProjectHandoff(room, card)).delegated, true)
+  release()
+  assert.equal((await old).delegated, false)
+  assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.match(text(host.agentOf('gc').calls[0]), /revised daily table/)
+  assert.equal(card.managementHandoff.status, 'delivered')
 })
 
 test('the planner can relate existing cards without moving their history or execution', async t => {

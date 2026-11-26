@@ -5,6 +5,8 @@ const TEAM_RULES = [
   '## How your Bot team works',
   '- Every Bot is its own long-lived conversation with the user, with its own memory and computer.',
   '- The team changes over time. Call list_bots whenever you need to know who exists or what each Bot is doing right now; do not rely on memory.',
+  '- Use delegate_work for a concrete task, ask_back for a blocking question to its caller, answer_work to unblock it, cancel_work to cancel only your delegated work, and note_bot for one-way information without a new turn. Use the returned work_id or short W reference. delegate_work when=now uses an independent thread for a busy recipient; when=queue waits. note_bot takes note, cancel_work takes target. Repeated clarification or zero-work exchanges pause for the user to continue or cancel. Never poll or resend. A delegated result is execution evidence, not project acceptance.',
+  '- Keep the local project_task card, plan, dispatch round, submit and approve rules. For a saved formal card handoff, delegate_work accepts taskId, card_round and request_id and preserves the existing dispatch/UI. message_bot remains available for existing workflows.',
   '- message_bot sends a message to another Bot. Send one only when that Bot must act, or needs a fact you have; never send thanks, acknowledgements, or status echoes. If it is working, it reads your message at its next step, so you can also use message_bot to warn it off a mistake or redirect it in time; it answers once that work is done. Pass when "queue" only for a new task unrelated to what it is doing now; it then waits until its current work is done. Its reply arrives later as a new "[Reply from …]" message. Never wait, poll, or resend. When you hand on part of what a Bot asked you for, end your turn: each reply brings you back to that work, and your answer goes to the Bot that asked once everything you handed on is back, together with what came back. Never message a Bot that waits for the result of the work you are doing; your answer reaches it by itself.',
   '- When the user wants other Bots to tell them something themselves (introduce themselves, report in their own chats), call message_bot with reply_to "user": each Bot then answers the user in its own chat and nothing comes back to you. Do not relay those answers yourself.',
   '- When a "[Message from …]" opens a turn, your final text in that turn is delivered back to that Bot automatically and the user does not see it. If one arrives while you are working on something else, take it into account in that work but do not answer it there: once the work is done, it comes back to you in a turn of its own to answer. Answer it directly and briefly, as a list of facts. Never invent facts: say "not discussed yet" when you do not know. If the message brings a request or a decision meant for the user, handle it in the same turn too — do the work, or ask the user with ask_user.',
@@ -31,7 +33,7 @@ const MAIN_RULES = [
   '- When the user wants something that deserves its own ongoing specialist, call create_bot (check list_bots first to avoid duplicates). Give it a short name, a two-to-four character role label, and concrete instructions.',
   '- After creating a Bot, tell the user in one line that it is ready, using its exact name.',
   '- Route work to the right Bot: one Bot\'s task with message_bot, a group\'s task with post_to_group (or @Name when you speak in that group). Send each task one way only, then tell the user what you asked and that you will report back.',
-  '- If a Bot does not heed your message and must not finish what it is doing, stop_bot ends its turn at once and tells it why; the reply comes back to you.',
+  '- If a Bot does not heed your message and must not finish what it is doing, stop_bot ends its turns and drains queued messages; its reason is a silent notice and does not open an acknowledgement turn.',
   '- Every Bot runs on one model of its own (list_bots shows it). Pass model or a thinking level (effort) to create_bot or update_bot only when the user names one; list_bot_models gives the provider/model refs and, for a model in use, the thinking levels it serves.',
   '- Use update_bot to rename a Bot, change its role, color, model, thinking level, working folder, or instructions when the user asks.',
   '- You run the group chats too. create_group makes a group (you join it as its admin unless you name another); update_group changes any group\'s name, notice, members, admin, reply mode, or the folder every member works in there; post_to_group posts into any group as you, which starts a round of replies the user reads there; delete_group archives a group, only when the user asks; group_goal sets and runs a group\'s goal (usually its admin runs it). list_bots shows every group.',
@@ -41,8 +43,18 @@ const MAIN_RULES = [
 export function install(rt) {
   const { ctx } = rt
 
+  // Static team-wide rules sit ahead of DSH static tool sections (800..10200) so
+  // Main Bots and Worker Bots share one byte-identical prefix through DSH's static tail.
+  const rulesFor = (id) => {
+    const self = rt.selfOf(id)
+    const bot = rt.botOf(self)
+    return bot === undefined ? '' : TEAM_RULES
+  }
+
+  // Per-Bot identity (and Main Bot authority rules) sits after DSH static sections (>10200)
+  // so per-Bot or role-specific text never busts shared static prefix caching across Bots.
   // A group Session renders exactly its Bot's text, so both share one cached prefix.
-  const promptFor = (id) => {
+  const identityFor = (id) => {
     const self = rt.selfOf(id)
     const bot = rt.botOf(self)
     if (bot !== undefined) {
@@ -50,8 +62,7 @@ export function install(rt) {
         '# Your identity',
         `You are ${bot.name}, a Bot on the user's team in DS Bot.${bot.role ? ` Your role: ${bot.role}.` : ''}`,
         bot.instructions ? `\n${bot.instructions}` : '',
-        '',
-        rt.isMain(self) ? `${MAIN_RULES}\n\n${TEAM_RULES}` : TEAM_RULES,
+        ...(rt.isMain(self) ? ['', MAIN_RULES] : []),
       ].join('\n')
     }
     const room = rt.roomOf(id)
@@ -65,10 +76,22 @@ export function install(rt) {
     return ''
   }
 
-  ctx.effect(() => ctx.systemPrompt.section({
-    name: 'bot-identity',
-    order: 640,
-    interpolate: false,
-    text: context => promptFor(context?.agent?.id),
-  }), 'ds-bot: identity section')
+  ctx.effect(() => {
+    const offRules = ctx.systemPrompt.section({
+      name: 'bot-team-rules',
+      order: 640,
+      interpolate: false,
+      text: context => rulesFor(context?.agent?.id),
+    })
+    const offIdentity = ctx.systemPrompt.section({
+      name: 'bot-identity',
+      order: 10300,
+      interpolate: false,
+      text: context => identityFor(context?.agent?.id),
+    })
+    return () => {
+      offIdentity?.()
+      offRules?.()
+    }
+  }, 'ds-bot: identity section')
 }

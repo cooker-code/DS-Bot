@@ -14,7 +14,7 @@
   "completedAt": null,
   "branch": "feat/wecom-dm-room",
   "base_branch": "dev",
-  "worktree_path": "/Users/blank/wangliang/gitcode/DS-Bot/.worktrees/feat%2Fwecom-dm-room",
+  "worktree_path": "<repo>/.worktrees/feat%2Fwecom-dm-room",
   "commit": "ca295b5f",
   "pr_url": null,
   "subtasks": [],

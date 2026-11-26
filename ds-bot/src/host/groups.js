@@ -1,3 +1,4 @@
+import { isWorkTool, isAckLikeText, ROOM_ZERO_WORK_RELAY_LIMIT } from './constants.js'
 import { scopedModelInput } from './project-execution.js'
 // Group chats: the room log, members' group Sessions, rounds and @mentions, round
 // reports, and the group tools (group_relay, read_own_chat, read_group_chat).
@@ -32,6 +33,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { GROUP_LINE_READ, LATE_ANSWER, ROOM_IDLE_RELAY_LIMIT, ROOM_REPLY_TIMEOUT_MS, ROOM_STEP_GAP_MS, ROOM_WORK_GRACE_MS, SOURCE_KIND, TEAM_TOOLS, TEXT_KEPT } from './constants.js'
 import { escapeRegExp, headOf, splitRef, textOf } from './text.js'
 import { viaOf } from '../shared/im-platforms.js'
+import { REPLY_ELISION, parseReplies } from '../shared/group-replies.js'
 import { mentionSpans, speakerOf } from '../shared/mentions.js'
 import { GROUP_REF, output } from './tools.js'
 import { searchGroupBook } from './group-search.js'
@@ -71,7 +73,7 @@ const normalizeRelayBody = (text, everyone) => {
 }
 export const isIdleRelayText = (text, everyone, priorBodies) => {
   const norm = normalizeRelayBody(text, everyone)
-  if (norm === '' || (norm.length <= IDLE_TEXT_MAX && IDLE_BODY.test(norm))) return true
+  if (isAckLikeText(norm) || norm === '' || (norm.length <= IDLE_TEXT_MAX && IDLE_BODY.test(norm))) return true
   return priorBodies.some(prev => prev !== '' && (prev === norm || (prev.length >= 8 && norm.length >= 8 && (prev.includes(norm) || norm.includes(prev)))))
 }
 
@@ -218,18 +220,20 @@ export function install(rt) {
   rt.ledger.importer('group-', (book) => {
     const roomId = book.slice('group-'.length)
     const lines = new Map()
+    const keep = (line, text = line.text) => lines.set(line.seq, typeof text === 'string'
+      ? { ...line, text, length: line.length ?? text.length }
+      : line)
     for (const line of rt.roomOf(roomId)?.log ?? []) {
       if (!Number.isInteger(line?.seq)) continue
-      const { length, ...rest } = line
-      let text = rest.text
-      if (length !== undefined) {
+      let text = line.text
+      if (line.length !== undefined) {
         try { text = readFileSync(join(rt.home, 'group-lines', roomId, `${line.seq}.txt`), 'utf8') } catch { /* only its start was kept */ }
       }
-      lines.set(line.seq, { ...rest, ...(text === undefined ? {} : { text }) })
+      keep(line, text)
     }
     try {
       for (const line of parseBook(readFileSync(join(rt.home, 'group-logs', `${oldLogName(roomId)}.jsonl`), 'utf8'))) {
-        if (Number.isInteger(line.seq)) lines.set(line.seq, line)
+        if (Number.isInteger(line.seq)) keep(line)
       }
     } catch { /* no log of its own yet */ }
     return [...lines.values()].sort((a, b) => a.seq - b.seq)
@@ -304,7 +308,7 @@ export function install(rt) {
     // A notice names the member it is about, not as its speaker: members skip their own lines.
     const botId = record.botId ?? record.about
     const bot = botId === undefined ? undefined : rt.botOf(botId)
-    const who = { botId, name: bot?.name ?? (record.kind === 'notice' ? record.names?.[0] : record.who), color: bot?.color }
+    const who = { ...scopeFields(scopeOf(record)), botId, name: bot?.name ?? (record.kind === 'notice' ? record.names?.[0] : record.who), color: bot?.color }
     const time = record.time
     if (record.kind === undefined) {
       if (record.botId === undefined) return { kind: 'user', ...scopeFields(scopeOf(record)), text: record.text, time, ...(record.via ? { via: record.via } : {}) }
@@ -357,12 +361,120 @@ export function install(rt) {
     return { rows, open: end === undefined, ...(called.size && { calledIds: [...called] }) }
   }
   const groupRows = (roomId, from, to, anchor) => rowsView(roomId, from, to, anchor).rows
+  const jsonText = text => JSON.stringify(text).slice(1, -1)
+  const isLegacyReply = record => record.kind === undefined && record.session !== true
+    && typeof record.botId === 'string' && typeof record.text === 'string'
+  function hasCompleteText(record) {
+    const length = record.text.length
+    if (record.length !== undefined) return length === record.length
+    // Old imports dropped the original length. Either cap can land one unit early at a surrogate pair.
+    return length !== TEXT_KEPT && length !== TEXT_KEPT - 1
+      && length !== GROUP_LINE_READ && length !== GROUP_LINE_READ - 1
+  }
+  const isKeptReply = record => isLegacyReply(record) && hasCompleteText(record)
+  const matchesOpening = (record, opening, partial) => (partial ? record.text.startsWith(opening) : record.text === opening)
+    || (!hasCompleteText(record) && opening.startsWith(record.text))
+
+  function restoreTrimmedReplies(replies, records) {
+    const restored = []
+    for (const reply of replies) {
+      if (!reply || typeof reply !== 'object' || reply.__omitted__) return null
+      const marker = typeof reply.text === 'string' ? REPLY_ELISION.exec(reply.text) : null
+      if (marker === null) { restored.push(reply); continue }
+      const head = reply.text.slice(0, marker.index)
+      const tail = reply.text.slice(marker.index + marker[0].length)
+      const omitted = Number(marker[1])
+      // save-token's JSON codec keeps 220 and 80 UTF-16 units of an individual string longer than 400.
+      if (reply.kind !== undefined || head.length !== 220 || tail.length !== 80 || omitted <= 100 || REPLY_ELISION.test(tail)) return null
+      const length = head.length + omitted + tail.length
+      const matches = records.filter(record => {
+        if (!isLegacyReply(record) || record.botId !== reply.botId || !matchesOpening(record, head, true)) return false
+        if (!hasCompleteText(record)) return record.length === undefined || record.length === length
+        return record.text.length === length && record.text.endsWith(tail)
+      })
+      if (matches.length !== 1 || !hasCompleteText(matches[0])) return null
+      restored.push({ ...reply, text: matches[0].text })
+    }
+    return restored
+  }
+
+  function restoreRelayWindow(preview, records, marker) {
+    const suffix = preview.slice(marker.index + marker[0].length)
+    if (REPLY_ELISION.test(suffix)) return null
+    const head = preview.slice(0, marker.index)
+    const before = parseReplies(head).replies
+    const tailFragment = /^((?:[^"\\]|\\.)*)"/.exec(suffix)
+    if (tailFragment === null) return null
+    let after
+    try { after = JSON.parse(`{"replies":[{"text":"${suffix}`).replies } catch { return null }
+    if (!Array.isArray(after) || after.some(reply => !reply || typeof reply !== 'object' || reply.__omitted__)) return null
+    const tail = after[0]?.text
+    if (typeof tail !== 'string' || tail.length < 16 || after[0].kind !== undefined) return null
+
+    // A line window can start its cut inside a reply's text or after a complete reply.
+    let partial
+    const headFragment = /"text"\s*:\s*"((?:[^"\\]|\\.)*)$/.exec(head)
+    if (headFragment !== null) {
+      try { partial = JSON.parse(`${head}"}]}`).replies.at(-1) } catch { return null }
+    }
+    const first = partial ?? before.findLast(reply => reply?.kind === undefined && typeof reply?.botId === 'string' && typeof reply.text === 'string')
+    if (typeof first?.text !== 'string' || first.text.length < 16 || first.kind !== undefined) return null
+    // A surviving suffix does not prove which prompt owns a cut if an earlier matching start lost its ending.
+    const starts = records.filter(record => isLegacyReply(record) && record.botId === first.botId
+      && matchesOpening(record, first.text, partial !== undefined))
+    // A cut can start in an escape, so decoding the suffix can give it a different meaning.
+    const ends = records.filter(record => isKeptReply(record) && jsonText(record.text).endsWith(tailFragment[1])
+      && (after[0].botId === undefined || record.botId === after[0].botId))
+    if (starts.length !== 1 || ends.length !== 1 || ends[0].seq < starts[0].seq) return null
+    // Don't guess across a missing ledger row, a new prompt, or any other boundary.
+    const span = records.slice(records.indexOf(starts[0]), records.indexOf(ends[0]) + 1)
+    if (!span.every((record, i) => isKeptReply(record) && record.seq === starts[0].seq + i)) return null
+    // Count the saved JSON units: re-encoding half a surrogate pair would add an escape.
+    const hiddenText = span.reduce((length, record) => length + jsonText(record.text).length, 0)
+      - (headFragment?.[1].length ?? jsonText(first.text).length) - tailFragment[1].length
+    const omitted = Number(marker[1])
+    if (span.length === 1) {
+      // A cut inside one string hides no JSON structure, so the encoded length must match exactly.
+      if (partial === undefined || first.text.length + tail.length >= span[0].text.length || hiddenText !== omitted) return null
+    } else if (hiddenText >= omitted) return null
+    const missing = partial === undefined ? span.slice(1) : span
+    return [...before, ...missing.map(rowOf), ...after.slice(1)]
+  }
+
+  // Use only DS Bot's own pre-ledger records, never a file locator embedded in a result.
+  function groupRelayReplies(sessionId, preview) {
+    if (typeof sessionId !== 'string' || typeof preview !== 'string' || preview.length > 65_536) return null
+    const marker = REPLY_ELISION.exec(preview)
+    if (marker === null) return null
+    const room = rt.roomOf(sessionId) ?? rt.roomOf(rt.pastOwners.get(sessionId)?.roomId)
+    if (room === undefined) return null
+    // A room from before logs were versioned has no `seq` yet: open its book through the
+    // migration first, or the importer would cache an empty book for this process.
+    ensureRoomLog(room)
+    const book = rt.ledger.records(bookOf(room.id))
+    const anchor = book.findIndex(record => record.event === 'anchor')
+    const records = anchor === -1 ? book : book.slice(0, anchor)
+    // A unique match proves nothing when the original could have aged out of the legacy log.
+    if (records.some((record, i) => record.seq !== i + 1)
+      || (anchor === -1 ? records.length !== room.seq : book[anchor].from > records.length + 1)) return null
+    // The line codec keeps 260 and 100 raw units, even if the splice still parses as JSON.
+    if (marker.index === 260 && preview.length - marker.index - marker[0].length === 100) {
+      return restoreRelayWindow(preview, records, marker)
+    }
+    let replies
+    try { replies = JSON.parse(preview)?.replies } catch { /* a cut can break JSON syntax */ }
+    if (Array.isArray(replies) && replies.some(reply => typeof reply?.text === 'string' && REPLY_ELISION.test(reply.text))) {
+      const restored = restoreTrimmedReplies(replies, records)
+      if (restored !== null) return restored
+    }
+    return restoreRelayWindow(preview, records, marker)
+  }
   // A sequence of words over everything said in the group, newest first, with each
   // hit's neighbours. `page` (`before` or `offset`) reads the next older page.
   const groupSearch = (roomId, query, page) => searchGroupBook(rt.ledger.records(bookOf(roomId)), query, page, rt.roomOf(roomId))
 
   Object.assign(rt, {
-    keepGroupLine, dropGroupLines, groupRows, groupRowsView: rowsView, groupSearch,
+    keepGroupLine, dropGroupLines, groupRows, groupRowsView: rowsView, groupRelayReplies, groupSearch,
     logRoom: (room, line) => say(room, line),
     onRoomLine: (listener) => {
       roomLineListeners.add(listener)
@@ -881,7 +993,7 @@ export function install(rt) {
   // The team's own tools are quick; any other tool is the start of work.
   const QUICK_TOOLS = new Set(TEAM_TOOLS)
   rt.workRoomTurn = (sessionId, tool) => {
-    if (QUICK_TOOLS.has(tool)) return
+    if (QUICK_TOOLS.has(tool) || !isWorkTool(tool)) return
     const waiters = waitersOf(sessionId)
     for (const waiter of waiters) waiter.work()
     // A member that gave up its place in the round (it waits for an approval, or the round
@@ -1081,33 +1193,63 @@ export function install(rt) {
   }
 
   // Consecutive idle steps in this room since the user last wrote here or a member worked
-  // (#853). A step is one Bot turn that used no tool: the post that opens a round is not
-  // a step of its own, so a round and the answer it gets count once. The count lives on
-  // the room, because a group that ends one round per status post would start again from
-  // zero every time and never reach the limit.
+  // (#853). A step is one Bot turn that used no real work tool: the post that opens a round
+  // is not a step of its own, so a round and the answer it gets count once. In addition to
+  // ack/status text, any zero-work cycle (calling a Bot that already spoke with 0 work tools
+  // since the last user message or real work) pauses immediately regardless of wording.
   const countIdleStep = (room) => {
     if (room.idlePaused !== undefined) return
     room.idleRelays = (room.idleRelays ?? 0) + 1
+  }
+  const noteIdleEdge = (room, fromId, toId) => {
+    if (room.idlePaused !== undefined || !fromId || !toId || fromId === toId) return
+    const edge = `${fromId}->${toId}`
+    const list = room.idleEdges ??= []
+    if (!list.includes(edge)) list.push(edge)
+  }
+  const canReachIdleEdge = (startId, targetId, edges) => {
+    if (!startId || !targetId || startId === targetId || edges.size === 0) return false
+    const seen = new Set([startId])
+    const queue = [startId]
+    while (queue.length > 0) {
+      const node = queue.shift()
+      const prefix = `${node}->`
+      for (const edge of edges) {
+        if (!edge.startsWith(prefix)) continue
+        const next = edge.slice(prefix.length)
+        if (next === targetId) return true
+        if (!seen.has(next)) { seen.add(next); queue.push(next) }
+      }
+    }
+    return false
+  }
+  const countZeroWorkRelay = (room) => {
+    if (room.idlePaused !== undefined) return
+    room.zeroWorkRelays = (room.zeroWorkRelays ?? 0) + 1
   }
   // Work or new content clears the streak, so a group that is working is never paused.
   // It does not lift a pause already in place: that is the user's to lift (#853).
   const clearIdleStreak = (room) => {
     if (room.idlePaused !== undefined) return
     if (room.idleRelays !== undefined) delete room.idleRelays
+    if (room.zeroWorkRelays !== undefined) delete room.zeroWorkRelays
+    if (room.idleEdges !== undefined) delete room.idleEdges
+    if (room.idleSpeakers !== undefined) delete room.idleSpeakers
   }
-  // The user's own message lifts a pause.
+  // The user's own message or clicking Continue lifts a pause.
   const unpauseRoomIdle = (room) => {
     if (room.idleRelays !== undefined) delete room.idleRelays
+    if (room.zeroWorkRelays !== undefined) delete room.zeroWorkRelays
+    if (room.idleEdges !== undefined) delete room.idleEdges
+    if (room.idleSpeakers !== undefined) delete room.idleSpeakers
     if (room.idlePaused !== undefined) delete room.idlePaused
   }
-  // Whether an idle step must wait for the user: the room is paused, or this step reaches
-  // the limit. Every call it would have made waits in `room.paused` and runs after the
-  // user's message, so a call is held back, never dropped: the members it named, the
-  // members a "@all" called, and the members an automatic round would have called. The
-  // group hears about the pause once.
-  function holdIdleCalls(room, round, member, callees, { named = [], all = false } = {}) {
-    if (room.idlePaused === undefined && (room.idleRelays ?? 0) < ROOM_IDLE_RELAY_LIMIT) return false
-    if (room.idlePaused === undefined) room.idlePaused = { from: member.id, count: room.idleRelays ?? ROOM_IDLE_RELAY_LIMIT, noticed: false }
+  // Whether an idle step must wait for the user: the room is paused, a zero-work cycle
+  // formed, or this step reaches the idle/zero-work limit. Every call it would have made
+  // waits in `room.paused` and runs once the user continues or writes, never dropped.
+  function holdIdleCalls(room, round, member, callees, { named = [], all = false, force = false, count } = {}) {
+    if (!force && room.idlePaused === undefined && (room.idleRelays ?? 0) < ROOM_IDLE_RELAY_LIMIT) return false
+    if (room.idlePaused === undefined) room.idlePaused = { from: member.id, count: count ?? room.idleRelays ?? ROOM_IDLE_RELAY_LIMIT, noticed: false }
     if (callees.length > 0) {
       const parked = room.paused ?? []
       for (const peer of callees) {
@@ -1131,33 +1273,64 @@ export function install(rt) {
   // The members a member's message calls: those it names with @, or everyone when the
   // admin writes "@all" (only the admin, so a member cannot set off a storm). A turn
   // calls each member once, however many of its lines name it.
-  // Every 0-tool status step counts toward the room's idle rounds, also one that names
-  // nobody: that step is what a group answering itself runs on. Once the room is paused
-  // (or this step reaches the limit) the calls it would make wait for the user.
-  function callFrom(room, round, member, text, called, { worked = false, byBot = false } = {}) {
+  // Zero-work Bot-to-Bot relays pause immediately on a graph cycle (calling a Bot that
+  // already spoke without running any work tool since the last user message or real work),
+  // after ROOM_IDLE_RELAY_LIMIT ack/status posts, or after ROOM_ZERO_WORK_RELAY_LIMIT
+  // consecutive 0-work Bot-to-Bot turns regardless of wording.
+  function callFrom(room, round, member, text, called, { worked = false, byBot = false, callerId, idleTurn } = {}) {
     const everyone = room.members.map(rt.botOf).filter(Boolean)
     const others = everyone.filter(other => other.id !== member.id)
     const { all, found: named } = mentionsIn(text, everyone)
     const found = named.filter(other => other.id !== member.id)
     const callees = (rt.isAdminOf(room, member.id) && all ? [...found, ...others.filter(other => !found.includes(other))] : found)
       .filter(peer => !called.has(peer.id))
-    // Counted before the callers below, because a status post calls nobody at all.
     let idleStep = false
+    let zeroWorkCycle = false
+    let zeroWorkLimit = false
+    const alreadyPaused = !worked && byBot && room.idlePaused !== undefined && callees.length > 0
     if (worked) {
       clearIdleStreak(room)
     } else if (byBot) {
+      const priorEdges = new Set(room.idleEdges ?? [])
+      const alreadyCounted = idleTurn?.counted === true
+      if (!alreadyCounted) {
+        countZeroWorkRelay(room)
+        if (idleTurn !== undefined) idleTurn.counted = true
+      }
       const history = round.botBodies?.get(member.id) ?? []
       const norm = normalizeRelayBody(text, everyone)
       if (norm !== '') (round.botBodies ??= new Map()).set(member.id, [...history, norm])
       idleStep = isIdleRelayText(text, everyone, history)
-      if (idleStep) countIdleStep(room)
-      else clearIdleStreak(room)
+      if (idleStep) {
+        if (idleTurn?.idleCounted !== true) {
+          countIdleStep(room)
+          if (idleTurn !== undefined) idleTurn.idleCounted = true
+        }
+      } else if (!alreadyCounted && room.idlePaused === undefined && room.idleRelays !== undefined) {
+        delete room.idleRelays
+      }
+      // Directed zero-work cycle detection:
+      // - Repeating a zero-work edge (e.g. A -> B -> A -> B) pauses immediately.
+      // - Closing an N-Bot ring (e.g. A -> B -> C -> A where peer !== direct caller)
+      //   pauses immediately.
+      // - Legitimate fan-out (User -> Admin -> @B @C -> Admin) and sequential chains
+      //   (User -> Admin -> @B -> @Admin -> @C -> @Admin) never repeat an edge and
+      //   never trigger a false pause.
+      zeroWorkCycle = callees.some(peer =>
+        priorEdges.has(`${member.id}->${peer.id}`)
+        || (peer.id !== callerId && canReachIdleEdge(peer.id, member.id, priorEdges)))
+      for (const peer of callees) noteIdleEdge(room, member.id, peer.id)
+      zeroWorkLimit = callees.length > 0 && (room.zeroWorkRelays ?? 0) >= ROOM_ZERO_WORK_RELAY_LIMIT
     } else {
       const norm = normalizeRelayBody(text, everyone)
       if (norm !== '') (round.botBodies ??= new Map()).set(member.id, [...(round.botBodies?.get(member.id) ?? []), norm])
+      for (const peer of callees) noteIdleEdge(room, member.id, peer.id)
     }
     for (const peer of callees) called.add(peer.id)
-    if (byBot && idleStep && holdIdleCalls(room, round, member, callees, { named, all })) return
+    if (byBot && (alreadyPaused || zeroWorkCycle || zeroWorkLimit || (idleStep && (room.idleRelays ?? 0) >= ROOM_IDLE_RELAY_LIMIT))) {
+      const pauseCount = zeroWorkCycle ? Math.max(room.zeroWorkRelays ?? 2, 2) : zeroWorkLimit ? room.zeroWorkRelays : room.idleRelays
+      if (holdIdleCalls(room, round, member, callees, { named, all, force: alreadyPaused || zeroWorkCycle || zeroWorkLimit, count: pauseCount })) return
+    }
     if (callees.length === 0) return
     callIn(round, callees, `${member.name} mentioned you`, member.id)
     // An @Name from the admin hands the member its goal task.
@@ -1253,6 +1426,7 @@ export function install(rt) {
     const called = new Set()
     const startedAt = Date.now()
     let worked = false
+    const idleTurn = {}
     // A step answers a Bot when a Bot called it: by name, or the round a Bot's own post
     // opened (#853).
     const answeredBot = slot.by !== undefined || slot.fromBot === true
@@ -1266,7 +1440,7 @@ export function install(rt) {
       room, member, session.id, prompt, slot.note ?? 'your turn', signal, round, slot.by, said,
       (line) => {
         posted.push(room.seq)
-        callFrom(room, round, member, line, called, { worked, byBot: answeredBot })
+        callFrom(room, round, member, line, called, { worked, byBot: answeredBot, callerId: slot.by, idleTurn })
       },
       onWork,
     )
@@ -1302,15 +1476,15 @@ export function install(rt) {
     } else if (reply?.working) {
       slot.status = 'working'
       markSlotWorked(room.id, slot)
-      say(room, { who: member.name, botId: member.id, kind: 'working' })
+      say(room, { ...scopeFields(scopeOf(round)), who: member.name, botId: member.id, kind: 'working' })
     } else if (subRunning) {
       if (final !== undefined) {
         postInRound(room, member, final, Date.now() - startedAt, claimsOf(session, final, true), changes, round)
-        callFrom(room, round, member, final, called, { worked: true, byBot: answeredBot })
+        callFrom(room, round, member, final, called, { worked: true, byBot: answeredBot, callerId: slot.by, idleTurn })
       }
       slot.status = 'working'
       markSlotWorked(room.id, slot)
-      say(room, { who: member.name, botId: member.id, kind: 'working' })
+      say(room, { ...scopeFields(scopeOf(round)), who: member.name, botId: member.id, kind: 'working' })
     } else if (changes !== undefined && final === undefined && typeof reply === 'string') {
       slot.status = 'posted'
       say(room, { who: member.name, botId: member.id, kind: 'done', text: '', changes })
@@ -1319,7 +1493,7 @@ export function install(rt) {
       slot.status = 'posted'
       if (final !== undefined && final.trim() !== '') {
         posted.push(postInRound(room, member, final, Date.now() - startedAt, claimsOf(session, final, worked, callsIn(room, member, final)), changes, round))
-        callFrom(room, round, member, final, called, { worked, byBot: answeredBot })
+        callFrom(room, round, member, final, called, { worked, byBot: answeredBot, callerId: slot.by, idleTurn })
       } else if (changes !== undefined) {
         // The turn wrote nothing to hang the change line on (a pass, or an empty final
         // reply): its completion line carries it, the same place a late completion does.
@@ -2203,10 +2377,12 @@ export function install(rt) {
     await rt.load()
     const room = rt.roomOf(roomId)
     const member = rt.botOf(botId)
+    let cancelledWork = false
+    for (const [id, work] of Object.entries(rt.state.works ?? {})) if (work.protocol && work.fromRoom === roomId && work.to === botId) { await rt.cancelDelegatedWork(id, 'Stopped by the user in this group.'); cancelledWork = true }
     const sessionId = rt.own(room?.sessions, botId)
     const turnRunning = sessionId !== undefined && rt.live.get(sessionId)?.turn !== undefined
     const subRunning = sessionId !== undefined && rt.hasSubagents?.(sessionId) === true
-    if (room === undefined || member === undefined || sessionId === undefined || (!turnRunning && !subRunning)) return false
+    if (room === undefined || member === undefined || sessionId === undefined || (!turnRunning && !subRunning)) return cancelledWork
     dropMemberFromBatch(room, botId)
     await rt.stopSubagents?.(sessionId)
     if (turnRunning) {
@@ -2247,6 +2423,33 @@ export function install(rt) {
     return round || stopped
   }
   rt.stopRoomWork = stopRoomWork
+  async function resumeRoomPause(roomId) {
+    await rt.load()
+    const room = rt.roomOf(roomId)
+    if (room === undefined || room.idlePaused === undefined) return false
+    unpauseRoomIdle(room)
+    const parked = (room.paused ?? []).map(entry => ({ ...entry, idle: false }))
+    if (parked.length > 0) room.paused = parked
+    else delete room.paused
+    await rt.save().catch(() => {})
+    const running = runningRound(room.id)
+    if (running !== undefined && !running.starting && !running.closed) {
+      releaseParked(room, running)
+      running.nudge?.()
+      return true
+    }
+    if (parked.length > 0) {
+      const agent = await rt.resolveAgent(rt.sessionOfRoom(room))
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: '[Group chat · user continued paused calls]' }],
+        source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), roomId: room.id, quiet: true, resumedPause: true },
+      }))
+      await ctx.sessions.flush(agent.session)
+    }
+    return true
+  }
+  rt.resumeRoomPause = resumeRoomPause
+
   Object.assign(rt, {
     workingInRoom: workingIn,
     roomBatchPending: roomId => Object.values(batches()).some(batch => batch.roomId === roomId && batch.pending.length > 0),

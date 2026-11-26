@@ -2,6 +2,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { taskInteractions } from '../src/host/task-interactions.js'
 
+test('recovered assistant delivery keeps the saved requirement in the interaction audit', async () => {
+  const room = { id: 'group', admin: 'lead', members: ['lead', 'assistant'], sessions: { assistant: 'a' } }
+  const handoffText = '1. Create the daily table.\n\n1. Verify its data and daily update.'
+  const event = { seq: 1, time: 2, type: 'user/message', data: {
+    source: { kind: 'bot', role: 'request', taskId: 'work', roomId: 'group', exchangeId: 'recovery', projectActorId: 'lead', handoffText },
+    content: [{ type: 'text', text: 'The group admin delegated this existing card to you.' }],
+  } }
+  const rt = { ledger: { records: () => [] }, taskPairMessages: () => [],
+    ctx: { sessionController: { page: async () => ({ records: [{ event }] }) } } }
+  const { messages } = await taskInteractions(rt, room, { id: 'work', intakes: [], rounds: [] })
+  assert.equal(messages.length, 1)
+  assert.deepEqual([messages[0].from, messages[0].to, messages[0].text], ['lead', 'assistant', handoffText])
+})
+
 test('task history joins delivered exchanges, scoped posts and coordination with visible history gaps', async () => {
   const card = { id: 'work', intakes: ['intake-1'], rounds: [] }
   const room = { id: 'group', members: ['dev', 'manager'], sessions: { dev: 'd', manager: 'm' } }

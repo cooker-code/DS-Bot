@@ -16,7 +16,10 @@ function start() {
     roomOf: id => id === 'room' ? {} : undefined,
     isMain: id => id === 'main',
   })
-  const prompt = id => ctx.sections.get('bot-identity').text({ agent: { id } })
+  const prompt = id => [
+    ctx.sections.get('bot-team-rules').text({ agent: { id } }),
+    ctx.sections.get('bot-identity').text({ agent: { id } }),
+  ].filter(Boolean).join('\n\n')
   return { ctx, prompt }
 }
 

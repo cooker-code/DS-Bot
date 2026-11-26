@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { cleanText, install as installDiagnostics, reportMarkdown } from '../src/host/diagnostics.js'
+import { cleanText, install as installDiagnostics, reportMarkdown, ISSUES_URL } from '../src/host/diagnostics.js'
 import { BLOCKING_CODES, failureLine, install as installTurns, turnFailure } from '../src/host/turns.js'
 import { errorCode } from '../src/host/channel.js'
 import { SOURCE_KIND } from '../src/host/constants.js'
@@ -70,7 +70,8 @@ test('warnings are kept, cleaned, written to the log, and read back after a rest
   assert.equal(second.code, 'RATE_LIMIT')
 
   const report = await rt.diagnostics.report({ client: { surface: 'Web', language: 'zh-CN', userAgent: 'Test/1' }, clientErrors: [{ time: 1, text: 'state: HTTP 502' }] })
-  assert.match(report.markdown, /\| DS Bot \| \d+\.\d+\.\d+(?:-local\.\d+)? \|/)
+  const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+  assert.ok(report.markdown.includes(`| DS Bot | ${version} |`))
   assert.match(report.markdown, /\| Surface \| Web \|/)
   assert.match(report.markdown, /\| Models \| deepseek\/deepseek-chat \|/)
   assert.match(report.markdown, /WARN host \[EACCES\] state write failed/)
@@ -281,7 +282,18 @@ test('a failed group turn fails its waiter; a stopped one counts as no answer', 
 
 // The failures the repair card is for, as the client reads them from `bot.blocked`.
 test('the failures that block a Bot are the ones only the user can fix', () => {
-  assert.deepEqual([...BLOCKING_CODES], ['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'ACCOUNT_QUOTA', 'ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT'])
+  assert.deepEqual([...BLOCKING_CODES], ['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'ACCOUNT_QUOTA', 'ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT', 'LOCAL_AGENT_ERROR'])
+})
+
+test('a local-agent error is reported and blocks the Bot', () => {
+  const { rt, emit, noted } = turnsHost()
+  const session = { id: 'b', requestHeader: () => ({ config: { provider: 'local-acp-fake', model: 'default' } }) }
+  const error = { code: 'LOCAL_AGENT_ERROR', message: 'the local agent failed' }
+  emit('b', 'turn/start', { turn: 1 }, session)
+  emit('b', 'turn/end', { turn: 1, reason: { kind: 'error', error } }, session)
+  assert.deepEqual(noted.map(entry => [entry.code, entry.text]), [[error.code, error.message]])
+  assert.equal(rt.bots.b.blocked?.code, error.code)
+  assert.equal(rt.bots.b.blocked?.provider, 'local-acp-fake')
 })
 
 test('a failure only the user can fix blocks its Bot with the facts, never the message, until a turn completes', () => {
@@ -462,4 +474,11 @@ test('a browser error is noted once, repeats are counted, and clear empties the 
   assert.deepEqual(clientErrors().map(entry => entry.text), ['state: HTTP 502 (×2)'])
   clearClientErrors()
   assert.equal(clientErrors().length, 0)
+})
+
+test('local feedback and confirmed reports point to the same fork', async () => {
+  const { REPORT_ISSUES_URL, REPORT_REPOSITORY } = await import('../src/host/issue-report.js')
+  assert.equal(ISSUES_URL, 'https://github.com/cooker-code/DS-Bot/issues/new')
+  assert.equal(REPORT_ISSUES_URL, ISSUES_URL)
+  assert.equal(REPORT_REPOSITORY, 'cooker-code/DS-Bot')
 })

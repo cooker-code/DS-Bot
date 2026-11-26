@@ -22,11 +22,11 @@ Node v24.21.0、npm 11.12.1。
 在ds-bot目录：
 
 1. `npm test -- test/panel-width.test.js test/frame-layout.test.js`：39/39通过。
-2. `DSH_HARNESS=/Users/blank/wangliang/gitcode/DS-Bot/ds-bot/dev/harness npm test -- test/panel-width.test.js test/frame-layout.test.js test/browser-pane.test.js test/right-panel.test.js test/side-panel.test.js`：49/49通过，0 fail/skip。
+2. `DSH_HARNESS=<repo>/ds-bot/dev/harness npm test -- test/panel-width.test.js test/frame-layout.test.js test/browser-pane.test.js test/right-panel.test.js test/side-panel.test.js`：49/49通过，0 fail/skip。
 3. `npm run build`：通过。
 4. `node scripts/build-client.mjs --check`：通过。
-5. `DSH_HARNESS=/Users/blank/wangliang/gitcode/DS-Bot/ds-bot/dev/harness npm run lint`：exit0；仓库原有其他文件warning，不混改。
-6. 针对lint：根目录运行 `node /Users/blank/wangliang/gitcode/DS-Bot/ds-bot/dev/harness/node_modules/oxlint/bin/oxlint -c ds-bot/.oxlintrc.json ds-bot/src/client/browser-pane.js ds-bot/src/client/styles.js ds-bot/src/client/panel-width.js ds-bot/test/panel-width.test.js`：exit0，无输出。
+5. `DSH_HARNESS=<repo>/ds-bot/dev/harness npm run lint`：exit0；仓库原有其他文件warning，不混改。
+6. 针对lint：根目录运行 `node <repo>/ds-bot/dev/harness/node_modules/oxlint/bin/oxlint -c ds-bot/.oxlintrc.json ds-bot/src/client/browser-pane.js ds-bot/src/client/styles.js ds-bot/src/client/panel-width.js ds-bot/test/panel-width.test.js`：exit0，无输出。
 7. `git diff --check`：通过。
 
 新增7例覆盖：details超过旧520/420余宽、browser与side保留原范围、最小/最大及四舍五入、左增右减；pointerup最终位置；cancel/lostcapture/主动layout-unmount结束的幂等监听清理、释放capture、其他pointer过滤；capture失败无监听泄漏。

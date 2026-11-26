@@ -179,12 +179,13 @@ export function install(rt) {
   // to them is the user's to allow. A private Bot is no member of a group, which the
   // roster checks as the members are written.
   async function guardTeam(exec, self) {
-    const args = exec.arguments ?? {}
+    const protocol = ['delegate_work', 'ask_back', 'answer_work', 'cancel_work', 'note_bot'].includes(exec.name)
+    const args = protocol ? rt.workProtocolTarget(exec) : exec.arguments ?? {}
     const target = (ref) => {
       const bot = botNamed(ref)
       return bot !== undefined && isPrivate(bot.id) && bot.id !== self ? bot : undefined
     }
-    switch (exec.name) {
+    switch (protocol ? 'message_bot' : exec.name) {
       case 'message_bot': {
         const bot = target(args.to)
         if (bot) throw new Error(`Not sent: ${bot.name} is a private Bot, and other Bots cannot message it. Ask the user to pass it on.`)

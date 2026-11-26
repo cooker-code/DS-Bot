@@ -1304,3 +1304,14 @@ test('settled and answered views summarize every outcome cleanly and derive fall
   const fallbackPrompt = expandCard(SettledView, { title: '', view: { type: 'stack', children: [] }, closed: 'dismissed' })
   assert.equal(text(find(fallbackPrompt, node => node.props?.className === 'bt-q-title')), 'View')
 })
+
+test('silent notes, cancellation and stop notices never draw a relay bubble or unread opening',()=>{
+  for(const role of ['note','reply','stopped']) {
+    const result=TriggerCell({
+      node:{key:'silent',data:{source:{kind:'bot',role,silent:true,senderSessionId:'b'},turn:2,content:text$('Silent context')},location:{turn:{turn:2}}},
+      sessionId:'a',useRoster:select=>select(team()),useSessions:select=>select({byId:{}}),
+      useTurnClock:select=>select({}),useUi:select=>select({visits:{}}),actions:{},
+    })
+    assert.ok(emptied(expand(result)))
+  }
+})

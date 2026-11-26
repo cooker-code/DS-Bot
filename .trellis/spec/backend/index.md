@@ -19,6 +19,7 @@
 | [错误处理](./error-handling.md) | 错误类型、处理策略 | 待填写 |
 | [质量指南](./quality-guidelines.md) | 代码标准、禁止模式 | 待填写 |
 | [日志指南](./logging-guidelines.md) | 结构化日志、日志级别 | 待填写 |
+| [项目卡交接](./project-handoffs.md) | 接单持久化、管理员扫描、原卡重试及正式开工证据 | 已核实 |
 
 ---
 

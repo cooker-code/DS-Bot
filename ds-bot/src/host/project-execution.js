@@ -13,7 +13,9 @@ export function dispatchedRound(rt, sessionId, source) {
   const member = rt.groupOwners?.get(sessionId) ?? rt.pastOwners?.get(sessionId)
   if (member && member.roomId !== room?.id) return
   const owner = member?.botId ?? rt.chatOwners.get(sessionId)
-  const round = card?.rounds.find(r => r.dispatchId === source.exchangeId && r.ownerId === owner &&
+  const protocol = rt.state.works?.[rt.workOf?.(source)]
+  const dispatchId = protocol?.protocol && protocol.to === owner && protocol.taskId === source.taskId ? protocol.dispatchId : source.exchangeId
+  const round = card?.rounds.find(r => r.dispatchId === dispatchId && r.ownerId === owner &&
     (!r.executionSession || r.executionSession === sessionId))
   if (!round || (source.roomId && source.roomId !== room.id)) return
   if (card.plans?.length ? !currentBinding(card, round) : round !== card.rounds.at(-1)) return
@@ -61,6 +63,8 @@ export async function reconcileProjectRounds(rt, bootAt) {
           continue
         }
       }
+      const protocol = rt.state.works?.[round.dispatchId]
+      if (protocol?.protocol && protocol.taskId === card.id && protocol.to === round.ownerId && protocol.toSession === session) continue
       await interruptProject(rt, room, card, round, 'restart', 'Execution could not be confirmed after the host restarted.')
     }
   }

@@ -415,10 +415,10 @@ export const TASK_CSS = `
 .bt-task-detail-name h2{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text;font-size:19px}
 .bt-task-detail-name button{flex:none}
 .bt-handoff-row time{font-size:11px;color:var(--bt-ink-2);margin-inline-start:8px;white-space:nowrap}
-.bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:7px;overflow:hidden;background:var(--bt-card)}
+.bt-task-content{margin:8px 0 10px 16px;border:1px solid var(--bt-line-2);border-radius:8px;overflow:hidden;background:var(--bt-card)}
 .bt-task-content-head,.bt-task-find{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--bt-line);background:var(--bt-bubble)}
 .bt-handoff-tooltip{position:fixed;z-index:80;box-sizing:border-box;padding:10px 12px;border:1px solid var(--bt-line);border-radius:8px;background:var(--bt-main);color:var(--bt-ink);box-shadow:var(--bt-glass-shadow);font-family:var(--bt-font);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}.bt-handoff-context{display:block;margin:4px 0;color:var(--bt-ink-2)}.bt-handoff-content-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-inline-end:auto}.bt-handoff-tabs{margin-inline-end:auto}.bt-task-content-head{flex-wrap:nowrap;overflow-x:auto}.bt-task-content-context{flex:1 1 auto;min-width:130px;overflow-wrap:anywhere}.bt-task-content-context>[role=tablist]{flex-wrap:wrap}.bt-task-content-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;white-space:nowrap}.bt-task-content-actions>*{flex-shrink:0}.bt-task-content-modes button{white-space:nowrap}.bt-task-plan-versions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.bt-task-plans{margin:8px 0}.bt-task-plans .bt-task-content{margin-inline-start:0}.bt-task-content-head small{color:var(--bt-ink-2)}
-.bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:5px;padding:1px}
+.bt-task-content-modes{display:flex;border:1px solid var(--bt-line-2);border-radius:6px;padding:1px}
 .bt-task-content-modes button,.bt-task-find button{font:inherit;font-size:12px;color:var(--bt-ink-2);background:none;border:0;border-radius:4px;padding:2px 6px;cursor:pointer}
 .bt-task-content-modes [aria-pressed=true],.bt-task-content-modes [aria-selected=true]{color:var(--bt-ink);background:var(--bt-card)}
 .bt-task-content-body{max-height:24rem;overflow:auto;padding:8px 10px;overflow-wrap:anywhere;user-select:text}
@@ -427,10 +427,10 @@ export const TASK_CSS = `
 .bt-task-find input{min-width:4em;flex:1}
 .bt-handoff-bar{display:flex;gap:1px;height:14px;overflow:hidden;border-radius:4px;margin:10px 0}
 .bt-handoff-bar>button{flex:1;min-width:0;position:relative;border:0;padding:0;cursor:pointer}.bt-handoff-bar>button:hover{filter:brightness(1.12)}.bt-handoff-bar>button:focus-visible{outline:2px solid var(--bt-ink);outline-offset:-2px}
-.bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.65) 4px 6px)}
+.bt-handoff-bar>[data-retry=true]:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 4px,var(--bt-retry-stripe) 4px 6px)}
 .bt-handoff-row{padding:5px 0;overflow-wrap:anywhere}
 .bt-handoff-row summary{cursor:pointer}
-.bt-handoff-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline:4px 6px}
+.bt-handoff-dot{display:inline-block;width:10px;height:10px;border-radius:4px;margin-inline:4px 6px}
 .bt-handoff-row p{white-space:pre-wrap;margin:3px 0 10px}
 .bt-project-detail>section+section{margin-top:20px;padding-top:16px;border-top:1px solid var(--bt-line)}
 .bt-project-detail .bt-section-title{color:var(--bt-ink);font-size:17px;font-weight:600;line-height:1.35}

@@ -1,3 +1,4 @@
+import { isSilentTurnText, USER_UI_TOOLS } from './constants.js'
 import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
 import { dispatchedRound, interruptProject, inspectedTurn, pendingAfterFailure, recoveryInput } from './project-execution.js'
 // Turns: what each Bot Session is doing now (for its mascot), which turns another Bot
@@ -19,7 +20,7 @@ import { usageChunk } from './usage.js'
 
 // Failures only the user can fix: a key, a sign-in, a balance. They block the Bot
 // until it is fixed (`bot.blocked`, for the repair card).
-export const BLOCKING_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'ACCOUNT_QUOTA', 'ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT'])
+export const BLOCKING_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'ACCOUNT_QUOTA', 'ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT', 'LOCAL_AGENT_ERROR'])
 // The ones a key set outside a turn can fix, and the ones a sign-in can (unblockBots).
 // A balance only a turn that completes shows fixed, as Retry runs one.
 const KEY_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH'])
@@ -59,6 +60,11 @@ export const failureLine = failure => `${failure.code}${failure.status ? ` ${fai
 // for closes, and the answer goes up to the Bot that asked. `id` is the Session the
 // answer comes from; `source` is the trigger the turn answered.
 export function answerSender(rt, id, source, text, long) {
+  if (rt.protocolClosed?.(source.exchangeId, source)) return
+  if (rt.state.works?.[source.exchangeId]?.protocol) {
+    void rt.completeProtocolWork(source.exchangeId, long?.text ?? text, long).catch(error => rt.warn('ds-bot: completing delegated work failed: %s', error))
+    return
+  }
   const back = rt.roomOf(source.senderRoomId)?.sessions?.[source.senderSessionId]
   // The asking Bot may have written from a background part of its own chat: its reply
   // goes back to that part's thread, not to the part the user is reading. When the part
@@ -70,7 +76,7 @@ export function answerSender(rt, id, source, text, long) {
   const work = rt.closeWork?.(source.exchangeId, name, text)
   const scope = scopeOf(source)
   if (scope && source.senderRoomId && !back) return
-  const routing = { ...(target ? { sessionId: target } : {}), ...(scope && back ? { roomId: source.senderRoomId } : {}), ...scopeFields(scope) }
+  const routing = { ...(source.parentExchangeId ? { parentExchangeId: source.parentExchangeId } : {}), ...(target ? { sessionId: target } : {}), ...(scope && back ? { roomId: source.senderRoomId } : {}), ...scopeFields(scope) }
   // A reply that arrives after the user gave up the wait is a late answer: it closes
   // nothing, opens nothing, and says on it that the wait was already over.
   const late = work === undefined ? rt.abandonedWork?.(source.exchangeId) : undefined
@@ -213,6 +219,8 @@ export function install(rt) {
       ...(keeps && info.roomId ? { roomId: info.roomId } : {}),
       ...(keeps && info.exchangeId ? { exchangeId: info.exchangeId } : {}),
       ...(info?.work ? { work: info.work } : {}),
+      ...(info?.workProtocol ? { workProtocol: true } : {}),
+      ...(info?.parentExchangeId ? { parentExchangeId: info.parentExchangeId } : {}),
       ...(keeps && info.audience ? { audience: info.audience } : {}),
       ...(keeps && info.askedBy ? { askedBy: info.askedBy } : {}),
       ...(keeps && info.senderRoomId ? { fromRoomId: info.senderRoomId } : {}),
@@ -437,10 +445,24 @@ export function install(rt) {
     else next[id] = value
     activity = next
   }
+  // An activity line starts with the tool's name, so only that name may mark a team
+  // call. Reading the whole line would treat a `dsbot/` path in a shell argument as the
+  // team server and hide real work from the group.
+  const LOCAL_TEAM_TOOL = /^(?:mcp(?:__|_)dsbot(?=[_:]|$)|dsbot(?=[_:]|$))/i
+  const localTeamCall = text => LOCAL_TEAM_TOOL.test(String(text ?? '').trim().split(/\s+/)[0] ?? '')
+  const LOCAL_READ_TOOL = /^(?:read|view|cat|search|grep|glob|ls|find|list|fetch|browse|web_?search|web_?fetch|notebookread)\b/i
+  // A local CLI's activity line is `▸ <tool> <detail>`; keep it short and route read
+  // tools to the searching state instead of the generic working one.
+  const localActivityOf = (raw) => {
+    const line = String(raw ?? '').replace(/^\s*▸\s*/, '').replaceAll('`', '').replace(/\s+/g, ' ').trim()
+    if (line === '') return undefined
+    return { tool: LOCAL_READ_TOOL.test(line) ? 'read' : 'cli', note: line.slice(0, 120) }
+  }
+
   // The newest call still running, a program's sub-calls included, is what the Session
-  // is doing.
+  // is doing; a local agent CLI's own tool run stands in while no bridged call runs.
   const showCall = (id, entry) => {
-    const name = [...(entry.calls?.values() ?? [])].at(-1)?.name
+    const name = [...(entry.calls?.values() ?? [])].at(-1)?.name ?? entry.localDoing?.tool
     entry.tool = name
     if (name !== undefined) setActivity(id, name === 'ask_user' || name === 'show_view' ? undefined : activityOf(name))
     else if (entry.turn !== undefined) setActivity(id, 'thinking')
@@ -452,6 +474,39 @@ export function install(rt) {
   const endCall = (id, entry, callId) => {
     entry.calls?.delete(callId)
     showCall(id, entry)
+  }
+
+  // A local agent CLI streams its thoughts and tool runs inside one LLM call, without
+  // DSH tool/call events: mirror them onto the live turn so the group clock, work
+  // grace, tool count and status views see what the CLI is doing.
+  const noteLocalAgentEvent = (id, event) => {
+    const entry = live.get(id)
+    if (entry?.turn === undefined || event === undefined) return
+    if (event.type === 'idle') {
+      if (entry.localDoing !== undefined) {
+        entry.localDoing = undefined
+        showCall(id, entry)
+      }
+      return
+    }
+    if (rt.groupOwners.has(id)) rt.touchRoomTurn?.(id)
+    if (event.type !== 'activity' && event.type !== 'status') return
+    const text = String(event.text ?? '').replace(/^\s*▸\s*/, '').trim()
+    // A call to DS Bot's own MCP server is dispatched by DSH and counted there. An
+    // adapter that knows the call is a team call marks it; the name fallback covers a
+    // CLI that reports the tool name without that marker, and stays out of the way when
+    // the adapter says the call is the CLI's own.
+    if (event.team === true) return
+    if (event.team !== false && localTeamCall(text)) return
+    const doing = localActivityOf(text)
+    if (doing === undefined) return
+    entry.localDoing = doing
+    showCall(id, entry)
+    if (event.type === 'activity' && event.failed !== true) {
+      entry.toolCount = (entry.toolCount ?? 0) + 1
+      rt.noteProtocolActivity?.(id, doing.tool)
+      if (rt.groupOwners.has(id)) rt.workRoomTurn?.(id, doing.tool)
+    }
   }
 
   const markExchangeTurn = (sessionId, turn) => {
@@ -478,7 +533,7 @@ export function install(rt) {
   // A group Session speaks only in its group, so what its turns write goes there, also
   // for turns that a finished background job or a fresh part starts; a Bot's private
   // message to it is answered privately.
-  const speaksInGroup = (id, info) => rt.groupOwners.has(id) && !(info !== undefined && expectsReply(info))
+  const speaksInGroup = (id, info) => rt.groupOwners.has(id) && !rt.state.works?.[rt.workOf?.(info)]?.protocol && !(info !== undefined && expectsReply(info))
 
   // The group hears what the member says while it works. A text with a tool call goes
   // on at once; one without may be the turn's last, so it waits for the next text or the
@@ -578,7 +633,7 @@ export function install(rt) {
   // that made it, the call's description, or the file, search or site it works on.
   const doingOf = (entry) => {
     const call = [...(entry.calls?.values() ?? [])].at(-1)
-    if (call === undefined) return {}
+    if (call === undefined) return entry.localDoing ?? {}
     const said = entry.step?.replace(/\s+/g, ' ').trim().slice(0, 160)
     let args
     try { args = JSON.parse(call.args || '{}') } catch { args = {} }
@@ -893,6 +948,7 @@ export function install(rt) {
       }
       case 'tool/call': {
         const name = String(event.data?.name ?? '')
+        if (USER_UI_TOOLS.has(name)) entry.visibleTool = true
         startCall(id, entry, event.data?.callId, name, String(event.data?.arguments ?? ''))
         // A program is as quick as the tools it runs, so its sub-calls decide.
         if (name !== PROGRAM_TOOL) {
@@ -903,6 +959,7 @@ export function install(rt) {
       }
       case 'tool/ptc-dispatch-start': {
         const name = String(event.data?.name ?? '')
+        if (USER_UI_TOOLS.has(name)) entry.visibleTool = true
         startCall(id, entry, event.data?.subCallId, name, JSON.stringify(event.data?.arguments ?? {}))
         entry.toolCount = (entry.toolCount ?? 0) + 1
         if (rt.groupOwners.has(id)) rt.workRoomTurn?.(id, name)
@@ -928,6 +985,8 @@ export function install(rt) {
         entry.step = undefined
         entry.info = undefined
         entry.toolCount = 0
+        entry.visibleTool = false
+        entry.localDoing = undefined
         entry.usage = undefined
         entry.suppressedSubagent = false
         // A turn turned away before its first step may end without a turn/end.
@@ -995,6 +1054,7 @@ export function install(rt) {
         } else if (source?.kind === 'user' || source?.kind === SOURCE_KIND) {
           stoppedSubagentParents.delete(id)
         }
+        if (source?.silent) break
         // A result that came back counts as taken once a turn reads it.
         if (source?.kind === SOURCE_KIND && source.work !== undefined && source.replyTo !== undefined) rt.takenWork?.(source.work, source.replyTo)
         // A message that shares a step with a bare handoff package is what the turn
@@ -1063,6 +1123,8 @@ export function install(rt) {
             ...(source.goal !== undefined ? { goal: source.goal } : {}),
             ...(source.goalId !== undefined ? { goalId: source.goalId } : {}),
           })
+        } else if (source?.kind === SOURCE_KIND && source.silent) {
+          break
         } else if (source?.kind === SOURCE_KIND) {
           if (entry.turn === undefined) {
             entry.pending = source
@@ -1197,6 +1259,7 @@ export function install(rt) {
         const { lastText, lastCalled } = entry
         const usage = entry.usage
         const toolCount = entry.toolCount ?? 0
+        const visibleTool = entry.visibleTool === true
         const suppressedSubagent = entry.suppressedSubagent === true
         // A turn stopped for a switch goes on in the next part, which answers instead.
         const switched = entry.switched === true
@@ -1211,12 +1274,14 @@ export function install(rt) {
         entry.shown = 0
         entry.step = undefined
         entry.toolCount = 0
+        entry.visibleTool = false
         entry.suppressedSubagent = false
         entry.switched = false
         entry.joined = []
         entry.since = undefined
         entry.steeredAt = undefined
         entry.tool = undefined
+        entry.localDoing = undefined
         entry.calls = undefined
         entry.lastText = undefined
         entry.lastCalled = undefined
@@ -1322,6 +1387,7 @@ export function install(rt) {
             void retryWrittenCall(id, info, lastText).catch(error => rt.warn('ds-bot: asking %s to run its written tool call failed: %s', id, error))
           }
         }
+        if (info?.kind === SOURCE_KIND && info.role !== 'continue' && !visibleTool && isSilentTurnText(entry.texts.join('\n'))) markExchangeTurn(id, turn)
         const replyText = () => {
           const reply = (wroteCall ? texts.map(stripWrittenCalls) : texts).join('\n\n').trim()
           if (wroteCall && reply === '') return 'Tried to run a tool but wrote the call as text, so it did not run.'
@@ -1335,7 +1401,7 @@ export function install(rt) {
         // the turn's text (or a stopped-before-answer line), or nothing.
         const name = rt.botOf(rt.selfOf(id))?.name ?? 'The other Bot'
         const answer = (source, reply) => {
-          if (!expectsReply(source) || answersUser(source)) return
+          if (!expectsReply(source) || (answersUser(source) && !source.workProtocol)) return
           if (failure !== undefined) {
             // The sender was told a reply comes later; without this it would wait forever.
             tellSender(id, source, `${name} could not answer your message: its model call failed (${failureLine(failure)}). Tell the user if it matters; do not retry right away.`)
@@ -1349,6 +1415,9 @@ export function install(rt) {
         // anything handed on for it is still out, the answer waits; then it goes up with
         // what came back. A failed or stopped turn answers at once.
         const finish = (source, reply) => {
+          if (rt.protocolClosed?.(rt.workOf?.(source), source)) return
+          if (rt.protocolTurnEnd?.(id, source, reply, failure, reason) === false) return
+          if (rt.protocolCancelled?.(source?.exchangeId) || rt.protocolCancelled?.(source?.work)) return
           const work = rt.workOf?.(source)
           if (!rt.ownsWork?.(rt.selfOf(id), work)) return answer(source, reply)
           const asker = rt.workAsker(work)
@@ -1377,6 +1446,8 @@ export function install(rt) {
               void rt.lateRoomReply?.(id, info, skipped ? '' : groupReply(), { shown, toolCount })
             }
           }
+        } else if (!retry && info && rt.state.works?.[rt.workOf?.(info)]?.protocol) {
+          finish(info, replyText())
         } else if (!retry && speaksInGroup(id, info)) {
           // A turn that failed before it took any input (DSH can turn it down before its
           // first step) never names its call, so the call waiting on this Session fails.
@@ -1491,5 +1562,5 @@ export function install(rt) {
     }, 'ds-bot: prompt rejection reasons')
   }
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
+  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteLocalAgentEvent, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
 }

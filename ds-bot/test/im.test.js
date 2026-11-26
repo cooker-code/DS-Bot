@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { createRuntime } from '../index.js'
 import { fakeWsServer } from './fake-ws.js'
 import { fakeContext } from './fake-ctx.js'
+import { capSentStore } from '../src/host/im/index.js'
 import { adapters } from '../src/host/im/platforms/index.js'
 
 // A platform adapter that records sends/edits and lets the test feed inbound
@@ -96,6 +97,7 @@ async function start({ platform = 'telegram', adapter, seed, services = {} } = {
     llm: { listProviders: () => [] },
     workspaceRegistry: { get: () => undefined, resolveByPath: async () => undefined, create: async () => ({ id: 'w1' }), archiveSession: async () => {} },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       resolveAgent: async sessionId => ({ agent: agentOf(sessionId) }),
       selectModel: async () => {},
@@ -695,6 +697,37 @@ test('a runtime file written before sent existed still loads and behaves unchang
     adapters.telegram = original
   }
 })
+
+for (const extra of [0, 1]) {
+  test(`sent store eviction counts JSON characters at cap + ${extra}`, (t) => {
+    const entry = (id, at, text = '') => ({ ids: [id], text, at })
+    const filler = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
+      `chat-${i}`, Array.from({ length: 20 }, (_, j) => entry(`f${i}-${j}`, 4)),
+    ]))
+    const retained = entry('kept', 3, '最新🦊')
+    const tied = entry('tied', 2, 'keep if at the limit')
+    const expected = { single: [], multi: [retained], tie: [tied], ...filler }
+    const { stringify } = JSON
+    const padding = 200_000 + extra - stringify(expected).length
+    Object.values(filler).flat().forEach((item, i, all) => {
+      item.text = 'x'.repeat(Math.floor((padding + i) / all.length))
+    })
+    assert.equal(stringify(expected).length, 200_000 + extra)
+
+    const sent = {
+      ...expected,
+      single: [entry('first', 1, 'oldest')],
+      multi: [retained, entry('second', 2, '"quote"\n\\🦊')],
+    }
+    delete expected.single
+    if (extra !== 0) delete expected.tie
+    const spy = t.mock.method(JSON, 'stringify')
+    capSentStore(sent)
+    assert.deepEqual(sent, expected)
+    assert.ok(stringify(sent).length <= 200_000)
+    assert.equal(spy.mock.calls.filter(call => call.arguments[0] === sent).length, 1)
+  })
+}
 
 test('the sent store is bounded across chats so the runtime file cannot grow without limit', async (t) => {
   const s = await start({ adapter: fakeAdapter({ quote: true }) })
@@ -1745,6 +1778,7 @@ async function startSwitchHarness(t, { tokens = new Map([['a', 1_000]]), cwd = (
       archiveSession: async () => {},
     },
     sessionController: {
+      page: async () => ({records:[],hasMore:false}),
       prompt: async (request) => { prompts.push(request); return { ok: true } },
       create: async () => {
         if (createGate) await createGate()
@@ -2430,4 +2464,49 @@ test('a failed update keeps the network reason and redacts a secret as it appear
     assert.ok(!error.message.includes('new%2Btok%2F1'), 'the encoded token is redacted')
     return true
   })
+})
+
+test('delegated work restores its original IM chat after another chat used the same caller session; unpaired origins stay blocked', async t => {
+  const s=await start()
+  t.after(s.stop)
+  const conn=await add(s)
+  const settings=s.rt.state.im.connections[conn.id]
+  settings.paired.push({id:'u1',name:'First',at:1},{id:'u2',name:'Second',at:1})
+  await s.rt.save()
+  await dm(s,'u1','Delegate a comparison')
+  s.imTurn('a')
+  const run=(name,args,id)=>s.rt.teamTools.find(tool=>tool.name===name).execute(args,{agent:{id}})
+  const receipt=await run('delegate_work',{to:'Writer',goal:'Compare the two records'},'a')
+  const id=/work_id: ([\w-]+)/.exec(receipt)[1]
+  assert.equal(s.rt.state.works[id].imOrigin.chatKey,'dm-u1')
+  s.emitEvent('a','turn/end',{turn:1,reason:{kind:'completed'}})
+  // A different IM conversation uses the same front chat before the work returns.
+  await dm(s,'u2','An unrelated message')
+  s.imTurn('a')
+  s.emitEvent('a','turn/end',{turn:2,reason:{kind:'completed'}})
+  const incoming=s.agentOf('b').lastFollowup
+  s.emitEvent('b','turn/start',{turn:1})
+  s.emitEvent('b','user/message',incoming)
+  s.emitEvent('b','assistant/message',{message:{content:[{type:'text',text:'A verified comparison result.'}]}})
+  s.emitEvent('b','turn/end',{turn:1,reason:{kind:'completed'}})
+  for(let i=0;i<100&&!s.agentOf('a').lastFollowup?.source?.protocolReturn;i++) await delay(5)
+  const returned=s.agentOf('a').lastFollowup
+  assert.equal(returned.source.protocolReturn,id)
+  assert.ok(!JSON.stringify(returned.source).includes('dm-u1'),'private IM address stays out of the Session source')
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:3})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'Here is the original comparison.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.at(-1).chat.key,'dm-u1')
+  assert.equal(s.fake.sent.some(message=>message.chat.key==='dm-u2'),false)
+  s.emitEvent('a','turn/end',{turn:3,reason:{kind:'completed'}})
+  settings.paired=settings.paired.filter(user=>user.id!=='u1')
+  await s.rt.save()
+  s.fake.sent.length=0
+  s.emitEvent('a','turn/start',{turn:4})
+  s.emitEvent('a','user/message',returned)
+  s.emitEvent('a','assistant/message',{message:{content:[{type:'text',text:'A stale receipt must not leave the app.'}]}})
+  await s.flush()
+  assert.equal(s.fake.sent.length,0)
 })

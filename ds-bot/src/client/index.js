@@ -1,3 +1,4 @@
+import { installSettingsShortcut, SETTINGS_SEARCH_EVENT } from './settings-discovery.js'
 import { call } from './api.js'
 import { isHex, inkText, paintCss } from './inks.js'
 import { DEFAULT_MASK, SHAPES, markupCache, maskOf } from './characters.js'
@@ -20,6 +21,7 @@ import { BtwDock, BtwTurnTail } from './btw.js'
 import { SIDE_CSS, sideSource } from './side-chat.js'
 import { VOICE_BUNDLE, closingReplyText, requestPreparation } from './speech.js'
 import { sameVersion } from './dsh-offer.js'
+import { WorkDock } from './work-dock.js'
 import { QuestionCard, QuestionDock } from './questions.js'
 import { AnsweredReply, WidgetDock, WIDGET_CSS } from './widget-cell.js'
 import { CHANGES_CSS } from './changes-card.js'
@@ -800,6 +802,11 @@ export function apply(ctx) {
   actions.openPlugins = () => ctx.get('pluginNavigation')?.openList()
   // The Voice Input plugin's speech Remote; absent while that plugin is off.
   actions.speech = () => ctx.get('remote.speech') ?? undefined
+  ctx.effect(() => installSettingsShortcut(window, () => surface.getSnapshot().mode === 'bot', () => {
+    if (ui.getSnapshot().settings) window.dispatchEvent(new Event(SETTINGS_SEARCH_EVENT))
+    else actions.openSettings('search')
+  }), 'ds-bot: settings search shortcut')
+
   // One of DSH's onboarding editors, such as the DeepSeek API key form, opened by id
   // through the settings shell's coordinator.
   actions.openHarnessOnboarding = id => settingsShell?.openOnboarding(id)
@@ -1241,6 +1248,7 @@ export function apply(ctx) {
     () => shadow('conversation.input.dock', { id: 'bot-members', order: -120, inject: face }, MemberDock),
     () => shadow('conversation.input.dock', { id: 'bot-model', order: -110, inject: face }, ModelChoiceDock),
     () => shadow('conversation.input.dock', { id: 'bot-readonly', order: -105, inject: face }, ReadOnlyDock),
+    () => shadow('conversation.input.dock', { id: 'bot-work', order: -95, inject: face }, WorkDock),
     () => shadow('conversation.input.dock', { id: 'bot-question', order: -100, inject: face }, QuestionDock),
     () => shadow('conversation.input.dock', { id: 'bot-view', order: -95, inject: face }, WidgetDock),
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),

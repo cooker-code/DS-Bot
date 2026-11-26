@@ -189,7 +189,7 @@ function decide(body) {
   }
 
   // A stopped call's result can share a message with the next group turn, which wins.
-  const fresh = textBlocks(last?.content).some(value => value.trimStart().startsWith('[Group chat'))
+  const fresh = textBlocks(last?.content).some(value => value.trimStart().startsWith('[Group chat') || /Answer on work [\w-]+:|Question on work [\w-]+:|Work W\d+ needs an answer:|FLOW2130:verified result|FLOW2130:foreground|验证协作|验证便笺/.test(value))
   const result = fresh ? undefined : blocks.find(block => block.type === 'tool_result')
   if (result) {
     const resultText = typeof result.content === 'string' ? result.content : textOf(result.content)
@@ -249,6 +249,22 @@ function decide(body) {
           : [text('核对已交付。')]
         case 'read': return card.rounds[0]?.result?.includes('source-display@v1') ? [tool('project_task', { action: 'approve', taskId, version, node: 1, round: 1, artifact: 'source-display@v1' })] : [text('等待开发交付。')]
         case 'approve': return [tool('project_task', { action: 'dispatch', taskId, version, node: 2 })]
+      }
+    }
+    if (used?.name === 'project_task' && messages.some(m => textOf(m.content).includes('native-project-handoff-smoke'))) {
+      if (result.is_error) return [text('Project handoff failed: ' + resultText)]
+      const card = JSON.parse(resultText)
+      switch (used.input.action) {
+        case 'scan': {
+          const pending = card.unassigned.find(row => row.title.includes('native-project-handoff-smoke'))
+          return pending?.retryable ? [tool('project_task', { action: 'retry_handoff', taskId: pending.taskId,
+            title: 'Daily chat details native-project-handoff-smoke', plan: '1. Inspect the available source assets read-only. native-project-handoff-smoke',
+            acceptance: '1. Record source availability and the intended daily grain.' })] : [text('The scan explains why this card cannot be retried.')]
+        }
+        case 'plan': return [tool('project_task', { action: 'dispatch', taskId: card.taskId, version: 1, node: 1 })]
+        case 'dispatch': return [tool('message_bot', { to: 'Coder', taskId: card.taskId, card_round: card.dispatchRound ?? card.round,
+          request_id: 'handoff-smoke-' + card.taskId, message: 'Start the source inventory. native-project-handoff-smoke', reply_to: 'user' })]
+        default: return [text(used.input.action === 'start' ? 'Source investigation started on the original card.' : 'Original card recorded.')]
       }
     }
     if (used?.name === 'project_task' && messages.some(m => /native-project-image-smoke|Verify the original attachment reaches Coder\./.test(textOf(m.content)))) {
@@ -320,6 +336,11 @@ function decide(body) {
         const name = used.input.name
         return [text(`${name} 已就位。`), tool('message_bot', { to: name, message: `用户刚让我建了你。请用三条要点回我：你打算先做什么、需要用户提供什么、第一周节奏。没有的写“尚未聊过”。` })]
       }
+      case 'delegate_work':
+      case 'ask_back':
+      case 'answer_work':
+      case 'cancel_work':
+      case 'note_bot': return [text('[PASS]')]
       case 'message_bot': return [text(used.input.reply_to === 'user' ? `去 ${used.input.to} 的对话框看它说吧。` : '我已经把需求转过去了，有结果我马上告诉你。')]
       // The user's answer can ride in the same message as the card's tool result.
       case 'ask_user': if (textOf(last.content).trim() === '') return [text('')]
@@ -372,6 +393,27 @@ function decide(body) {
   const userText = textOf(last?.content)
     .replace(/^Recent public conversation \(context only\): .*$/gm, '')
     .replace(/\s*<system-reminder>\s*Updated instructions from:[\s\S]*$/, '').trim()
+  // Explicit work lifecycle fixtures; the normal smoke scenarios keep their own
+  // scripts. These run through real DSH tools, inboxes and persistence.
+  const flowDelegate = /(?:^|\n)验证协作\s+(\S+)(?:\s+(queue|now|pause|cancel))?$/.exec(userText.trim())
+  if (flowDelegate) return [tool('delegate_work', { to: flowDelegate[1], goal: `FLOW2130:${flowDelegate[2] ?? 'now'}`, when: flowDelegate[2] === 'queue' ? 'queue' : 'now' })]
+  if (/(?:^|\n)FLOW2130:foreground$/.test(userText.trim())) return Object.assign([text('FLOW2130:foreground completed.')], { delay: 8000 })
+  const flowNote = /^验证便笺\s+(\S+)$/.exec(userText.trim())
+  if (flowNote) return [tool('note_bot', { to: flowNote[1], note: 'FLOW2130:silent' })]
+  const flowQuestion = /Question on work ([\w-]+):\nFLOW2130:question/.exec(userText)
+  if (flowQuestion) return [tool('answer_work', { work_id: flowQuestion[1], answer: 'FLOW2130:answer' })]
+  const releasedQuestion = /Work W\d+ needs an answer:\nFLOW2130:question/.test(userText)
+  if (releasedQuestion) return [tool('answer_work', { answer: 'FLOW2130:answer' })]
+  if (/Answer on work [\w-]+:\nFLOW2130:answer/.test(userText)) {
+    const latestWork = messages.findLast(message => message.role === 'user' && textOf(message.content).includes('Delegated work'))
+    if (textOf(latestWork?.content).includes('FLOW2130:pause')) return [tool('ask_back', { question: 'FLOW2130:question' })]
+    return [text('FLOW2130:verified result for the original caller.')]
+  }
+  if (userText.includes('Delegated work') && /FLOW2130:(?:now|queue|pause)/.test(userText)) return [tool('ask_back', { question: 'FLOW2130:question' })]
+  if (userText.includes('Delegated work') && userText.includes('FLOW2130:cancel')) return Object.assign([text('FLOW2130:late result that must be suppressed.')], { delay: 8000 })
+  if (/\[Reply from/.test(userText) && userText.includes('FLOW2130:verified result')) return [text('FLOW2130:final receipt with verified evidence.')]
+
+
   // "撑爆": the provider rejects the request as past its window.
   if (userText.startsWith('撑爆')) return 'overflow'
   // A file in the message (a long Bot message, a file the user sent): DSH gives its saved
@@ -404,7 +446,24 @@ function decide(body) {
   }
   // Only a direct project delivery triggers the scripted coordination tools.
   const directProject = tools.has('project_task') && /^\[[^\]\n]+\] \[Message from You[^\]\n]*\]\n/.test(userText)
-  if (directProject && userText.includes('The group admin delegated this requirement') && userText.includes('native-project-image-smoke')) {
+  if (tools.has('project_task') && userText.includes('native-project-handoff-smoke')) {
+    if (userText.includes('Accepted project cards still have no plan or execution.'))
+      return [text('The accepted original card was not handed off before the assistant appointment. I will scan and retry it.'), tool('project_task', { action: 'scan' })]
+    if (directProject && /The group admin delegated this (?:requirement|existing card)/.test(userText)) {
+      const owner = JSON.parse(userText.match(/^Eligible node owners: (.+)$/m)[1]).find(member => member.name === 'Coder')
+      return [tool('project_task', { action: 'plan', version: 1, title: 'Daily source inventory native-project-handoff-smoke',
+        acceptance: '1. Record source availability and the intended daily grain.', nodes: [{ ownerId: owner.id, title: 'Read source assets',
+          instructions: 'Inspect source assets read-only. native-project-handoff-smoke', deliverable: 'Source inventory', acceptance: 'Source availability is recorded.' }] })]
+    }
+    if (userText.includes('Confirm with project_task start')) {
+      const id = /^\[([0-9a-f-]{36})\]/m.exec(userText)?.[1]
+      return [tool('project_task', { action: 'start', taskId: id, round: Number(/this taskId and round (\d+)/.exec(userText)?.[1]) })]
+    }
+    if (userText.includes('Handle it in your session for this group.'))
+      return [tool('project_task', { action: 'reply', acceptWork: true, title: 'Raw daily request native-project-handoff-smoke',
+        classificationReason: 'Deliver a verifiable daily source inventory.', message: 'Accepted the source investigation on its original card.' })]
+  }
+  if (directProject && /The group admin delegated this (?:requirement|existing card)/.test(userText) && userText.includes('native-project-image-smoke')) {
     const owner = JSON.parse(userText.match(/^Eligible node owners: (.+)$/m)[1]).find(member => member.name === 'Coder')
     return [tool('project_task', { action: 'plan', version: 1, title: 'Assistant image check', acceptance: 'Coder receives the original image.',
       nodes: [{ ownerId: owner.id, title: 'Inspect image', instructions: 'Check original image', deliverable: 'Image receipt', acceptance: 'Image received' }] })]

@@ -1,3 +1,4 @@
+import { PUBLISH_ISSUE } from './issue-report.js'
 import { taskInteractions } from './task-interactions.js'
 import { explainTaskMessage } from './task-explanations.js'
 import { TASK_EXPLANATION_PROMPT_LIMIT } from '../shared/task-explanation-prompt.js'
@@ -116,7 +117,7 @@ export function install(rt) {
     // ones; `parts` the members' hidden group Sessions and their earlier segments,
     // for usage.
     rooms: Object.values(state.rooms).map(original => {
-      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
+      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectHandoffScan: _handoffScan, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId), ...(ownParts ?? []).map(segment => segment.sessionId)]
       const last = (log ?? []).findLast(line => line.kind === undefined && !isIntakeReceipt(line))
       const preview = last && taskCaption(taskMessage(last.text, original))
@@ -187,7 +188,7 @@ export function install(rt) {
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
       .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined)
       .map(sessionId => [sessionId, true])),
-    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
+    work: { delegated: rt.protocolWorksView?.() ?? [], bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
     learning: rt.learningView(),
@@ -224,7 +225,7 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'session-times', 'run-stats', 'room-context', 'group-discussions', 'room-progress', 'task-reference', 'project-task-list', 'project-task-detail', 'task-explanation', 'project-branches', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'session-times', 'run-stats', 'room-context', 'group-discussions', 'room-progress', 'task-reference', 'project-task-list', 'project-task-detail', 'task-explanation', 'project-branches', 'group-rows', 'group-relay-replies', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'file-download', 'changes-check'])
 
   async function setPrefs(body) {
     if (body.taskExplanationPrompt !== undefined && body.taskExplanationPrompt !== null &&
@@ -447,7 +448,7 @@ export function install(rt) {
           await rt.load()
           const room = rt.roomOf(body.roomId)
           if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
-          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room) })
+          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room), unassigned: rt.scanProjectHandoffs(room) })
         }
         case 'set-task-node-constraint': {
           await rt.load()
@@ -637,6 +638,9 @@ export function install(rt) {
           const speaking = active ? [...rt.roomProgress.values()].filter(round => round.roomId === room.id).flatMap(round => round.slots.filter(slot => slot.status === 'speaking').map(slot => slot.id)) : []
           return ok({ ...view, active, speaking })
         }
+        case 'group-relay-replies':
+          await rt.load()
+          return ok(rt.groupRelayReplies(body.sessionId, body.preview))
         case 'create-bot': {
           await rt.bootstrap()
           const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir, section: body.section, sectionId: body.sectionId })
@@ -647,6 +651,18 @@ export function install(rt) {
           return ok(await rt.updateBot(body.id, body))
         // Give up one wait for a hand-off that will not come back: only that sub-work
         // closes, with an explicit result for the work above it.
+        case 'resume-room-pause':
+          await rt.load()
+          return ok(await rt.resumeRoomPause(String(body.roomId ?? '')))
+        case 'answer-work':
+          await rt.load()
+          return ok(await rt.answerDelegatedWork(String(body.id ?? ''), String(body.answer ?? '')))
+        case 'resume-work':
+          await rt.load()
+          return ok(await rt.resumePausedWork(String(body.id ?? '')))
+        case 'cancel-work':
+          await rt.load()
+          return ok(await rt.cancelDelegatedWork(String(body.id ?? ''), String(body.reason ?? 'Cancelled by the user.')))
         case 'abandon-work':
           await rt.load()
           if (rt.abandonWork?.(String(body.id ?? '')) !== true) return fail('That wait is no longer open', 'bot/stale')
@@ -932,17 +948,25 @@ export function install(rt) {
           if (reply === undefined) return fail('Nothing to send', 'bot/invalid')
           // Claim the view before queueing so a second answer is refused.
           delete state.views[sessionId]
+          let consumed = false
+          let issueReportResult
           try {
             await rt.ensureCapabilities(sessionId)
             const agent = await rt.resolveAgent(sessionId)
+            if (pending.issueDraft !== undefined && body.action === PUBLISH_ISSUE && checked.confirmed === true) {
+              await rt.save({ required: true })
+              consumed = true
+              issueReportResult = await rt.settleIssueReport(sessionId, pending.issueDraft)
+              reply.text = JSON.stringify({ ...JSON.parse(reply.text), issueReportResult })
+            }
             agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: reply.source }))
             await ctx.sessions.flush(agent.session)
           } catch (error) {
-            state.views[sessionId] ??= pending
+            if (!consumed) state.views[sessionId] ??= pending
             throw error
           }
           await rt.save()
-          return ok(true)
+          return ok(issueReportResult === undefined ? true : { issueReportResult })
         }
         // Upload each photo separately. The message references its staged images in order.
         case 'stage-image': {

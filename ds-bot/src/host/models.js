@@ -19,6 +19,7 @@ const MALFORMED_RETRIES = 2
 const GEMINI_MALFORMED = new Set([
   'Provider stopped with: MALFORMED_FUNCTION_CALL',
   'Provider stopped with: UNEXPECTED_TOOL_CALL',
+  'Provider stopped with: MALFORMED_RESPONSE',
   'Unhandled stop reason: MALFORMED_RESPONSE',
 ])
 
@@ -420,7 +421,11 @@ export function install(rt) {
     // A Bot's model is the model of every part of its own chat, the background ones
     // included: a part left on the old route would keep answering with the old model
     // while the settings show the new one. A part that cannot take it fails the change.
-    if (ownChanged) for (const sessionId of ownChatSessions(bot)) await selectSessionModel(sessionId, route)
+    if (ownChanged) for (const sessionId of ownChatSessions(bot)) {
+      const workRoom = rt.protocolRoomOf?.(sessionId)
+      const workRef = workRoom && memberModel(bot, workRoom)
+      await selectSessionModel(sessionId, workRef ? { ...splitRef(workRef), reasoningEffort: await desiredEffort(bot, workRef) } : route)
+    }
     for (const sessionId of rt.groupSessionsOf(bot.id)) {
       const roomId = rt.groupOwners?.get(sessionId)?.roomId
       const room = roomId === undefined ? undefined : rt.roomOf(roomId)

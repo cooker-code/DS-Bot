@@ -27,6 +27,7 @@
 | `set-task-human-acceptance` | roomId、taskId、required（布尔值）。 | 更新群库任务的 humanAcceptanceRequired，返回布尔值。待人工终验时传 false 会撤回请求并按自动交付条件处理，撤回记录保存在 previousReviews。用 project-task-detail 回读。 |
 | `project-acceptance` | `roomId,taskId,reviewId,decision,feedback?`。decision 为 approve 或 return，退回需明确 feedback。 | `decideAcceptance` 仅处理当前候选的人工终验，回读 `humanReview` 和 task 状态。 |
 | `room-progress` / `group-rows` / `group-search` | 查活跃群用 `roomId`；分页读群消息用 `roomId,from,to?,anchor?`；检索用 `roomId,query,before?,offset?`。 | `roomProgress/groupRowsView/groupSearch` 返回轮次及发言者、消息页或命中。活跃信息属运行时，持久依据是群账本。 |
+| `group-relay-replies` | 读取被 save-token 省略的旧群回复。请求为 `sessionId:string,preview:string`，preview 最长65,536字符。 | `groups.groupRelayReplies` 仅从该群完整 ledger 记录恢复唯一可证明的回复数组，缺记录、边界不连续或匹配不唯一返回 `null`，不猜测恢复。`channel.js` 将其列为只读入口，无写入副作用。客户端 `team-actions.groupRelayReplies` 和 `parts` 历史读取共同使用，保留项目 scope 与收件回执过滤。回读示例为 `group-relay-replies --payload '{"sessionId":"<群会话ID>","preview":"<被省略的回复原文>"}'`。 |
 | `goal-draft` / `goal-control` | 草拟用 `roomId,text`。操作已有目标用 `roomId,goalId,action,stopWork?`，显式的 stopWork 同时影响执行。 | `goalDraft/goalControl` 返回团队视图。从群目标和实际执行分别回读。[goals.js](../../../../ds-bot/src/host/goals.js) |
 | `task-note` / `task-cancel` / `task-delete` | 留言用 `roomId,id,text`，取消用 `roomId,id`，删除看板项用 `roomId,items` 指定对象。 | `taskNote/taskCancel/deleteBoardTasks`。留言写记录并可能作为用户消息发到群，前两者返回团队视图，删除返回 true。[tasks.js](../../../../ds-bot/src/host/tasks.js) |
 | `stop-chat` / `stop-member-work` / `stop-room-work` | 分别传 `botId,sessionId?`、`roomId,botId` 或 `roomId`，停止相应实际执行。 | `stopChat/stopMemberWork/stopRoomWork` 处理活动轮次。私聊指定 sessionId 时只停止该 Bot 拥有的对应活动会话，省略时停止当前会话。用 state.partsRunning 回读。 |
@@ -46,7 +47,7 @@
 | `earlier` / `chat` / `session-times` / `thinking` / `run-stats` / `usage` | 历史分页用 `sessionId,cursor?`；私聊用 `botId,cursor?,steps?`；会话时间用 `botId,ids`；思考时间用 `sessionId,turn`；执行统计用 `botId`；用量可传 `timeZone`。 | `earlierPage/chatPage` 返回分页；`session-times` 返回本 Bot 会话映射；`thinking` 返回 `{ms}`、空对象或 null；其余返回会话投影或按区间的用量视图。 |
 | `exchange` / `exchange-text` | 双方 ID `a,b` 列出协作往来，`id,a?,b?` 取指定交接。 | `exchangesOf/exchangeText` 返回往来概要或记录正文。 |
 | `stage-image` / `file-text` / `file-download` | 暂存 `mediaType,data,name?`；提取纯文本传含 `attachmentId` 的 `file`；下载用 `sessionId` 与 `attachmentId` 或 `seq,index?`，可用 `version` 锁定。 | 暂存返回短期 `{id}`；`fileText/fileDownload` 从附件服务按会话及格式读取。下载按返回元数据和编码取文件。[file-download.js](../../../../ds-bot/src/host/file-download.js) |
-| `send` / `answer-question` / `dismiss-question` / `view-reply` / `dismiss-view` / `approval-answer` | 发送用 `sessionId,text,images?`；答问题用 `sessionId,questionId,answer`；答交互视图用 `sessionId,viewId,action,values`；关闭待答用 `sessionId`；批准用 `id,choice`。 | `sendUser/answerQuestion/viewReply/answerApproval` 触发对应用户动作，成功通常为 true。重复答复要检查原请求是否仍有效。 |
+| `send` / `answer-question` / `dismiss-question` / `view-reply` / `dismiss-view` / `approval-answer` | 发送用 `sessionId,text,images?`；答问题用 `sessionId,questionId,answer`；答交互视图用 `sessionId,viewId,action,values`（普通视图返回 true，缺陷报告确认返回 `{issueReportResult}`，并将同一结果写入模型答复）；关闭待答用 `sessionId`；批准用 `id,choice`。 | `sendUser/answerQuestion/viewReply/answerApproval` 触发对应用户动作，成功通常为 true。重复答复要检查原请求是否仍有效。缺陷报告仅精确匹配由 `prepare_ds_bot_issue` 生成的 `report_issue` 草稿及确认视图才可发布，正文与目标向用户完整展示；确认先持久消费，发布失败或结果不明也不重新打开草稿。 |
 | `btw-delete` / `side-new` / `side-ask` / `side-cancel` / `side-close` | 删除旁问用 `sessionId,cardId`；新建旁聊用 `sessionId`；提问用 `sessionId,chatId?,recent?,text`；取消一条用 `chatId,entryId`；关闭用 `chatId`。 | `btwDelete/sideNew/sideAsk/sideCancel/sideClose` 返回对应旁问或旁聊操作结果，回读 `state.btwCards,sideChats`。[side.js](../../../../ds-bot/src/host/side.js) |
 
 ## 浏览器运行、诊断与更新
@@ -57,6 +58,18 @@
 | `browser-takeover` / `browser-give-back` / `browser-stop` | `botId` 指定浏览器。交回可附具体操作的反馈，停止使控制权归用户。 | `browserChannel`、`stopChat` 等更新控制状态，回读 `browserHolds`。[browser.js](../../../../ds-bot/src/host/browser.js) |
 | `changes-check` / `diagnostics` / `diagnostics-log` / `diagnostics-clear` | 查看某次变更用 `sessionId,seq`；诊断可传 `client,clientErrors`；读取及清理诊断日志用 `{}`。 | `changesAvailable` 返回布尔；`diagnostics.report` 返回 `facts,entries,total,markdown,issuesUrl`；log 读取日志，clear 清理后返回 true。[diagnostics.js](../../../../ds-bot/src/host/diagnostics.js) |
 | `update-check` / `update-install` / `dsh-update-install` / `repo-stars` | 查版本可用 `fresh:true`，启动插件或宿主安装、查仓库星标用 `{}`。 | `updateCheck/updateStart/dshUpdateStart/repoStars` 返回检查结果、安装启动结果或仓库统计。发起安装后按实际加载版本确认。[update.js](../../../../ds-bot/src/host/update.js) |
+
+### 管理员扫描与重试交接
+
+项目卡的受理与交接分别记录。接单时提供的 `title,plan,acceptance` 先保存为标题、需求和验收，投递失败不撤回正文。`project_task list` 和操作者 `project-task-list` 的 `unassigned` 返回尚无计划、尚无执行轮次的卡，包含 `taskId,title,status,reason,retryable`。`pendingIntakes` 仍只表示尚待分类的收件，不能用于判断所有已受理任务是否已交接。
+
+本群管理员或助理可用 `project_task {action:"scan"}` 扫描。状态包括 `needs_document`（缺规范需求或验收）、`not_sent`（尚未送当前助理）、`uncertain`（投递结果待核对）、`delivered`（已送达，等待助理规划）、`no_assistant`（管理员自行规划）、`invalid_assistant`（助理绑定失效）、`clarify`（确有待补业务问题）及 `missing_source`（缺完整正文且原材料不可读）。`reason` 给出实际原因，`retryable` 表示能否沿原卡重试；送达不等于开工。
+
+管理员在自己的本群管理会话调用 `project_task {action:"retry_handoff",taskId,title?,plan?,acceptance?}`。可在恢复通知轮执行，不要求原始收件轮仍活动。需要更新正文时提供整理后的字段；服务只允许未派工原卡，保存正文后交给当前任命的助理。返回 `{delegated:true,taskId,assistantId}` 或 `{delegated:false,taskId,status,reason,retryable}`。`attach` 仅关联补充，不修改正文。原始用户材料仍在账本，实际执行轮次由助理正式计划与派工生成。
+
+卡片扩展字段 `managementHandoff` 保留目标、固定消息ID、发送尝试、状态、错误和送达时间；`room.projectHandoffScan` 保存群级管理员批次恢复通知，保存在 `rooms.extra_json`，不出现在公开 state；卡片交接保存在 `tasks.extra_json`，详情和摘要的 `handoff` 回读最近一次交接记录，当前正文是否待重发以 `unassigned/scan` 为准。结果不确定时先核对目标队列及持久会话；相同目标、来源和正文已投递的不重复发送，修订正文后生成新交接，无法查明的保留错误。临时失败按30秒间隔通知管理员检查和接续，最多三轮自动通知；实际交接由管理员判断后调用 retry_handoff，不由操作者临时发命令。超过上限保留原因供管理员处理。
+
+任命或更换助理、接单保存及插件重载后，宿主检查未交接卡并通知空闲管理员扫描、说明原因和重试。管理员仍在工作时延后；已规划、在途、已完成及确需用户补充的卡不重复派工。无需操作者重新发送用户需求或修改 SQLite。实现在 `project-handoffs.js`、`project-tasks.js`、`roster.js`；清理会释放扫描定时器并等待本次扫描和投递。
 
 ### 功能分支开发、独立测试与 dev 集成
 
@@ -75,3 +88,26 @@
 - `project-task-list` 的 `validationProgress` 给出当前轮次的进行项、最近通过项和回执状态；`project-task-detail` 的 `rounds[].validation` 含逐项证据。旧轮继续按已有 completed、remaining 和 result 回读。结果随原轮保存在群库。验证方法、环境和样本数量按本卡需要选取。
 
 当前计划的所有有效节点交付后，普通任务自动完成。要求人工终验的卡自动生成绑定最终轮次的验收请求；用户通过后完成。中间节点按依赖复核。
+
+
+## 显式协作与缺陷报告工具
+
+`work-protocol.js` 在既有团队工具中注册五项：`delegate_work(to,goal,request_id?,taskId?,card_round?)`、`ask_back(work_id?,question)`、`answer_work(work_id,answer)`、`cancel_work(work_id,reason?)`、`note_bot(to,message)`。它们不是新增 HTTP endpoint，使用当前 Bot 的工具身份、隐私保护与团队写锁。正式 card_round 派发转交现有 message_bot；其他委托存入团队基础 SQLite 的 works_json，带原调用/收件线程、taskId 和 dispatchId。追问保持 open，答复续原线程，最终回复自动返回；已取消回执禁止迟到回传。确定投递失败回滚等待，已入队后保存结果不明保留身份且不自动重发。note_bot 只注入消息和写账本，不启动模型。项目卡提交/复核/批准不变。
+
+`issue-report.js` 的 `prepare_ds_bot_issue(title,what,steps,diagnostics?)` 只准备脱敏草稿，需配合 show_view 的 report_issue 和用户确认；目标固定 cooker-code/DS-Bot。GitHub 连接器有写权限时才发布，没有时生成该仓库人工草稿链接。公开请求不允许调用者覆盖 API 目标。图片由用户在 GitHub 页面手动附加，接口不接收二进制上传。相关设计与验证见根目录 upstream-changelog.md。
+
+
+## 委托工作生命周期控制
+
+这些写入口沿用 `/api/bot` 的宿主认证、团队写锁和只读保护，不改变项目卡审批。`state.work.delegated[]` 返回 `id/ref/from/to/sessionId/toSession/roomId/taskId/dispatchId/status/goal/question/reason`，status 为 open、need_input、paused；已结束工作不再出现在此列表。完整正文只在团队存储保留，IM 路由信息不进入列表或会话事件。
+
+| 操作 | 业务与输入 | 服务和成功值 |
+| --- | --- | --- |
+| `answer-work` | `{id,answer}`，id 来自 delegated 列表，只答复 need_input 工作；空答和 paused 拒绝。 | `answerDelegatedWork` → 原 caller/worker 会话，返回原工具回执字符串。原 work 回到 open；同卡 taskId 和 dispatchId 不变。 |
+| `resume-work` | `{id}`，只继续 paused 工作。 | `resumePausedWork` 返回 true；追问暂停转 need_input 并把原问题交回 caller；委托暂停转 open 并投递原目标。重复 Continue 报错，不再发一次。 |
+| `cancel-work` | `{id,reason?}`，取消该 work 及其子树。 | `cancelDelegatedWork` 返回取消回执字符串。保存有界 cancelled receipt，移除精确 inbox/停止精确 active，迟到结果和项目提交被拒绝；其他卡与手动会话继续。 |
+| `resume-room-pause` | `{roomId}`，用户确认继续无进展暂停的群。 | `resumeRoomPause` 返回 true；通过现有群输入链路继续 parked calls。不是新建或删除项目卡。 |
+
+状态使用现有 split SQLite 的 `team.extra_json`（works、pairLoops、workOutbox、protocolSends、silentNotes）和 Bot openParts；没有改动项目卡 schema。`inflight.json` 同时保存 workProtocol、parentExchangeId、senderPart、workQuestion、workAnswer、protocolReturn、protocolDeliveryId。便笺只在空闲时 inject，source.silent 不构成恢复工作或未读提醒。结果 outbox 在 work 关闭时保存完整正文，恢复时按 protocolDeliveryId 对 receiving inbox/事件日志去重。
+
+回读：`python3 .agents/skills/ds-bot-doc/scripts/request.py state --desktop --jq '.work.delegated'`。仅在已授权目标实例验证，不将测试指向日用 profile；测试使用隔离目录和模拟模型。

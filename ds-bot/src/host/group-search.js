@@ -3,6 +3,7 @@
 // the message can be read in context. Text stays whole: the list snippets it, and
 // opening a hit shows the line.
 import { isIntakeReceipt, taskCaption, taskMessage } from '../shared/task-message.js'
+import { searchTextFor } from './search-text.js'
 
 const SEARCH_MAX = 20
 const TERMS_MAX = 8
@@ -27,6 +28,7 @@ function lineOf(record, room) {
 export function searchGroupBook(records, query, options, room) {
   const terms = [...new Set(String(query ?? '').toLowerCase().slice(0, QUERY_MAX).split(/\s+/).filter(Boolean))].slice(0, TERMS_MAX)
   if (terms.length === 0) return { results: [], hasMore: false }
+  const lower = searchTextFor(records)
   const page = options ?? {}
   const offset = Number.isInteger(page.offset) && page.offset > 0 ? page.offset : 0
   const before = Number.isInteger(page.before) ? page.before : undefined
@@ -38,7 +40,7 @@ export function searchGroupBook(records, query, options, room) {
     if (before !== undefined && !(Number.isInteger(record?.seq) && record.seq < before)) continue
     const hit = lineOf(record, room)
     if (hit === undefined) continue
-    const text = (hit.text === record.text ? hit.text : hit.text + '\n' + record.text).toLowerCase()
+    const text = lower(at, hit.text === record.text ? hit.text : hit.text + '\n' + record.text)
     if (!terms.every(term => text.includes(term))) continue
     if (skipped < offset) {
       skipped += 1

@@ -143,6 +143,10 @@ export function teamActions({ call, after, partFor, mainView, show, roster, ui, 
     createRoom: (members, options = {}) => after(call('create-room', { members, ...options })),
     updateBot: (id, patch) => after(call('update-bot', { id, ...patch })),
     // Give up one wait the Bot has on a hand-off that will not come back.
+    resumeRoomPause: roomId => after(call('resume-room-pause', { roomId })),
+    resumeWork: id => after(call('resume-work', { id })),
+    cancelWork: id => after(call('cancel-work', { id })),
+    answerWork: (id, answer) => after(call('answer-work', { id, answer })),
     abandonWork: id => after(call('abandon-work', { id })),
     refreshModels: () => after(call('models')).catch(() => {}),
     // One local agent's models: the first look starts its CLI, later ones read what it said.
@@ -274,6 +278,7 @@ export function teamActions({ call, after, partFor, mainView, show, roster, ui, 
     fileText: file => call('file-text', { file }).catch(() => undefined),
     roomProgress: roomId => call('room-progress', { roomId }).catch(() => []),
     groupRows: (roomId, from, to, anchor) => call('group-rows', { roomId, from, ...(to === undefined ? {} : { to }), ...(anchor === undefined ? {} : { anchor }) }).catch(() => null),
+    groupRelayReplies: (sessionId, preview) => call('group-relay-replies', { sessionId, preview }).catch(() => null),
     earlier: (sessionId, cursor) => call('earlier', { sessionId, cursor: cursor ?? null }),
     // Hours come back in this browser's time zone, so days start at local midnight.
     usage: () => call('usage', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
