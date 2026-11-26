@@ -1,0 +1,578 @@
+{
+  "docs/plans/2026-10-07-group-chat.md": {
+    "blob_sha": "e5261a4a5501e92882ad77f4c584a70065799c49",
+    "title": "群聊",
+    "purpose": "协调多个Bot讨论、同时派活和向原来源回报，降低无用轮次与迟到回复干扰。",
+    "scenario": "在群里同时点名开发和测试Bot，各自开工，结果应回到原群和原任务。",
+    "limitations": "- DSH 的「对话」引用组仍会出现在 `@` 菜单里，群里打 `@名字` 直接回车可能选中它（C3）。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2130、#2109；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2130,
+      2109
+    ]
+  },
+  "docs/plans/2026-10-07-roles-and-permissions.md": {
+    "blob_sha": "01601f4d6cf2917ab5dac5ba00f9d41fca5c944e",
+    "title": "角色与权限",
+    "purpose": "分开管理角色权限与工具沙盒，限制普通Bot管理团队和扩大文件权限。",
+    "scenario": "普通Bot请求修改另一个Bot时，应由Main或用户处理；文件写入仍受宿主权限控制。",
+    "limitations": "- DSH 的菜单项仍可能出现。默认的 `commandShield` 会拒绝 Bot 私聊和群聊里的 DSH 斜杠命令；它不能移除菜单行，也不屏蔽技能或所有「+」菜单操作。用户显式设 `commandShield: false` 可关闭这层拦截（见 [DSH 让步总账](2026-10-13-dsh-concessions.md) C4）。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-08-browser-and-secrets.md": {
+    "blob_sha": "2965e345aebfe520410b7a64b4cf58b304a3e9ad",
+    "title": "Bot浏览器、搜索与密钥",
+    "purpose": "浏览器状态按Bot隔离，搜索及外部请求使用凭据但不给模型暴露密钥。",
+    "scenario": "两个Bot登录不同账号，不能串Cookie；配置密钥后工具结果仍应脱敏。",
+    "limitations": "- Bot 浏览器仅桌面应用与 DSH Desktop 可用，DSH Web 无浏览器面板与 `read_browser`。\n- 插件版禁用 `web-search-auto` 后需在 `cordis.patch.yml` 指定其他 `searchProvider`（桌面应用启动时自动修复，见[已知问题](../known-issues.zh.md)）。\n- 密钥脱敏防意外泄露，但拥有 Shell 权限的 Bot 仍可通过编码/拆分自行输出，只应向可信 Bot 开放重要密钥。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1856,
+      2074
+    ]
+  },
+  "docs/plans/2026-10-09-context-and-memory.md": {
+    "blob_sha": "0b16f2fb5139dadad559fa35342b72abbc5b1730",
+    "title": "上下文与记忆",
+    "purpose": "用压缩检查点、换段和可搜索旧记录接续长期工作，减少做到一半丢上下文。",
+    "scenario": "长任务快到上下文上限时先保留未完工作，任务结束后换段仍能检索历史。",
+    "limitations": "- DSH 的一些适配器会给没写 `contextWindow` 的模型自己填一个默认值，这时插件拿到的是适配器的值，不是 500k。README 里要求用户填 `contextWindow`。\n- 已经开着的会话通过增量消息看到别人改动的 `MEMORY.md` 条目，主题里的内容靠自动召回或 `bot_recall`（#214、#453，见 [记忆的四种读法](2026-11-09-memory-layers.md)）。\n- 和[愿景](../vision.zh.md)第 3 条的差距：\n  - Bot 之间的记忆互相只读：用 `bot_recall` 按需读，不注入；隐私 Bot 的记忆只有它自己和用户能读（见 [隐私 Bot](2026-10-27-private-bots.md)）。\n  - 愿景要求目标驱动地完成工作：群聊已有 DS Bot 自己的 [群聊 Goal](2026-11-01-group-goal.md)（#791），单 Bot 私聊里的 Goal 还没做；Bot 会话里关掉了 DSH 的会话级 goal（见 [DSH 让步总账](2026-10-13-dsh-concessions.md)）。\n- Bot 对外始终保持一条连续对话，上下文达到检查线时由系统自动压缩或换段；不提供手动新会话或会话切换入口（#2042）。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2100、#2135、#2136；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2100,
+      2135,
+      2136
+    ]
+  },
+  "docs/plans/2026-10-10-bot-runtime.md": {
+    "blob_sha": "3ba9ba00a5d89938539e96f43b98a6f1b66ecfa9",
+    "title": "Bot运行配置",
+    "purpose": "将模型、预设、思考强度、工作目录和能力归属到Bot，避免宿主默认设置影响整个团队。",
+    "scenario": "为开发Bot指定模型和目录后，用户修改DSH默认模型不应把该Bot配置一并改掉。",
+    "limitations": "- **「能用」只看 key 有没有配**：`needsKey` 只覆盖 profile 写了 `apiKeyEnv` 的提供商。key 配了但不对、余额为零，或者是 DeepSeek 账号这类登录式的提供商没登录，都还算能用，要到第一轮失败才知道（失败后有修复卡）。保存 key 时检查、确认能用再打招呼，见 [Windows 上手流程](2026-10-26-windows-onboarding.md) 的 M2。\n- 能力包「coding」「research」的具体组成还没定。\n- 委派工具按 DSH 的默认名字认；profile 里改了名（`toolName`）的认不出来。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1298
+    ]
+  },
+  "docs/plans/2026-10-13-dsh-concessions.md": {
+    "blob_sha": "e1c8e6242b85e4a69f6cafd95724c4b5c5b0a79a",
+    "title": "DSH限制与让步",
+    "purpose": "集中说明公开宿主接口的限制，区分DS Bot缺陷和目前无法消除的宿主差异。",
+    "scenario": "遇到菜单或会话行为差异时先查限制依据，再判断应适配插件还是等待公开宿主能力。",
+    "limitations": "本设计的已知边界需结合固定版本原文和关联PR核对；没有证据时不扩大功能承诺。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-16-bot-handoffs.md": {
+    "blob_sha": "304646cf2282795eb21935e512bbee2258d9abf4",
+    "title": "Bot派活与回传",
+    "purpose": "以工作身份组织派活、追问、答复、自动结果与取消，减少无效往返和回环。",
+    "scenario": "主Bot派活给执行Bot，执行Bot追问后得到答复，结果回到原卡原轮，取消只停止该子树。",
+    "limitations": "- Bot 之间不停地互相提问，或者一件活没完没了地返工，会一直跑到用户停下。\n- 下面的活一直不交回（比如对方在等用户批准），上面就一直等；DSH 没有超时。状态里看得到在等谁。\n- 状态只在内存里，DSH 重启后从新的事件重建，和界面上的状态一样；等待关系除外，它存在 `state.json` 里。\n- X 自己把同一件活拆成几条不同的请求、分给不同的 Bot，不算重复。\n- 一个 `request_id` 只对应一份内容：改一个字就是另一件活，会被拒绝。发活的人要改内容，就另起一个名字。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2130；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2130
+    ]
+  },
+  "docs/plans/2026-10-16-desktop-app.md": {
+    "blob_sha": "ed0fa025e9aaa2ee8f9cdf586af638fc86ab3699",
+    "title": "独立桌面应用",
+    "purpose": "将固定DSH引擎和团队界面打成独立安装包，隔离用户已有profile。",
+    "scenario": "新用户安装独立App后直接进入团队；本地只维护DSH插件，因此该产品范围排除。",
+    "limitations": "- Windows / macOS 未购置商业签名证书，首次打开会触发 SmartScreen 或 Gatekeeper 提示。\n- Linux 部分桌面环境（GNOME / KDE）需要托盘扩展才能显示托盘图标（仍可通过再次启动应用唤回主窗口）。\n- 换工作文件夹与导入后会触发换段（旧段保持完整可读可搜）。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-21-browser-plugins.md": {
+    "blob_sha": "3df8a13cad3d2ea8692c84465b4c18ca96b92dc1",
+    "title": "浏览器后端插件",
+    "purpose": "团队选择一种浏览器控制后端，每个Bot保留独立登录状态，并提供人工接管。",
+    "scenario": "切换团队浏览器后端后，新会话使用新后端，Bot之间仍各自保留账号边界。",
+    "limitations": "- DSH Desktop 的浏览器面板仍由用户操作；桌面应用中的面板页由 Bot 和用户共同使用，接管状态由用户控制。\n- 群聊或子 Agent 里 Bot 发起的交接不出聊天卡，只在浏览器面板顶部的接管条里处理；工具结果会提醒 Bot 在当前对话说明要用户做什么，在面板里点交还不会通知 Bot。\n- 单独把 `browser-plugins/*` 装进一个没有 DS Bot 的 DSH profile 时，profile 按 Session id 分开，换段会像官方 browser-use 一样丢掉登录。跟 Bot 走的那份目录只有 DS Bot 挂载时才有。\n- `task` 在插件内部再调一次模型，步骤在工具结果里，不在 Bot 自己的逐步工具调用里。\n- 这次实测用的是自建多步页面，加上 WebVoyager 里两条 arXiv 任务，不是整套 600 多条。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2102,
+      2106
+    ]
+  },
+  "docs/plans/2026-10-21-linux-app-package.md": {
+    "blob_sha": "7dc77393941824b6e3bec4de6af48132906cf18a",
+    "title": "Linux桌面包",
+    "purpose": "用AppImage及deb提供Linux独立App安装和更新，减少多发行版维护。",
+    "scenario": "Linux用户选择对应安装包；本地macOS插件不跟进这条打包链。",
+    "limitations": "本设计的已知边界需结合固定版本原文和关联PR核对；没有证据时不扩大功能承诺。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-22-message-layout.md": {
+    "blob_sha": "83189a84e7cab9c2f8e7116721c57c83855bdbc3",
+    "title": "消息布局与宽度",
+    "purpose": "让气泡和平铺布局各自调整正文宽度，改善长回复、代码和表格的阅读。",
+    "scenario": "在宽屏把Bot气泡调宽，再切平铺布局时使用该布局自己的宽度设置。",
+    "limitations": "- 平铺布局里，悬停工具栏会盖住第一行最后几个字，鼠标移开就没了。\n- 支持悬停且宽于 640px 时，Bot 气泡最宽到整列宽减 82px：960px 的列大约在 91% 封顶，再往右拖只有用户气泡还在变宽。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2028
+    ]
+  },
+  "docs/plans/2026-10-23-avatar-library.md": {
+    "blob_sha": "78fd55abdddfca1d944a7b4fc0412b7701bac76c",
+    "title": "自定义头像库",
+    "purpose": "将用户头像素材独立保存并复用，支持多Bot使用同一图片与批量导入。",
+    "scenario": "给第二个Bot选已有头像，无需再次上传；删除Bot不应顺带删掉素材库。",
+    "limitations": "- 库里的图只在本机存着，不跟着团队同步到别的机器。\n- 去重比较编码后的图片字节：同一原图裁剪或编码不同、字节不同，就会得到不同 id；不是按视觉内容识别同一张照片。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-24-mobile-api.md": {
+    "blob_sha": "e14e4fd0a8b417d2047e735d40ef882df10b0238",
+    "title": "移动端客户端API",
+    "purpose": "给移动客户端提供统一会话、状态和进行中消息接口，减少客户端自行拆群历史。",
+    "scenario": "手机断线后重新拉状态并接续读取消息；此移动端和远程链路属于本地排除范围。",
+    "limitations": "- 若远程中继（如 `ds-harness-remote`）维护自身的 Remote 接口允许列表，需该中继允许列表包含 `dsBot/call` 与 `dsBot/feed` 后才能通过中继使用；SSH 隧道、局域网直连和本机不受此限制。\n- `room-chat` 直接从 DS Bot 消息账本读取发言（不再依赖工具调用结果拆解）；旧 PTC 群的轮次同样由 DS Bot 在后台运行。\n- 提醒不落盘：DSH 重启前没送到的提醒就丢了，客户端只能重读团队。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-24-mobile-app.md": {
+    "blob_sha": "8fbdc993e841c36c2c2374771225c3b2de01ccf7",
+    "title": "手机App",
+    "purpose": "让手机远程查看、审批和继续电脑上的团队工作，计算与数据仍留在电脑。",
+    "scenario": "离开电脑后在手机查看Bot结果；本地不维护移动客户端和配对中继。",
+    "limitations": "- iOS 上架要 Apple 开发者账号，测试版走 TestFlight，不提供应用内自更新。Android 可以直接装 APK 并支持应用内检查、校验与安装。\n- 电脑关机或睡眠时，手机连不上。\n- Android 在厂商强杀（强制停止）后需依赖已安装的 UnifiedPush 分发器唤醒（中转服务另提供可选 FCM 转发协议，客户端暂不依赖 Firebase SDK）；未配置推送分发器时可通过「实时保活 + 电池无限制」或「定时同步」兜底。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-26-start-window.md": {
+    "blob_sha": "2328888511193321d38e0b6d3d14b0fb6e3c3788",
+    "title": "独立App启动窗口",
+    "purpose": "将引擎冷启动的真实阶段与恢复操作显示在启动窗口，减少黑盒等待。",
+    "scenario": "独立App启动失败时说明停在哪一阶段；本地DSH插件不包含该启动窗口。",
+    "limitations": "- 不播放脱离真实阶段的假进度条。\n- 不在启动窗口内嵌入第三方网页或账号登录子窗口（授权链接交由系统浏览器处理）。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-26-windows-onboarding.md": {
+    "blob_sha": "c2ed54f46323923e99613a8dff8caf9505df99a7",
+    "title": "Windows安装上手",
+    "purpose": "通过安装、模型配置和恢复提示减少独立App首次使用的阻碍。",
+    "scenario": "首次缺Key时给明确修复入口；本地不跟随Windows安装和独立App上手流程。",
+    "limitations": "- Windows / macOS 安装包目前未购买商业开发者证书签名，首次打开仍会触发系统安全提示。\n- DSH 网页版的「预览版说明」首屏暂无公开关闭开关（见 [DSH 让步总账](2026-10-13-dsh-concessions.md) C17）。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-27-office-documents.md": {
+    "blob_sha": "eba8cef2803da2809bde365c58e8db8d81f4a7c1",
+    "title": "Office文档工具",
+    "purpose": "明确Office编辑工具、依赖和上传边界，避免把本地编辑和远端识别混在一起。",
+    "scenario": "Bot编辑本地表格或文档时使用支持的工具，上传识别前仍按对应服务授权判断。",
+    "limitations": "本设计的已知边界需结合固定版本原文和关联PR核对；没有证据时不扩大功能承诺。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "mixed",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-27-private-bots.md": {
+    "blob_sha": "ad936c37d5dacbf842816360eb00e334f219bbdf",
+    "title": "隐私Bot",
+    "purpose": "隔离私有会话、记忆、工作目录与对外动作，只允许用户控制隐私开关。",
+    "scenario": "团队其他Bot询问隐私Bot的工作内容时，不能读出私有记录或文件。",
+    "limitations": "- DSH 的文件沙箱不限制读取。文件工具和目录搜索的路径检查是在 DS Bot 的工具钩子里做的，不是系统安全边界。\n- shell 命令只能按其中出现的路径和会话标识做保守检查。动态拼接路径、通过相对路径向上走、遍历未直接写出隐私路径的父目录等方式仍可能绕过检查。能够执行 shell 的模型，最终仍可能读取当前系统账号有权限读取的文件，也能直接写共享文件夹而不经过文件夹外写入批准。\n- 网络工具保持可用，所以隐私 Bot 仍可能把内容发到外部服务；是否允许这类任务，仍由用户按 Bot 的权限和工具配置判断。\n- 路径检查偏保守：包含隐私会话标识的路径，以及与受保护位置同前缀的个别路径，可能被一并拒绝。\n- 如果外部文件系统改动后来造成目录重叠，遍历搜索会按失败关闭处理，直到用户把目录分开；这是可用性损失，不能为了继续搜索而暴露受保护内容。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-10-29-start-copy.md": {
+    "blob_sha": "472669e938aa54ae3e79ccd121b0796fdf8fb57f",
+    "title": "独立App启动文案",
+    "purpose": "统一启动页的阶段、翻译键和可恢复提示，避免同一状态出现多套不一致文案。",
+    "scenario": "启动失败后按钮和原因应与当前阶段对应；本地不维护独立App启动页。",
+    "limitations": "- 字数上限按中文字符数算，去掉占位符后，一串连着的英文字母或数字（DeepSeek、GB）算一个字；英文不限长度：英文是否折行由样式决定，一行放不下时先改句子。\n- 单复数只有英文 1 和多两种形，够启动页用；别的语言不在范围里。\n- 测试里的「以 … 结尾」只查 `data-act=\"pick\"` 的按钮；对话框里打开选择框的按钮（没有）不在内。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-01-group-goal.md": {
+    "blob_sha": "9fdf5301545ab93ce1e9d73076ed74ab0c91f5f6",
+    "title": "群聊Goal",
+    "purpose": "把群目标、阶段、分工和暂停继续变成持久状态，帮助长任务持续对齐。",
+    "scenario": "管理员拆阶段派活，用户暂停后不应继续推进；本地项目卡验收仍由原流程决定。",
+    "limitations": "- 证据由管理员和审查成员核对，DS Bot 不自己运行验收命令。\n- DSH 重启后，Goal 不会自己恢复推进：下一次有人在群里说话、或被打断的工作恢复后，自动推进照常接上。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "上游以群Goal推进，本地以项目卡/节点/轮次提交和验收；不能把群空闲或后台结束直接当原卡完成。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-01-memory-restore.md": {
+    "blob_sha": "e2a79ef1c57c045ad61f508cc4cd46e4766cd66c",
+    "title": "记忆恢复",
+    "purpose": "从记忆日志的前后内容恢复误写、替换或误删，减少手工编辑文件。",
+    "scenario": "用户发现一条记忆被写错时，按日志找到对应变更并恢复，不能影响其他记忆。",
+    "limitations": "只恢复日志可定位且可授权的记忆变更，不能把手工改文件当成已验证的恢复入口。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-04-connectors.md": {
+    "blob_sha": "d23086564b9f92151c9c56a6de3ce03a2a0da17b",
+    "title": "连接器与邮箱",
+    "purpose": "统一外部服务目录、登录、网关、按Bot授权与邮箱线程操作。",
+    "scenario": "为一个Bot启用邮箱后，它只通过获准连接器读写邮件，其他Bot不自动获得权限。",
+    "limitations": "- 浏览器登录只在本机回环；远程浏览器用贴回地址兜底。\n- 只读过滤依赖服务的 `readOnlyHint`；没标注的按写处理。\n- 邮箱线程按 References/In-Reply-To 关联；Gmail 的「移动」按标签实现。\n- Google 登录在应用过审前仅限测试账号。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-04-im.md": {
+    "blob_sha": "4ea9e9a03b3c9197ceb65510896b69d59236a8a3",
+    "title": "即时通信通道",
+    "purpose": "把聊天软件作为用户指令和结果的通道，保留配对、绑定和原消息来源。",
+    "scenario": "在飞书或微信派活，结果应回到原聊天；解绑后不再向旧目标投递。",
+    "limitations": "- 微信和 QQ 只允许在用户发消息后的一段时间内回复，额度也由平台定；超出后的回复发不出去，设置里显示原因，用户再发一句后恢复。\n- 微信只能和扫码的那个账号私聊，不支持群。\n- 钉钉、QQ、微信没有卡片按钮，用编号回复。\n- 电脑关机或睡眠时，消息等平台保留；平台不保留的就收不到。\n- 手机 App 里还没有 IM 设置页。\n- Bot 私聊里当前这一段的用户消息由 DSH 画，暂时不显示「来自 …」；群聊和更早的段里显示。\n- 只有微信的引用回复会被读到（iLink 的 `referenced_msg_id` / `ref_msg`），也只有微信适配器带 `quote: true`，所以只有微信连接会记录已发消息；其它平台暂不处理引用，也不会把回复正文写进运行文件。记下的已发消息每条聊天最多保留最近 20 条（长消息分条发送时按分条记）、每条只留正文开头 1000 字，`sent` 整个有总大小上限，引用内容最多显示开头 500 字；更早或更长的引用只能靠平台给的原文。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2154,
+      1920,
+      2109
+    ]
+  },
+  "docs/plans/2026-11-04-local-agents.md": {
+    "blob_sha": "ba39b63125a7b4d5be941dacf4aea5dfc6cf6b98",
+    "title": "本地智能体CLI",
+    "purpose": "复用已登录的编码智能体作为Bot，保留工具、会话、提示和恢复边界。",
+    "scenario": "开发Bot使用本机Codex或ACP进程接续原会话，维护操作不应悄悄新建另一段工作。",
+    "limitations": "CLI内部工具与登录由对应CLI管理，进程、恢复和权限差异需分别核对；不通过修改DSH内部文件接入。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2177,
+      2160
+    ]
+  },
+  "docs/plans/2026-11-09-memory-layers.md": {
+    "blob_sha": "92ec46485b07dba2df98a1655955cd61799fcda6",
+    "title": "记忆四层读取",
+    "purpose": "将常驻事实、需要时召回和历史证据分开，减少每轮固定注入开销。",
+    "scenario": "长期资料放在按需读取层；对当前任务有用的事实才进入上下文。",
+    "limitations": "- 窗口大小在第一步之前才知道。新 Bot 的第一次冻结可能不受 2% 约束，下一段起生效。\n- 自动召回只匹配词，不懂同义。\n- 升级后已有的团队条目留在 `MEMORY.md`，由用户在记忆面板移到「需要时才读」。\n- 一条记忆放错了级别，用户在记忆面板把它移到团队、别的 Bot 或群。条目带着 id、有效期和固定状态走；进团队时放主题 `shared`，要不要常驻另外选。先写新位置再删旧位置，中断时最多两处都有，不会丢。只有面板能移动，模型没有这个工具。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-10-approval-review.md": {
+    "blob_sha": "e591f7a92aa0f70a42cdb8e404be95c0599a3c1d",
+    "title": "模型审批代审",
+    "purpose": "用无工具的独立审核上下文辅助审查操作，不足时回人工，并保留权限边界。",
+    "scenario": "选择替我审批后，模型根据具体动作和证据判断；不能扩大Bot本来的沙盒权限。",
+    "limitations": "本设计的已知边界需结合固定版本原文和关联PR核对；没有证据时不扩大功能承诺。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#1299；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1299
+    ]
+  },
+  "docs/plans/2026-11-10-extra-folders.md": {
+    "blob_sha": "197650a87db0aa30f409ec60f8ec43bee5975056",
+    "title": "额外工作目录",
+    "purpose": "让一个Bot同时处理多个目录，逐次核对额外目录写入而不切换主会话。",
+    "scenario": "开发Bot读取主项目和依赖项目，只对获准额外目录的当前写入进行授权。",
+    "limitations": "- 补丁自动批准使用宿主公开的 `@deepseek-ai/dsh-fs-patch` 解析器。旧版 DSH（如 0.2.0-rc.2）未提供这个包时，`write`、`edit` 仍按宿主文件系统的真实路径检查；`apply_patch` 的升级交给用户审批。\n- 子 agent 的 Session 不继承额外工作文件夹，子 agent 写那里时照常请用户批准。\n- 自动批准在审批时检查路径，和 DSH 自己的包含检查一样，挡不住审批之后才换掉的链接。\n- 自动批准走 DSH 的审批流程。DSH 自带的两个权限预设都适用：`workspace-write`（询问）由 DS Bot 批准，`danger-full-access` 本来就能写任何位置。自定义预设若是 `workspace-write` 加「从不询问」，DSH 在询问之前就拒绝升级，这时额外工作文件夹只能读；要写就换成询问的预设。\n- 文件面板显示 Session 自己的文件夹；额外工作文件夹里的文件用完整路径打开。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#1298；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地仍使用当前SQLite项目状态和公开宿主权限；额外目录必须保留真实路径校验，不通过扩大整个团队权限来替代。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1298
+    ]
+  },
+  "docs/plans/2026-11-12-encrypted-secrets.md": {
+    "blob_sha": "e3274fe0a23b0862c249f707d98f344e96c09815",
+    "title": "密钥静态加密",
+    "purpose": "为磁盘或备份泄露提供可选的密钥加密存储，明确运行进程仍需访问明文。",
+    "scenario": "用户启用外部口令后，复制出去的存储文件不能直接读出密钥，口令错误要有反馈。",
+    "limitations": "- 运行中的进程内存里有明文密钥和口令；本机同用户或 root 能读进程、口令环境变量或口令文件。\n- 口令来源（环境变量/文件）的保护由部署决定；env 会被同用户进程看到。\n- GCM 无法区分解密失败是口令错还是文件损坏，提示统一写「口令不对或文件损坏」。\n- 启用后旧明文的残留副本（备份、日志、别的机器）不在本功能处理范围。\n- 手机 App 已有新增、删除密钥的页面，但没有静态加密、解密或解锁控件；这些操作仍须在电脑上完成。浏览器远程端不允许密钥管理。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-13-ios-release.md": {
+    "blob_sha": "0fed0307a025a99ef763c472d76d5d11cab03c01",
+    "title": "iOS发布流程",
+    "purpose": "说明iOS签名、构建与TestFlight分发的账号准备、限制和排障。",
+    "scenario": "账号持有人准备证书后才能签名发布；本地插件不跟进iOS出包。",
+    "limitations": "- TestFlight：内部测试最多 100 人；每个 build 90 天；外部测试需要 Beta App Review。\n- 账号角色：Team Keys 只有 Account Holder / Admin 能创建；只有 Account Holder 能签协议。\n- CI 的 iOS 任务只做无签名模拟器构建，签名构建需要账号和密钥，走本机脚本或带 secret 的发布流程。\n- 扫码配对真机验证仍要等账号和设备（模拟器没有摄像头，App 有粘贴配对链接的入口，但不能替代真机验收）。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-13-parallel-sessions.md": {
+    "blob_sha": "fb9a92f33e281c55b3314399878c77025009e63d",
+    "title": "同Bot并行会话的上游删除",
+    "purpose": "上游废除手动新建和切换并行会话，转向单前台加后台工作；本地明确保留原能力。",
+    "scenario": "同一Bot同时处理两个独立会话是本地需要的功能，2039和2042删除方案继续跳过。",
+    "limitations": "本设计的已知边界需结合固定版本原文和关联PR核对；没有证据时不扩大功能承诺。",
+    "upstream_stage": "已废除",
+    "stage_evidence": "原文明确标记已废除（2026-11-22，2039/2042），以单前台和异步工作替代。",
+    "local_notes": "用户已明确保留同Bot并行会话及手动新建/切换；上游删除方案2039/2042长期跳过。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-14-deepseek-services.md": {
+    "blob_sha": "28babfd73e6ac95f5ebbc35c49ae2020d00a52ee",
+    "title": "DeepSeek听写与朗读",
+    "purpose": "给已有主模型额外接入可选ASR/TTS，按服务就绪状态、分段和取消控制费用。",
+    "scenario": "用户明确选择语音服务后才调用，配置Key或账号登录本身不自动启用语音。",
+    "limitations": "- speech Remote 只在 Voice Input 插件挂载时存在；插件关闭时保持原有听写路径，页面只给安装入口。\n- 账号登录目前不对 ASR / TTS 有效。\n- 汉字按 2 个计费字符计，超限文本需分段；已经发出的合成请求取消后仍可能计费。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#1881；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1881
+    ]
+  },
+  "docs/plans/2026-11-14-read-document.md": {
+    "blob_sha": "8579c3a2822aee11088fc5d94d5ec45874f31683",
+    "title": "DeepSeek文档识别",
+    "purpose": "为文件识别提供独立凭据和网关边界，按用户选择上传并保留取消反馈。",
+    "scenario": "需要OCR时调用read_document，未启用时不因配置了Key就自动上传本地文档。",
+    "limitations": "- 不因配置 key 自动启用任何能力、自动上传；不新建第二套凭据、网络客户端。\n- 不改本地 Office 编辑流程，不承诺 Office 文件绝不上传。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#1880；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1880
+    ]
+  },
+  "docs/plans/2026-11-14-search-summaries.md": {
+    "blob_sha": "f3025390b9dc5822d794d22b44d210ea49d3b4c2",
+    "title": "搜索来源摘要",
+    "purpose": "保留提供方的长摘要，并支持按模型凭据接入官方Search或Fetch路径。",
+    "scenario": "搜索结果展示来源摘要时不只剩短snippet，仍按提供方路由使用对应凭据。",
+    "limitations": "- 不新增第二套凭据、网络客户端；不改各路由自己的 key 归属。\n- 不把 Web search 开关搬进 DS Bot 设置页。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#1879；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1879
+    ]
+  },
+  "docs/plans/2026-11-16-async-work.md": {
+    "blob_sha": "ac74b9a5c44becda29b004fb1a31eed975f6b32d",
+    "title": "异步后台工作",
+    "purpose": "长任务转后台后前台仍能接话，区分插话、排队、显式移交与原生后台命令。",
+    "scenario": "用户明确转后台才移交旧活；普通新消息继续遵循steer或queue，不删除本地并行会话。",
+    "limitations": "- 本地 Agent 的 Bot：CLI 内部的工具调用由 CLI 自己管。\n- DSH 的本地 job 注册表默认每个会话最多同时 10 个 job。\n- 设置较大等待时间并在期间被用户插话提前转后台的极少数场景下，若模型在原等待时间内调用 `job_output(wait: true)`，命令提前结束时可能因底层原生等待收尾移表而报 `unknown job`，命令结果仍由兜底完成通知送达。\n- 等待时间设得很短时，如果命令在沙箱准备或子进程启动阶段就已超时，DSH `waitOnJob` 会按准备超时终止命令，不会转后台。\n- 等待时间较长且用户中途插话拆离时，底层原生等待仍在继续；若命令在原等待时间内结束，完成通知由 DS Bot 兜底送达，但原生等待收尾时会从注册表移除该 job，之后无法再用 `job_output` 重读。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2180、#1887、#1892、#1902；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "保留原前台和手动并行会话；后台绑定原卡原轮，结果回传不等于项目卡验收。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2180,
+      1887,
+      1892,
+      1902
+    ]
+  },
+  "docs/plans/2026-11-17-web-remote.md": {
+    "blob_sha": "1b93db5d8887847ffdeb0d4be4fbf05caf5c7724",
+    "title": "浏览器远程客户端",
+    "purpose": "将移动端界面导出为网页，复用配对与加密远程链路访问电脑上的团队。",
+    "scenario": "另一台设备通过配对访问团队；本地不维护移动端导出、配对和远程中继。",
+    "limitations": "- **浏览器密钥由 IndexedDB 中不可导出的 CryptoKey 加密，而不是系统钥匙串保护。** 不可导出只阻止直接导出 AES 密钥；同 origin 的恶意 JavaScript 仍可取到 CryptoKey，调用解密或冒用设备。XSS 或被篡改的网页构建仍会危及身份和允许的聊天操作。通过严格 CSP、同源部署、无内联脚本和现有内容渲染边界减小风险，不能抵御恶意 Relay 网页发布者。应信任发布者，使用 HTTPS，并从电脑撤销不再使用的浏览器。清除站点数据会丢失身份，需要重新配对；浏览器必须支持 Web Locks、WebCrypto 和 IndexedDB。\n- 网页没有后台通知；浏览器后台挂起或关闭后不会持续收消息，回来后重连同步。浏览器不强制原生设备解锁；需要解锁的敏感接口在客户端和主机上都被禁用，改用手机 App 或电脑。\n- 下载会在内存中累积 Blob，大文件受浏览器内存和保存策略限制。添加到 iOS 主屏幕可用网页名称和主题色，不代表原生 App 或完整离线 PWA。\n- `relay.dsbot.app` 必须另外部署非 demo 网页构建并配置 `DSBOT_LINK_WEB_DIR`，否则浏览器链接仍是 404；本仓库的改动不会自动部署线上服务。\n- 带路径前缀的反向代理需要对应前缀的 Expo 资源基址；默认构建只适用于 origin 根下的 `/web/`。正式环境需要 HTTPS/WSS，localhost 的 HTTP/WS 仅用于本机测试。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-20-mcp-access.md": {
+    "blob_sha": "5b722af267873b907cebd394c2196878a11fa4f4",
+    "title": "旧独立MCP入口",
+    "purpose": "旧方案让本机其他智能体调用团队；后续统一API已将协议收口，避免重复入口。",
+    "scenario": "外部编码智能体需要派活时优先评估2016统一API，不另建已被替代的独立入口。",
+    "limitations": "- `wait_for_reply` 按消息时间和 Bot 是否在忙判断完成；同一时间用户也在和这个 Bot 说话时，返回里会混进对用户的回复。\n- 只传文字，不传图片和文件。\n- 令牌是持有即可用的 Bearer 令牌：本机能读到它的程序都能用它，丢了就删客户端重建。\n- 客户端的消息会让目标 Bot 按它自己的权限预设跑一轮正常的回合，来源标记只是提示。所以令牌能让它的 Bot 做任何不需要审批就能做的事；默认范围是权限最大的 Main Bot，例如它的预设自动放行的创建、修改 Bot 或运行命令。删除 Bot 仍是用户操作。只把令牌给你信任的程序，或者只勾选权限更小的 Bot。",
+    "upstream_stage": "已废除",
+    "stage_evidence": "现有同步评估记录1919旧入口已由2016统一API收口，旧设计保留历史，不作为新方案推荐。",
+    "local_notes": "旧MCP入口后续被2016统一API收口；优先参考统一Run、Token与完成态，不恢复旧重复网关。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/2026-11-21-external-api.md": {
+    "blob_sha": "c2f4666f1b46075334ead1759c592707fda86b8f",
+    "title": "统一对外API",
+    "purpose": "用最小权限Token和统一Run状态提供API、MCP及CLI调用，区分指令和外部事件。",
+    "scenario": "本机脚本给团队派活后查询完成状态，不能把Run结束直接当项目卡验收通过。",
+    "limitations": "- 局域网/远程调用需由用户自行配合 SSH 隧道、Tailscale 或带 TLS 的反向代理使用。\n- 密钥卡与浏览器人工接管无法通过 API 代答，需由用户在电脑或手机端完成。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2016；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2016
+    ]
+  },
+  "docs/plans/2026-11-21-feature-packs.md": {
+    "blob_sha": "0af6cfe8d0819375533557d6dae1dbd3e72851ac",
+    "title": "会话能力包",
+    "purpose": "按Bot和会话装卸工具与技能包，减少无关工具schema开销，保留Main专属权限。",
+    "scenario": "会话临时需要某MCP能力时加载对应包，换段后动态装载清理，普通Bot看不到Main管理工具。",
+    "limitations": "- 除 `team-admin` 外的其他内置工具组（如日程、邮件、浏览器、群工具）尚未分包，也暂不支持内置组的会话级动态装卸。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2019、#2043、#2141；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "先具备按会话装卸运行时，再适配三态设置、角色过滤和管理包；保留本地managedSkills、项目范围及隐私边界。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2019,
+      2043,
+      2141
+    ]
+  },
+  "docs/plans/2026-11-22-bot-plugins.md": {
+    "blob_sha": "44f0ceab4e5431ecadb19d7402989ae80635fad4",
+    "title": "Bot插件运行时",
+    "purpose": "统一插件目录、按Bot开关和互斥浏览器槽位，支持热切换并清理旧资源。",
+    "scenario": "用户切换浏览器后端或禁用插件时，旧会话资源要释放，失败后能恢复。",
+    "limitations": "- 非原生 Provider 形态的标准 DSH 浏览器插件自带浏览器实例与隔离方式，无法复用 DS Bot 桌面端 Electron `WebContentsView` 每 Bot cookie 分区与 DOM 级写操作预授权。\n- 在未开启 HMR 的 DSH profile 中安装、更新或卸载 DSH 插件包时，工具加载或彻底释放可能需要重启 DS Bot；界面会明确提示重启状态，且待重启卸载的插件工具会在重启前保持屏蔽。\n- 普通 DSH 插件的按 Bot 开关依赖工具前缀匹配（目录条目预填，自定义条目可手动补充），对界面扩展与后台服务不按 Bot 拆分。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2102、#2106、#2146；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "保留DSH插件运行方式，只用公开宿主能力；浏览器切换需释放旧会话并支持失败回滚。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2102,
+      2106,
+      2146
+    ]
+  },
+  "docs/plans/2026-11-22-chatgpt-sign-in.md": {
+    "blob_sha": "5f9dcc46ce653c44f10d4f2887fb687243ad5e31",
+    "title": "独立App的ChatGPT登录",
+    "purpose": "在独立App主进程处理ChatGPT账号OAuth和可续期会话，隔离注册和回调状态。",
+    "scenario": "独立App用户登录ChatGPT账号路由；本地不维护该App主进程登录功能。",
+    "limitations": "独立App主进程专用的账号注册、回调和会话边界，不作为DSH插件公开能力。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2045、#2056；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "属于用户长期排除的独立App、移动端/远程访问或非macOS专用范围；只展示社区进展，不建议加入本地插件。",
+    "scope": "excluded",
+    "implementation_prs": [
+      2045,
+      2056
+    ]
+  },
+  "docs/plans/2026-11-22-settings-console.md": {
+    "blob_sha": "483872144aef7b6b5318799ce08ea7a4c6790579",
+    "title": "设置总控台",
+    "purpose": "用概览、字段搜索、配置修复和预览帮助定位团队设置问题。",
+    "scenario": "概览指出缺Key的Bot，搜索气泡宽度直达输入；模型批量切换仍需明确确认。",
+    "limitations": "- 宿主未提供 `providers` 接口时（如极简插件宿主），Overview 只能按 roster 标记的 `needsKey` 提示并跳转到 Bot 模型页，不能原地编辑 Key。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#2028、#2006、#2027；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "2028已完整适配本地设置外壳；2006额外导航/导览和2027浮层隔离独立跟踪，不当作2028未完成。",
+    "scope": "plugin",
+    "implementation_prs": [
+      2028,
+      2006,
+      2027
+    ]
+  },
+  "docs/plans/README.md": {
+    "blob_sha": "2935348f7426d27b6984adcb19da7ffe984eecdd",
+    "title": "设计目录索引",
+    "purpose": "维护功能设计的原文入口与领域目录，不把索引变更当成功能实现。",
+    "scenario": "同步只改索引时仍可查看目录差异，但不据此宣称新增某项能力。",
+    "limitations": "本设计的已知边界需结合固定版本原文和关联PR核对；没有证据时不扩大功能承诺。",
+    "upstream_stage": "待核实",
+    "stage_evidence": "该设计已合入固定upstream/dev；本区间主要是设计说明更新，未据此确认整项功能实现阶段。",
+    "local_notes": "本地取舍以相关实现PR的状态、差异和验证为准；设计整理PR的跳过不等于本地没有该能力。",
+    "scope": "plugin",
+    "implementation_prs": []
+  },
+  "docs/plans/self-report-issue.md": {
+    "blob_sha": "a80149d2fdfd25c2a72a24b145ceb55349a34041",
+    "title": "缺陷报告草稿",
+    "purpose": "先准备可审阅的脱敏问题报告，用户确认后公开提交，安全问题走私密渠道。",
+    "scenario": "Bot整理复现和版本后展示全文，本地报告指向二开仓库，图片按支持入口手动补充。",
+    "limitations": "公开发布需确认完整正文；不自动上传日志、图片或文件，安全问题走私密报告。",
+    "upstream_stage": "已实现",
+    "stage_evidence": "固定来源已有对应实现PR：#1942；保留原文限制，未声称本机采用或重新验收上游全部行为。",
+    "local_notes": "报告默认发二开仓库cooker-code/DS-Bot，经用户确认全文后提交；不把模拟连接器当真实发布。",
+    "scope": "plugin",
+    "implementation_prs": [
+      1942
+    ]
+  }
+}

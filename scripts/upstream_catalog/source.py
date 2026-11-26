@@ -146,7 +146,9 @@ def bootstrap(store, repo, endpoint, progress=lambda _: None):
     missing = [number for number in numbers if not cache.get(number,{}).get('createdAt')]
     details = github_metadata(missing)
     for number,extra in details.items():cache.setdefault(number,{}).update(extra,sourceSyncedAt=now())
-    result = store.bootstrap(ledger, cache, git(repo, 'rev-parse', 'HEAD'), endpoint, groups(repo))
+    from .community import prepare
+    bundle = prepare(store,repo,list(cache.items()),endpoint,historical=True)
+    result = store.bootstrap(ledger, cache, git(repo, 'rev-parse', 'HEAD'), endpoint, groups(repo),bundle)
     result['metadata'] = {'updatedPRs':missing, 'githubPRsRead':len(missing)}
     return result
 
@@ -192,6 +194,8 @@ def _sync(store, repo, endpoint, fetch=False):
     metadata = github_metadata(missing)
     for number,item in candidates:
         if number in metadata:item.update(metadata[number])
+    from .community import prepare, apply
+    design_bundle = prepare(store,repo,candidates+[(None,item) for item in direct],end)
     pending = [];changed = []
     with store.db:
         run = store.db.execute('INSERT INTO sync_runs(repo_id,from_sha,to_sha,local_branch,local_sha,started_at,outcome) VALUES(?,?,?,?,?,?,?)', (REPO_ID, start, end, current, git(repo, 'rev-parse', 'HEAD'), now(), 'running')).lastrowid
@@ -218,10 +222,17 @@ def _sync(store, repo, endpoint, fetch=False):
         for item in direct:direct_cache.setdefault(item['sha'], {**item, 'status': '暂缓', 'reason': '直接提交已缓存，需记录评估后再推进完整盘点'})
         store.set_meta('direct_commits', direct_cache)
         unreviewed_direct = [d['sha'] for d in direct if not direct_cache[d['sha']].get('reviewed')]
-        complete = not pending and not unreviewed_direct
+        design_result = apply(store,design_bundle)
+        complete = not pending and not unreviewed_direct and not design_result['pendingDesigns']
         store.db.execute('UPDATE sync_runs SET outcome=?,completed_at=?,error=? WHERE id=?', ('complete' if complete else 'needs_analysis', now(), None if complete else json.dumps({'prs': pending, 'commits': unreviewed_direct}), run))
-        if complete:store.db.execute('UPDATE sources SET checkpoint_sha=?,scanned_at=? WHERE repo_id=?', (end, now(), REPO_ID))
-    return {'from': start, 'to': end, 'commitsExamined': len(commits), 'changedPRs': changed, 'pendingAnalysis': pending, 'directCommits': unreviewed_direct, 'checkpointAdvanced': complete, 'localAffectedPRs': reassess(store, repo), 'preferencesPreserved': True}
+        if changed or design_result['changedDesigns']:
+            store.set_meta('community_last_update',{'kind':'上游增量','sourceSHA':end,'recordedAt':now(),'changedDesigns':design_result['changedDesigns'],'changedPRs':changed,'complete':complete})
+        elif store.meta('community_last_update',{}).get('sourceSHA')==end:
+            latest=store.meta('community_last_update');latest['complete']=complete;store.set_meta('community_last_update',latest)
+        if complete:
+            store.db.execute('UPDATE sources SET checkpoint_sha=?,scanned_at=? WHERE repo_id=?', (end, now(), REPO_ID))
+            store.set_meta('community_cached_source',end)
+    return {'from': start, 'to': end, 'commitsExamined': len(commits), 'changedPRs': changed, 'pendingAnalysis': pending, **design_result, 'directCommits': unreviewed_direct, 'checkpointAdvanced': complete, 'localAffectedPRs': reassess(store, repo), 'preferencesPreserved': True}
 
 
 def sync(store, repo, endpoint, fetch=False):

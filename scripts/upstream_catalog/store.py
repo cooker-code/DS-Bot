@@ -54,7 +54,7 @@ class Store:
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.execute('PRAGMA busy_timeout=10000')
         version = self.db.execute('PRAGMA user_version').fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             self.db.close()
             raise CatalogError('Unsupported catalog schema version')
         if version == 0:
@@ -69,6 +69,12 @@ class Store:
         if not {'sources','prs','preferences','events','sync_runs','metadata'}.issubset(tables):
             self.db.close()
             raise CatalogError('目标不符合上游台账结构，拒绝修改')
+        if version == 2 and not {'designs','design_versions','pr_designs'}.issubset(tables):
+            self.db.close();raise CatalogError('社区台账结构不完整')
+        if not readonly and version in (0,1):
+            try:self.db.executescript('BEGIN IMMEDIATE;\n' + Path(__file__).with_name('community-schema.sql').read_text() + '\nPRAGMA user_version=2;\nCOMMIT;')
+            except (OSError,sqlite3.Error) as exc:
+                self.db.rollback();self.db.close();raise CatalogError('社区设计台账升级失败，原库保持') from exc
         if not readonly:self.db.execute('PRAGMA journal_mode=WAL')
 
     def __enter__(self):
@@ -87,7 +93,7 @@ class Store:
     def event(self, number, kind, before, after, actor='sync', run_id=None):
         self.db.execute('INSERT INTO events(repo_id,pr_number,kind,before_json,after_json,actor,recorded_at,run_id) VALUES(?,?,?,?,?,?,?,?)', (REPO_ID, number, kind, json.dumps(before, ensure_ascii=False), json.dumps(after, ensure_ascii=False), actor, now(), run_id))
 
-    def bootstrap(self, markdown, snapshots, local_sha, checkpoint, groups):
+    def bootstrap(self, markdown, snapshots, local_sha, checkpoint, groups, design_bundle=None):
         text = Path(markdown).read_text()
         rows = []
         batch_date = None
@@ -136,16 +142,21 @@ class Store:
                 self.db.execute(f'INSERT INTO prs({keys}) VALUES({",".join("?" for _ in values)})', tuple(values.values()))
                 self.event(number, 'import', None, {'status': c[1], 'source': 'upstream-changelog.md'})
                 changed += 1
+            if design_bundle is not None:
+                from .community import apply
+                design_result = apply(self,design_bundle)
             self.set_meta('ledger_digest', digest(text))
             self.set_meta('ledger_file', str(Path(markdown).resolve()))
-        return {'imported': changed, 'total': len(rows), 'preferencesPreserved': True}
+        result = {'imported': changed, 'total': len(rows), 'preferencesPreserved': True}
+        if design_bundle is not None:result.update(design_result)
+        return result
 
     def stats(self):
         counts = dict(self.db.execute('SELECT status,count(*) FROM prs GROUP BY status').fetchall())
         choices = self.db.execute('SELECT count(*) FROM preferences WHERE wanted=0').fetchone()[0]
         direct = self.meta('direct_commits', {})
         direct_pending = sum(1 for item in direct.values() if item.get('reviewed') and not item.get('exported'))
-        return {'directCommits': len(direct), 'total': sum(counts.values()), 'statuses': {s: counts.get(s, 0) for s in STATUSES}, 'notWanted': choices, 'needsReview': self.db.execute('SELECT count(*) FROM prs WHERE needs_review=1').fetchone()[0], 'pendingExport': self.db.execute("SELECT count(*) FROM events WHERE id>? AND kind IN ('preference','analysis','source')", (self.meta('exported_event', 0),)).fetchone()[0] + direct_pending, 'source': dict(self.db.execute('SELECT * FROM sources WHERE repo_id=?', (REPO_ID,)).fetchone() or {})}
+        return {'schemaVersion': self.db.execute('PRAGMA user_version').fetchone()[0], 'directCommits': len(direct), 'total': sum(counts.values()), 'statuses': {s: counts.get(s, 0) for s in STATUSES}, 'notWanted': choices, 'needsReview': self.db.execute('SELECT count(*) FROM prs WHERE needs_review=1').fetchone()[0], 'pendingExport': self.db.execute("SELECT count(*) FROM events WHERE id>? AND kind IN ('preference','analysis','source')", (self.meta('exported_event', 0),)).fetchone()[0] + direct_pending, 'source': dict(self.db.execute('SELECT * FROM sources WHERE repo_id=?', (REPO_ID,)).fetchone() or {})}
 
     def list(self, args):
         conditions, params = ['p.repo_id=?'], [REPO_ID]
@@ -188,6 +199,9 @@ class Store:
         if not row:raise CatalogError('PR not found')
         out = self.public_row(row)
         out['history'] = [dict(r) for r in self.db.execute('SELECT * FROM events WHERE repo_id=? AND pr_number=? ORDER BY id DESC', (REPO_ID, number))]
+        if self.db.execute('PRAGMA user_version').fetchone()[0] >= 2:
+            from .community import for_pr
+            out['designs'] = for_pr(self,number)
         return out
 
     def preference(self, number, wanted, reason, revision):

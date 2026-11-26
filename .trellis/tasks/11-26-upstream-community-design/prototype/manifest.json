@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "entry": "prototype/brief.md",
+  "preview": "prototype/brief.md",
+  "status": "approved",
+  "artifact_digest": "sha256:92a08e24eb4f063d1d1e94c2947f401123199a69354b7016950a27c7bebe408c",
+  "approved_digest": "sha256:92a08e24eb4f063d1d1e94c2947f401123199a69354b7016950a27c7bebe408c",
+  "approval_evidence": "本轮用户明确批准上一轮两入口及字段方案；文字范围授权，最终界面验收另计"
+}

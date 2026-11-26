@@ -5,8 +5,9 @@ import json
 import sys
 from pathlib import Path
 from upstream_catalog.store import Store, CatalogError, REPO_ID, now
-from upstream_catalog.source import database_path, bootstrap, sync, reassess, git, writable, complete_metadata
+from upstream_catalog.source import database_path, bootstrap, sync, reassess, git, writable, complete_metadata, validate_source
 from upstream_catalog.web import server
+from upstream_catalog import community
 
 
 def main(argv=None):
@@ -20,6 +21,11 @@ def main(argv=None):
     update.add_argument('--to', default='upstream/dev')
     update.add_argument('--fetch', action='store_true', help='显式刷新upstream/dev；默认只用本地引用')
     sub.add_parser('metadata', help='只补缓存缺失的GitHub PR提交时间，保留状态/选择/游标；需要gh登录')
+    sub.add_parser('community-sync', help='从已缓存来源补齐设计全文、PR关联与社区说明，不fetch/不合代码')
+    browse = sub.add_parser('community', help='只读社区功能和设计判断')
+    for field in ['q','kind','stage','status','scope','recent','limit','offset']:browse.add_argument('--'+field)
+    design = sub.add_parser('design', help='只读某设计主题的说明与固定版本原文');design.add_argument('id',type=int)
+    note = sub.add_parser('design-annotate', help='为新版设计补完整中文评估后才能推进游标');note.add_argument('id',type=int);note.add_argument('file',type=Path)
     sub.add_parser('inspect', help='只读统计和游标，不联网')
     query = sub.add_parser('list', help='只读筛选缓存PR摘要，不重新检索上游')
     for field in ['q','status','wanted','group','category','min','max','stale','sort','limit','offset']:
@@ -38,7 +44,8 @@ def main(argv=None):
     args = parser.parse_args(argv);repo = args.repo.resolve()
     database = args.database.resolve() if args.database else database_path(repo)
     try:
-        if args.command not in ('inspect','list','show'):writable(repo)
+        if args.command not in ('inspect','list','show','community','design'):writable(repo)
+        if args.command in ('bootstrap','sync','metadata','community-sync'):validate_source(repo)
         if args.command != 'bootstrap' and not database.exists():raise CatalogError('台账不存在，请先运行bootstrap')
         if args.command == 'serve':
             host = server(repo, database, args.port)
@@ -47,10 +54,14 @@ def main(argv=None):
             except KeyboardInterrupt:pass
             finally:host.server_close()
             return 0
-        with Store(database, readonly=args.command in ('inspect','list','show')) as db:
+        with Store(database, readonly=args.command in ('inspect','list','show','community','design','backup')) as db:
             if args.command == 'bootstrap':result = bootstrap(db, repo, args.to, lambda m: print(m, file=sys.stderr, flush=True))
             elif args.command == 'metadata':result = complete_metadata(db,repo)
             elif args.command == 'sync':result = sync(db, repo, args.to, args.fetch)
+            elif args.command == 'community-sync':result = community.sync_cached(db,repo)
+            elif args.command == 'community':result = community.list_entries(db,vars(args))
+            elif args.command == 'design':result = community.design_detail(db,args.id)
+            elif args.command == 'design-annotate':result = community.annotate(db,args.id,json.loads(args.file.read_text()))
             elif args.command == 'inspect':result = db.stats()
             elif args.command == 'show':result = db.detail(args.number)
             elif args.command == 'list':

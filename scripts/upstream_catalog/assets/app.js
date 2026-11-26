@@ -65,7 +65,11 @@ async function loadRows() {
     $('range').textContent = total ? `${offset + 1}–${Math.min(offset + 50, total)} / ${total}` : '0 / 0'
     $('prev').disabled = offset === 0; $('next').disabled = offset + 50 >= total
     const query = parameters();query.delete('offset');query.delete('limit')
-    history.replaceState(null, '', '?' + query + (selected ? '#pr-' + selected : ''))
+    const url = new URL(location.href)
+    for (const key of filters) url.searchParams.delete(key)
+    for (const [key, value] of query) url.searchParams.set(key, value)
+    if (selected) url.hash = 'pr-' + selected
+    history.replaceState(null, '', url)
   } catch (error) { if (current === generation) { message(error.message, true); $('summary').textContent = '读取失败，可调整筛选后重试' } }
 }
 async function showDetail(number, focus = false) {
@@ -99,6 +103,7 @@ async function showDetail(number, focus = false) {
       contents.push(element('h3', label), element('p', clean(value) || '尚未记录，本次评估需要补齐。', { class: 'detail-copy' }))
     }
     const source = JSON.parse(row.upstream_json || '{}')
+    contents.push(renderPRDesigns(row, source))
     const files = element('details');files.append(element('summary', '上游来源和涉及文件'), element('p', source.sha || '尚待核对', { class: 'detail-copy' }), element('p', (source.files || []).join('\n'), { class: 'detail-copy' }), element('p', source.body || '', { class: 'detail-copy' }))
     contents.push(files, element('h3', '最近记录'))
     const events = element('ol', null, { class: 'history' })
@@ -176,3 +181,155 @@ document.addEventListener('focusin', event => {
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeHelp() })
 window.addEventListener('resize', positionHelp)
 window.addEventListener('scroll', positionHelp, true)
+
+const communityFilters = ['q', 'kind', 'stage', 'status', 'scope', 'recent']
+const communityState = { offset: 0, total: 0, rows: [], selected: null, generation: 0 }
+function setView(view) {
+  $('community-view').hidden = view !== 'community';$('pr-view').hidden = view === 'community'
+  for (const button of document.querySelectorAll('[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === view))
+  const url = new URL(location.href);url.searchParams.set('view', view);history.replaceState(null, '', url)
+}
+function sourceLink(label, url) {
+  return element('a', label, { href: url, target: '_blank', rel: 'noopener noreferrer' })
+}
+function copySection(parent, title, value) {
+  parent.append(element('h3', title), element('p', clean(value) || '说明待补齐，暂不能据此作采用判断。', { class: 'detail-copy' }))
+}
+function rawSource(label, body) {
+  const section = element('details', null, { class: 'source-panel' });section.append(element('summary', label), element('pre', body || '未缓存此版本原文。', { class: 'source-text' }));return section
+}
+function countsLabel(row) {
+  const rejected = row.relatedPRs?.filter(pr => pr.wanted === 0).length || 0
+  const label = Object.entries(row.counts || {}).filter(([, count]) => count).map(([status, count]) => `${status} ${count}`).join(' / ') || '尚无已关联的实现 PR'
+  return label + (rejected ? ` · 已标不需要 ${rejected}` : '')
+}
+async function openPRFromCommunity(number) {
+  setView('prs')
+  for (const key of filters) { const input = $(key);if (input.type === 'checkbox') input.checked = false;else input.value = key === 'min' ? '1' : key === 'max' ? '10' : key === 'sort' ? 'status' : '' }
+  $('q').value = String(number);offset = 0
+  await loadRows();await showDetail(number, true)
+}
+function relationSection(title, rows, empty) {
+  const section = element('section');section.append(element('h3', title))
+  if (!rows?.length) { section.append(element('p', empty, { class: 'detail-copy' }));return section }
+  for (const row of rows) {
+    const item = element('details', null, { class: 'related-pr' })
+    item.append(element('summary', `#${row.number} ${row.title} · ${row.status} · 权重 ${row.weight}`))
+    const links = element('div', null, { class: 'source-links' }), local = element('button', '查看本地 PR 与选择', { class: 'secondary', type: 'button' })
+    local.addEventListener('click', () => openPRFromCommunity(row.number));links.append(sourceLink('上游 PR ↗', row.url), local);item.append(links)
+    if (row.wanted === 0) item.append(element('p', '我的选择：不需要，后续不再推荐采用。', { class: 'stale' }))
+    copySection(item, '这项 PR 做什么', row.purpose)
+    copySection(item, '本地原因', row.reason)
+    copySection(item, '双方差异和影响', row.local_difference)
+    copySection(item, '解决方式与通过条件', row.solution)
+    section.append(item)
+  }
+  return section
+}
+function renderPRDesigns(row, source) {
+  const section = element('section', null, { class: 'pr-designs' });section.append(element('h3', '相关设计说明'))
+  const designs = row.designs || []
+  if (!designs.length) section.append(element('p', source.planFiles?.length ? '设计关系尚未补齐；请先通过同步技能更新设计资料。' : '本 PR 没有直接修改设计文档，也尚无已登记关联设计；功能说明和本地判断仍见上方。', { class: 'detail-copy' }))
+  for (const design of designs) {
+    const item = element('section', null, { class: 'design-reference' })
+    item.append(element('h3', design.title), element('p', `上游阶段：${design.effective_stage}${design.needs_review ? ' · 说明基于旧版本，待重审' : ''}`))
+    copySection(item, '用途', design.purpose);copySection(item, '使用场景', design.scenario)
+    copySection(item, '阶段依据与限制', `${design.stage_evidence || ''}\n${design.limitations || ''}`)
+    copySection(item, '本地适配注意事项', design.local_notes)
+    const links = element('div', null, { class: 'source-links' }), open = element('button', '查看功能全貌与相关 PR', { class: 'secondary', type: 'button' })
+    open.addEventListener('click', () => openDesign(design.id))
+    links.append(sourceLink('固定版本设计原文 ↗', design.url), open)
+    if (design.pr_url) links.append(sourceLink(design.change_kind === 'related' ? '关联设计版本 ↗' : '本 PR 对应设计版本 ↗', design.pr_url))
+    item.append(links)
+    if (design.change_kind === 'related') item.append(element('p', '这是后续综合设计或关联说明，不表示本 PR 原补丁包含其全部行为。', { class: 'detail-copy' }))
+    item.append(rawSource('阅读关联版本原文（本地缓存）', design.pr_body));section.append(item)
+  }
+  if (source.designDiff) section.append(rawSource('查看本 PR 的设计差异（原始变更）', source.designDiff))
+  return section
+}
+function communityParameters() {
+  const query = new URLSearchParams({ offset: communityState.offset, limit: 50 })
+  for (const key of communityFilters) { const input = $('community-' + key);const value = input.type === 'checkbox' ? input.checked ? '1' : '' : input.value;if (value) query.set(key, value) }
+  return query
+}
+async function loadCommunity() {
+  const generation = ++communityState.generation
+  try {
+    const query = communityParameters(), data = await request('/api/community?' + query)
+    if (generation !== communityState.generation) return
+    $('community-notice').textContent = ''
+    communityState.rows = data.rows;communityState.total = data.total
+    const update = data.lastUpdate || {}, historical = update.kind === '历史补齐'
+    $('community-update').textContent = `${data.designCount} 项设计主题。${historical ? '当前为既有来源的历史补齐，不代表本次新增这些功能。' : update.kind ? '最近变化批次：' + update.kind + '。' : '设计资料尚未完成首次补齐。'}${update.sourceSHA ? ' 固定来源 ' + update.sourceSHA.slice(0, 8) + '。' : ''}${update.complete === false ? ' 新资料已缓存，完整盘点仍待补评估。' : ''}`
+    $('community-standalone').textContent = `查看没有设计文件的单项变更（${data.standaloneCount || 0}）`
+    $('community-summary').textContent = `匹配 ${data.total} 项 · 上游阶段与本地采用分别判断`
+    $('community-rows').replaceChildren(...data.rows.map(row => {
+      const tr = element('tr');tr.dataset.entryKey = row.key;tr.toggleAttribute('data-selected', row.key === communityState.selected)
+      const name = element('td'), button = element('button', row.title, { type: 'button', class: 'pr-open entry-open' })
+      button.addEventListener('click', () => showCommunityEntry(row));name.append(button, element('span', row.purpose || '说明待补齐', { class: 'purpose' }), element('span', row.entry_kind === 'design' ? '功能设计 · ' + row.change_label : '单项功能 / 修复 #' + row.number, { class: 'entry-kind' }))
+      const phase = element('td', row.effective_stage)
+      if (row.needs_review) phase.append(element('span', '待补说明 / 重审', { class: 'stale' }))
+      if (row.scope === 'excluded') phase.append(element('span', '本地长期排除', { class: 'stale' }))
+      const time = element('td');time.append(timestamp(row.changed_at))
+      tr.append(name, phase, element('td', countsLabel(row), { class: 'local-counts' }), element('td', row.weight), time);return tr
+    }))
+    $('community-empty').hidden = data.total !== 0
+    $('community-range').textContent = data.total ? `${communityState.offset + 1}–${Math.min(communityState.offset + 50, data.total)} / ${data.total}` : '0 / 0'
+    $('community-prev').disabled = communityState.offset === 0;$('community-next').disabled = communityState.offset + 50 >= data.total
+    const url = new URL(location.href)
+    for (const key of communityFilters) url.searchParams.delete('community-' + key)
+    for (const [key, value] of query) if (communityFilters.includes(key)) url.searchParams.set('community-' + key, value)
+    history.replaceState(null, '', url)
+  } catch (error) { $('community-notice').textContent = error.message;$('community-summary').textContent = '读取失败，已有 PR 清单仍可查看。' }
+}
+async function openDesign(id) {
+  for (const key of communityFilters) { const input = $('community-' + key);if (input.type === 'checkbox') input.checked = false;else input.value = key === 'kind' ? 'design' : '' }
+  communityState.offset = 0;setView('community');await loadCommunity()
+  await showCommunityEntry({ entry_kind: 'design', id, key: 'design:' + id })
+}
+async function showCommunityEntry(entry) {
+  const key = entry.key;communityState.selected = key
+  try {
+    const row = entry.entry_kind === 'design' ? await request('/api/design/' + entry.id) : { ...entry, ...(await request('/api/pr/' + entry.number)) }
+    if (communityState.selected !== key) return
+    const section = $('community-detail');section.replaceChildren()
+    const head = element('div', null, { class: 'detail-head' }), titles = element('div'), close = element('button', '关闭', { class: 'secondary' })
+    close.addEventListener('click', () => { communityState.selected = null;section.replaceChildren(element('p', '选择一项功能，比较本地差异和来源。'));const url = new URL(location.href);url.searchParams.delete('entry');history.replaceState(null, '', url) })
+    titles.append(element('h2', row.title), element('p', `上游实现阶段：${row.effective_stage || '待核实'}${row.needs_review ? ' · 说明待重审' : ''}`), element('p', '本地相关实现 PR：' + countsLabel(row)))
+    if (row.document_state === 'deleted') titles.append(element('p', '此设计已从上游删除，以下保留最后版本供核对。', { class: 'stale' }))
+    if (row.scope === 'excluded') titles.append(element('p', '本地长期排除范围，保留社区信息供了解。', { class: 'stale' }))
+    head.append(titles, close);section.append(head)
+    copySection(section, '这一来源区间改了什么', row.change_summary)
+    copySection(section, '这项功能有什么用', row.purpose);copySection(section, '具体使用场景', row.scenario)
+    copySection(section, '上游阶段的依据', row.stage_evidence);copySection(section, '使用条件与限制', row.limitations)
+    copySection(section, '本地适配与判断建议', row.local_notes || row.local_difference)
+    if (entry.entry_kind === 'design') {
+      const links = element('div', null, { class: 'source-links' });links.append(sourceLink('固定版本设计原文 ↗', row.url));section.append(links)
+      section.append(relationSection('相关实现 PR：采用状态、原因和解决方式', row.relatedPRs, '尚未关联已登记实现 PR；不能根据设计文档本身认定本地采用。'))
+      section.append(relationSection('设计更新 PR：用于核对文档变化', row.designChanges, '没有已登记的设计变更 PR。'))
+      section.append(rawSource('阅读设计原文（本地缓存）', row.body))
+    } else {
+      section.append(relationSection('本地 PR 判断与选择入口', [row], '暂无记录'), renderPRDesigns(row, JSON.parse(row.upstream_json || '{}')))
+    }
+    const url = new URL(location.href);url.searchParams.set('entry', key);history.replaceState(null, '', url)
+    for (const tr of $('community-rows').children) tr.toggleAttribute('data-selected', tr.dataset.entryKey === key)
+  } catch (error) { $('community-notice').textContent = error.message }
+}
+async function startCommunity() {
+  const saved = new URLSearchParams(location.search)
+  for (const key of communityFilters) if (saved.has('community-' + key)) { const input = $('community-' + key);if (input.type === 'checkbox') input.checked = saved.get('community-' + key) === '1';else input.value = saved.get('community-' + key) }
+  setView(saved.get('view') || (/^#pr-/.test(location.hash) ? 'prs' : 'community'))
+  await loadCommunity()
+  const entry = saved.get('entry'), found = communityState.rows.find(row => row.key === entry)
+  if (found) await showCommunityEntry(found)
+  else if (/^design:\d+$/.test(entry || '')) await showCommunityEntry({ key: entry, id: Number(entry.split(':')[1]), entry_kind: 'design' })
+}
+for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => setView(button.dataset.view))
+let communityTimer
+for (const key of communityFilters) $('community-' + key).addEventListener(key === 'q' ? 'input' : 'change', () => { clearTimeout(communityTimer);communityState.offset = 0;communityTimer = setTimeout(loadCommunity, key === 'q' ? 180 : 0) })
+$('community-clear').addEventListener('click', () => { for (const key of communityFilters) { const input = $('community-' + key);if (input.type === 'checkbox') input.checked = false;else input.value = '' }communityState.offset = 0;loadCommunity() })
+$('community-prev').addEventListener('click', () => { communityState.offset = Math.max(0, communityState.offset - 50);loadCommunity() })
+$('community-next').addEventListener('click', () => { communityState.offset += 50;loadCommunity() })
+void startCommunity()
+
+$('community-standalone').addEventListener('click', () => { $('community-kind').value = 'pr';$('community-q').value = '';communityState.offset = 0;loadCommunity() })
