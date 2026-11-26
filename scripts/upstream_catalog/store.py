@@ -45,10 +45,11 @@ def plain(text):
 
 
 class Store:
-    def __init__(self, path):
+    def __init__(self, path, readonly=False):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(self.path, timeout=10)
+        if readonly and not self.path.exists():raise CatalogError('台账不存在')
+        if not readonly:self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True, timeout=10) if readonly else sqlite3.connect(self.path, timeout=10)
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.execute('PRAGMA busy_timeout=10000')
@@ -57,6 +58,9 @@ class Store:
             self.db.close()
             raise CatalogError('Unsupported catalog schema version')
         if version == 0:
+            if readonly:
+                self.db.close()
+                raise CatalogError('台账尚未初始化')
             if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1").fetchone():
                 self.db.close()
                 raise CatalogError('目标不是上游台账，拒绝向已有数据库创建表')
@@ -65,7 +69,7 @@ class Store:
         if not {'sources','prs','preferences','events','sync_runs','metadata'}.issubset(tables):
             self.db.close()
             raise CatalogError('目标不符合上游台账结构，拒绝修改')
-        self.db.execute('PRAGMA journal_mode=WAL')
+        if not readonly:self.db.execute('PRAGMA journal_mode=WAL')
 
     def __enter__(self):
         return self

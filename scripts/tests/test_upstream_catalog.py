@@ -102,6 +102,7 @@ class CatalogTests(unittest.TestCase):
         result = sync(self.store, self.repo, end)
         self.assertEqual(result['commitsExamined'], 1)
         self.assertEqual(result['pendingAnalysis'], [9001])
+        self.assertEqual(self.store.detail(9001)['status'],'暂缓')
         self.assertFalse(result['checkpointAdvanced'])
         self.assertEqual(self.store.stats()['source']['checkpoint_sha'], self.base)
         self.store.preference(9001, 0, '当前不需要', 0)
@@ -183,6 +184,12 @@ class CatalogTests(unittest.TestCase):
         connection = sqlite3.connect(path)
         try:self.assertEqual(connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall(),[('user_data',)])
         finally:connection.close()
+
+    def test_readonly_queries_cannot_write(self):
+        with Store(self.path,readonly=True) as reader:
+            self.assertEqual(reader.list({})['total'],2)
+            with self.assertRaises(sqlite3.OperationalError):reader.db.execute("UPDATE prs SET status='跳过'")
+        self.assertEqual(self.store.detail(1)['status'],'采用')
 
     def test_backup_is_consistent(self):
         self.store.preference(2,0,'持久化',0)

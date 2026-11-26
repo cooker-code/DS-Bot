@@ -131,7 +131,7 @@ def _sync(store, repo, endpoint, fetch=False):
             if old is None:
                 body_lines = [line.strip() for line in item['body'].splitlines() if line.strip()]
                 title = body_lines[1] if len(body_lines)>1 else body_lines[0] if body_lines else 'PR ' + str(number)
-                store.db.execute('INSERT INTO prs(repo_id,number,url,title,status,weight,merge_sha,upstream_json,reason,solution,first_seen_at,updated_at,needs_review) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)', (REPO_ID, number, f'{SOURCE_URL}/pull/{number}', title, '需讨论', 5, item['sha'], json.dumps(item, ensure_ascii=False), '新增来源，尚未完成本地评估', '补齐功能解释、本地差异和完整验证方案', now(), now()))
+                store.db.execute('INSERT INTO prs(repo_id,number,url,title,status,weight,merge_sha,upstream_json,reason,solution,first_seen_at,updated_at,needs_review) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)', (REPO_ID, number, f'{SOURCE_URL}/pull/{number}', title, '暂缓', 5, item['sha'], json.dumps(item, ensure_ascii=False), '新增来源，尚未完成本地评估', '补齐功能解释、本地差异和完整验证方案', now(), now()))
                 store.event(number, 'source', None, {'sha': item['sha']}, run_id=run);changed.append(number)
             elif old['merge_sha'] != item['sha']:
                 store.db.execute('UPDATE prs SET merge_sha=?,upstream_json=?,updated_at=?,needs_review=1 WHERE repo_id=? AND number=?', (item['sha'], json.dumps(item, ensure_ascii=False), now(), REPO_ID, number))

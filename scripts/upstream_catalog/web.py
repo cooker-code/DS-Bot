@@ -37,7 +37,7 @@ def server(repo, database, port):
                 if url.path in ('/', '/app.js', '/style.css'):
                     file = ASSETS / ('index.html' if url.path == '/' else url.path[1:])
                     return self.send(200, file.read_bytes(), (mimetypes.guess_type(str(file))[0] or 'text/plain') + '; charset=utf-8')
-                with Store(database) as db:
+                with Store(database, readonly=True) as db:
                     if url.path == '/api/meta':
                         result = db.stats();result.update(branch=branch(repo), repo=str(repo), database=str(database), groups=[r[0] for r in db.db.execute('SELECT DISTINCT dependency_group FROM prs WHERE dependency_group IS NOT NULL ORDER BY dependency_group')])
                         return self.send(200, result)

@@ -92,6 +92,8 @@ SQLite增量台账和HTML管理页已提供，使用[实际命令与页面说明
 
 ```sh
 python3 scripts/upstream-catalog.py inspect
+python3 scripts/upstream-catalog.py list --q 设置
+python3 scripts/upstream-catalog.py show 2028
 # 尚无台账时先bootstrap，默认固定为既有完整盘点终点bb1b1592，不能改成未覆盖的新终点。
 python3 scripts/upstream-catalog.py bootstrap
 python3 scripts/upstream-catalog.py serve --port 4179

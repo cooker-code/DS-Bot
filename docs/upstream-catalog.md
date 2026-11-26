@@ -21,6 +21,8 @@ python3 scripts/upstream-catalog.py serve --port 4179
 
 ```sh
 python3 scripts/upstream-catalog.py inspect
+python3 scripts/upstream-catalog.py list --q 设置
+python3 scripts/upstream-catalog.py show 2028
 python3 scripts/upstream-catalog.py sync --fetch --to upstream/dev
 python3 scripts/upstream-catalog.py reassess
 ```

@@ -19,7 +19,12 @@ def main(argv=None):
     update = sub.add_parser('sync', help='只读新区间并更新来源缓存；不合并代码、不覆盖用户选择')
     update.add_argument('--to', default='upstream/dev')
     update.add_argument('--fetch', action='store_true', help='显式刷新upstream/dev；默认只用本地引用')
-    sub.add_parser('inspect', help='读取统计和游标，不联网')
+    sub.add_parser('inspect', help='只读统计和游标，不联网')
+    query = sub.add_parser('list', help='只读筛选缓存PR摘要，不重新检索上游')
+    for field in ['q','status','wanted','group','category','min','max','stale','sort','limit','offset']:
+        query.add_argument('--'+field, default='20' if field=='limit' else None)
+    show = sub.add_parser('show', help='只读单个PR的功能、差异、方案、验证和缓存来源')
+    show.add_argument('number',type=int)
     sub.add_parser('reassess', help='按本地改动路径标记需重审的PR')
     sub.add_parser('export', help='将当前分析和用户选择更新到本分支upstream-changelog.md')
     annotate = sub.add_parser('annotate', help='从JSON文件更新指定PR的功能、判断与验证')
@@ -32,7 +37,7 @@ def main(argv=None):
     args = parser.parse_args(argv);repo = args.repo.resolve()
     database = args.database.resolve() if args.database else database_path(repo)
     try:
-        if args.command != 'inspect':writable(repo)
+        if args.command not in ('inspect','list','show'):writable(repo)
         if args.command != 'bootstrap' and not database.exists():raise CatalogError('台账不存在，请先运行bootstrap')
         if args.command == 'serve':
             host = server(repo, database, args.port)
@@ -41,10 +46,14 @@ def main(argv=None):
             except KeyboardInterrupt:pass
             finally:host.server_close()
             return 0
-        with Store(database) as db:
+        with Store(database, readonly=args.command in ('inspect','list','show')) as db:
             if args.command == 'bootstrap':result = bootstrap(db, repo, args.to, lambda m: print(m, file=sys.stderr, flush=True))
             elif args.command == 'sync':result = sync(db, repo, args.to, args.fetch)
             elif args.command == 'inspect':result = db.stats()
+            elif args.command == 'show':result = db.detail(args.number)
+            elif args.command == 'list':
+                result = db.list(vars(args))
+                result['rows'] = [{key:row[key] for key in ['number','title','purpose','status','weight','dependency_group','wanted','needs_review','url']} for row in result['rows']]
             elif args.command == 'reassess':result = {'affectedPRs':reassess(db,repo)}
             elif args.command == 'export':result = db.export(repo / 'upstream-changelog.md')
             elif args.command == 'annotate':result = db.annotate(args.number,json.loads(args.file.read_text()),git(repo,'rev-parse','HEAD'))
