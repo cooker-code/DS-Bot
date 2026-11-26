@@ -58,6 +58,18 @@
 | `changes-check` / `diagnostics` / `diagnostics-log` / `diagnostics-clear` | 查看某次变更用 `sessionId,seq`；诊断可传 `client,clientErrors`；读取及清理诊断日志用 `{}`。 | `changesAvailable` 返回布尔；`diagnostics.report` 返回 `facts,entries,total,markdown,issuesUrl`；log 读取日志，clear 清理后返回 true。[diagnostics.js](../../../../ds-bot/src/host/diagnostics.js) |
 | `update-check` / `update-install` / `dsh-update-install` / `repo-stars` | 查版本可用 `fresh:true`，启动插件或宿主安装、查仓库星标用 `{}`。 | `updateCheck/updateStart/dshUpdateStart/repoStars` 返回检查结果、安装启动结果或仓库统计。发起安装后按实际加载版本确认。[update.js](../../../../ds-bot/src/host/update.js) |
 
+### 管理员扫描与重试交接
+
+项目卡的受理与交接分别记录。接单时提供的 `title,plan,acceptance` 先保存为标题、需求和验收，投递失败不撤回正文。`project_task list` 和操作者 `project-task-list` 的 `unassigned` 返回尚无计划、尚无执行轮次的卡，包含 `taskId,title,status,reason,retryable`。`pendingIntakes` 仍只表示尚待分类的收件，不能用于判断所有已受理任务是否已交接。
+
+本群管理员或助理可用 `project_task {action:"scan"}` 扫描。状态包括 `needs_document`（缺规范需求或验收）、`not_sent`（尚未送当前助理）、`uncertain`（投递结果待核对）、`delivered`（已送达，等待助理规划）、`no_assistant`（管理员自行规划）、`invalid_assistant`（助理绑定失效）、`clarify`（确有待补业务问题）及 `missing_source`（缺完整正文且原材料不可读）。`reason` 给出实际原因，`retryable` 表示能否沿原卡重试；送达不等于开工。
+
+管理员在自己的本群管理会话调用 `project_task {action:"retry_handoff",taskId,title?,plan?,acceptance?}`。可在恢复通知轮执行，不要求原始收件轮仍活动。需要更新正文时提供整理后的字段；服务只允许未派工原卡，保存正文后交给当前任命的助理。返回 `{delegated:true,taskId,assistantId}` 或 `{delegated:false,taskId,status,reason,retryable}`。`attach` 仅关联补充，不修改正文。原始用户材料仍在账本，实际执行轮次由助理正式计划与派工生成。
+
+卡片扩展字段 `managementHandoff` 保留目标、固定消息ID、发送尝试、状态、错误和送达时间；`room.projectHandoffScan` 保存群级管理员批次恢复通知，保存在 `rooms.extra_json`，不出现在公开 state；卡片交接保存在 `tasks.extra_json`，详情和摘要的 `handoff` 回读最近一次交接记录，当前正文是否待重发以 `unassigned/scan` 为准。结果不确定时先核对目标队列及持久会话；相同目标、来源和正文已投递的不重复发送，修订正文后生成新交接，无法查明的保留错误。临时失败按30秒间隔通知管理员检查和接续，最多三轮自动通知；实际交接由管理员判断后调用 retry_handoff，不由操作者临时发命令。超过上限保留原因供管理员处理。
+
+任命或更换助理、接单保存及插件重载后，宿主检查未交接卡并通知空闲管理员扫描、说明原因和重试。管理员仍在工作时延后；已规划、在途、已完成及确需用户补充的卡不重复派工。无需操作者重新发送用户需求或修改 SQLite。实现在 `project-handoffs.js`、`project-tasks.js`、`roster.js`；清理会释放扫描定时器并等待本次扫描和投递。
+
 ### 功能分支开发、独立测试与 dev 集成
 
 有任务助理的群中，小圈对明确需求使用 `project_task reply`，同时提交 `acceptWork=true,plan,acceptance,message`，成功回执包含 `delegated:true`。也可在原收件先回复再 delegate。助理比较已有卡，需要时 relate，并保存完整节点和依赖。submit 和 return_for_changes 可用 resultFiles 提交工作目录内的 Markdown 与截图，宿主保存快照并在任务详情按轮展示。开发轮 submit 提交功能分支的完整 commit。功能任务的独立测试节点设置 independentReview=true、writePaths=[]，依赖已认可的开发轮。测试只读验证该功能分支的固定候选，按当前轮次记录逐项证据，submit 只读回执后由管理者认可结单，候选保留在功能分支。测试失败用 return_for_changes 提供 feedback 与 evidence，由助理安排开发返工后复测。环境故障用 block。需要集成时另行安排。新建计划或改版新增 mergeToDev 节点会被拒绝。已有历史 mergeToDev 节点仍按原约定使用 record_merge 和 testedCommit，可在 rounds 查看合并回执。群库保存节点设置、轮次证据及原始退回意见。实现见 project-tasks.js、project-plan.js 和 project-branches.js。

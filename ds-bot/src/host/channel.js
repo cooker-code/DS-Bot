@@ -117,7 +117,7 @@ export function install(rt) {
     // ones; `parts` the members' hidden group Sessions and their earlier segments,
     // for usage.
     rooms: Object.values(state.rooms).map(original => {
-      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
+      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectHandoffScan: _handoffScan, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId), ...(ownParts ?? []).map(segment => segment.sessionId)]
       const last = (log ?? []).findLast(line => line.kind === undefined && !isIntakeReceipt(line))
       const preview = last && taskCaption(taskMessage(last.text, original))
@@ -445,7 +445,7 @@ export function install(rt) {
           await rt.load()
           const room = rt.roomOf(body.roomId)
           if (!room) throw taskError('GROUP_CONTEXT_REQUIRED')
-          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room) })
+          return ok({ roomId: room.id, revision: state.revision, tasks: roomTaskSummaries(room), pendingIntakes: pendingIntakes(room), unassigned: rt.scanProjectHandoffs(room) })
         }
         case 'set-task-node-constraint': {
           await rt.load()

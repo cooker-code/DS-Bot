@@ -251,6 +251,22 @@ function decide(body) {
         case 'approve': return [tool('project_task', { action: 'dispatch', taskId, version, node: 2 })]
       }
     }
+    if (used?.name === 'project_task' && messages.some(m => textOf(m.content).includes('native-project-handoff-smoke'))) {
+      if (result.is_error) return [text('Project handoff failed: ' + resultText)]
+      const card = JSON.parse(resultText)
+      switch (used.input.action) {
+        case 'scan': {
+          const pending = card.unassigned.find(row => row.title.includes('native-project-handoff-smoke'))
+          return pending?.retryable ? [tool('project_task', { action: 'retry_handoff', taskId: pending.taskId,
+            title: 'Daily chat details native-project-handoff-smoke', plan: '1. Inspect the available source assets read-only. native-project-handoff-smoke',
+            acceptance: '1. Record source availability and the intended daily grain.' })] : [text('The scan explains why this card cannot be retried.')]
+        }
+        case 'plan': return [tool('project_task', { action: 'dispatch', taskId: card.taskId, version: 1, node: 1 })]
+        case 'dispatch': return [tool('message_bot', { to: 'Coder', taskId: card.taskId, card_round: card.dispatchRound ?? card.round,
+          request_id: 'handoff-smoke-' + card.taskId, message: 'Start the source inventory. native-project-handoff-smoke', reply_to: 'user' })]
+        default: return [text(used.input.action === 'start' ? 'Source investigation started on the original card.' : 'Original card recorded.')]
+      }
+    }
     if (used?.name === 'project_task' && messages.some(m => /native-project-image-smoke|Verify the original attachment reaches Coder\./.test(textOf(m.content)))) {
       if (result.is_error) return [text('Project task failed: ' + resultText)]
       const card = JSON.parse(resultText)
@@ -430,7 +446,24 @@ function decide(body) {
   }
   // Only a direct project delivery triggers the scripted coordination tools.
   const directProject = tools.has('project_task') && /^\[[^\]\n]+\] \[Message from You[^\]\n]*\]\n/.test(userText)
-  if (directProject && userText.includes('The group admin delegated this requirement') && userText.includes('native-project-image-smoke')) {
+  if (tools.has('project_task') && userText.includes('native-project-handoff-smoke')) {
+    if (userText.includes('Accepted project cards still have no plan or execution.'))
+      return [text('The accepted original card was not handed off before the assistant appointment. I will scan and retry it.'), tool('project_task', { action: 'scan' })]
+    if (directProject && /The group admin delegated this (?:requirement|existing card)/.test(userText)) {
+      const owner = JSON.parse(userText.match(/^Eligible node owners: (.+)$/m)[1]).find(member => member.name === 'Coder')
+      return [tool('project_task', { action: 'plan', version: 1, title: 'Daily source inventory native-project-handoff-smoke',
+        acceptance: '1. Record source availability and the intended daily grain.', nodes: [{ ownerId: owner.id, title: 'Read source assets',
+          instructions: 'Inspect source assets read-only. native-project-handoff-smoke', deliverable: 'Source inventory', acceptance: 'Source availability is recorded.' }] })]
+    }
+    if (userText.includes('Confirm with project_task start')) {
+      const id = /^\[([0-9a-f-]{36})\]/m.exec(userText)?.[1]
+      return [tool('project_task', { action: 'start', taskId: id, round: Number(/this taskId and round (\d+)/.exec(userText)?.[1]) })]
+    }
+    if (userText.includes('Handle it in your session for this group.'))
+      return [tool('project_task', { action: 'reply', acceptWork: true, title: 'Raw daily request native-project-handoff-smoke',
+        classificationReason: 'Deliver a verifiable daily source inventory.', message: 'Accepted the source investigation on its original card.' })]
+  }
+  if (directProject && /The group admin delegated this (?:requirement|existing card)/.test(userText) && userText.includes('native-project-image-smoke')) {
     const owner = JSON.parse(userText.match(/^Eligible node owners: (.+)$/m)[1]).find(member => member.name === 'Coder')
     return [tool('project_task', { action: 'plan', version: 1, title: 'Assistant image check', acceptance: 'Coder receives the original image.',
       nodes: [{ ownerId: owner.id, title: 'Inspect image', instructions: 'Check original image', deliverable: 'Image receipt', acceptance: 'Image received' }] })]
