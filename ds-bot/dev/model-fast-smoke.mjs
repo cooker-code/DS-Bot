@@ -86,7 +86,7 @@ try {
   await until(async () => Object.keys((await api('state')).activity ?? {}).length === 0, 'first turn finished')
   assert.equal(calls[0].service_tier, 'fast')
   assert.ok(calls[0].messages.length > 0)
-  console.log('ok: real DSH Bot turn reaches gateway with service_tier=fast')
+  console.log('ok: real DSH-hosted Bot turn reaches gateway with service_tier=fast')
   if (toggle) {
     await toggle.click()
     await until(async () => await toggle.getAttribute('aria-checked') === 'false', 'Fast switch disabled')
