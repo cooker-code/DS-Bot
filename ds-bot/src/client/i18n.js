@@ -11,6 +11,20 @@ import { DSH_DE, HOST_ERRORS_DE, DE } from './locales/de.js'
 export const NAMESPACE = 'ds-bot'
 
 const ZH = {
+  'Plan version': '计划版本',
+  '{completed} of {total} completed': '已完成 {completed} / {total}',
+  'Waiting for dependencies': '等待前置工作',
+  'Completed in an earlier plan': '沿用之前计划中已核验的成果',
+  'Plan details': '计划详情',
+  '{count} questions need your answer': '有 {count} 个问题待你回答',
+  'Task needing an answer': '待回答的任务',
+  'Question {current} of {total}': '第 {current} / {total} 个问题',
+  'Received by {name}; the task coordinator continues the work.': '由 {name} 接收，任务负责人继续推进。',
+  'Questions and answers': '问题与答复',
+  'Superseded question': '问题已被后续问题替换',
+  'Answer delivered to the task coordinator': '答案已送达任务负责人',
+  'Answer saved; delivery pending': '答案已保存，等待送达',
+
   "GPT Fast mode": "GPT 快速模式",
   "Fast mode for {name}": "{name} 的快速模式",
   "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "为使用此供应商及模型的所有请求申请加速，会增加费用。供应商仍可能按标准档位处理。关闭后恢复供应商默认行为。",

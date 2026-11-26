@@ -1,10 +1,10 @@
 // Independent validation belongs to the tester's dispatched round. The immutable
 // candidate comes from its approved inputs, never from a test report or branch tip.
-import { field } from './project-plan.js'
+import { field, executionNode } from './project-plan.js'
 
 export function beginValidation(card, round) {
   const binding = round.planNode
-  const node = card.plans.at(-1).nodes[binding.node - 1]
+  const node = executionNode(card, round)
   if (!node.independentReview || node.mergeToDev || node.writePaths?.length !== 0) return
   const candidates = [...new Set(binding.inputs.map(input => card.rounds[input.round - 1].mainReview?.commit).filter(Boolean))]
   if (!candidates.length) return

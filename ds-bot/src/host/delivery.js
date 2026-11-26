@@ -83,7 +83,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ validateDestination, taskId, requirementVersion, retryOf, handoffText, parentExchangeId, workProtocol = false, silent = false, workQuestion, workAnswer = false, protocolReturn, protocolDeliveryId, controlNotice = false, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ deduplicate = false, validateDestination, taskId, requirementVersion, retryOf, handoffText, parentExchangeId, workProtocol = false, silent = false, workQuestion, workAnswer = false, protocolReturn, protocolDeliveryId, controlNotice = false, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     if (!controlNotice && [exchangeId, work, replyTo, workQuestion].some(id => rt.protocolCancelled?.(id))) return exchangeId
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
@@ -156,7 +156,7 @@ export function install(rt) {
       ],
       source,
     })
-    if (!silent && (protocolDeliveryId || source.workProtocol || role === 'reply' && replyTo && rt.protocolClosed?.(replyTo))) {
+    if (!silent && (deduplicate || protocolDeliveryId || source.workProtocol || role === 'reply' && replyTo && rt.protocolClosed?.(replyTo))) {
       const exists = [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])].some(item => (protocolDeliveryId ? item.source?.protocolDeliveryId === protocolDeliveryId : item.source?.exchangeId === exchangeId))
       let logged = exists
       if (!logged) for await (const event of rt.eventsBackwards(targetSessionId, AbortSignal.timeout(HISTORY_TIMEOUT_MS))) {

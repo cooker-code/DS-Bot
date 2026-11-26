@@ -1,3 +1,4 @@
+import { openProjectQuestions } from './project-questions.js'
 import { assistantId } from './project-assistant.js'
 import { relatedTaskGuidance, cardForIntake, intakeContext, intakeLines, projectCardSummary, projectImages, projectWorkContext, projectSources } from './project-tasks.js'
 import { workspacePolicyOf } from '../shared/project-workspace.js'
@@ -77,11 +78,13 @@ async function recordIntake(rt, room, intakeId, throughSeq, lines) {
     receipt = { id: intakeId, seq: throughSeq, receivedAt: lines[0].time ?? Date.now(),
       title: taskMessage(lines[0].text, room).body.trim().split('\n')[0].slice(0, 200),
       status: linked ? 'attached' : 'pending' }
+    const origin = rt.captureImOrigin?.(rt.sessionOfRoom(room))
+    if (origin) (room.projectIntakeOrigins ??= {})[intakeId] = origin
     inbox.push(receipt)
     inbox.sort((a, b) => a.id < b.id ? -1 : 1)
   } else if (throughSeq > receipt.seq) {
     receipt.seq = throughSeq
-    if (linked?.clarification && !lines.at(-1)?.taskReference) delete linked.clarification
+    if (linked?.clarification && !openProjectQuestions(linked).some(question => question.id !== 'legacy') && !lines.at(-1)?.taskReference) delete linked.clarification
     if (!linked) { receipt.status = 'pending'; delete receipt.reason }
   }
   await rt.save({ required: true })

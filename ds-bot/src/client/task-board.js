@@ -26,7 +26,7 @@ const BOARD_STATES = {
 }
 
 const statusKeys = Object.keys(BOARD_STATES)
-const defaultStatuses = new Set(statusKeys.filter(status => status !== 'clarify'))
+const defaultStatuses = new Set(statusKeys)
 
 function TaskStatusFilter({ statuses, onChange, disabled }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu('start')
@@ -212,7 +212,7 @@ export function TaskBoard({ room, roster, actions, onOpen, returnId, statuses = 
   const deleting = useRef(false)
   const editButton = useRef(null), deleteButton = useRef(null)
   const editing = selection !== null
-  const matches = task => statuses === null ? task.status !== 'clarify' : statuses.has(task.status)
+  const matches = task => statuses === null || statuses.has(task.status)
   const all = Object.entries(room.tasks ?? {}).filter(([, task]) => matches(task)).sort(([, a], [, b]) => a.startedAt - b.startedAt)
   const open = all.filter(([, task]) => OPEN.includes(task.status))
   const cards = (room.projectCards ?? []).filter(matches).sort((a, b) => b.updatedAt - a.updatedAt)
@@ -476,4 +476,19 @@ export const TASK_CSS = `
 .bt-task-input{flex:1;min-width:0;height:28px;font-size:13px}
 .bt-task-write>.bt-send{flex:none;margin:0}
 .bt-task-history .bt-task{opacity:.85}
+
+.bt-plan-checklist{list-style:none;padding:0;margin:10px 0}
+.bt-plan-checklist>li{border-bottom:1px solid var(--bt-line)}
+.bt-plan-checklist summary{display:flex;align-items:baseline;gap:8px;padding:10px 0;cursor:pointer;flex-wrap:wrap}
+.bt-plan-checklist input{accent-color:var(--bt-accent);flex:none}
+.bt-plan-item-title{flex:1;min-width:120px;overflow-wrap:anywhere}
+.bt-plan-item-meta{color:var(--bt-ink-2);font-size:12px}
+.bt-plan-checklist [data-status=verified] .bt-plan-item-title{color:var(--bt-ink-2)}
+.bt-plan-item-body{padding:0 0 10px 24px}
+.bt-plan-metadata{margin:8px 0;color:var(--bt-ink-2)}
+.bt-plan-metadata>summary{cursor:pointer}
+.bt-project-question-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--bt-ink-2);font-size:12px;padding:8px 12px}
+.bt-project-question-head select{max-width:100%;min-width:0;flex:1}
+.bt-project-question-history{margin:10px 0}
+.bt-project-question-history li{margin:8px 0;overflow-wrap:anywhere}
 `

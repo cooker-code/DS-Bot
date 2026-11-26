@@ -251,6 +251,41 @@ function decide(body) {
         case 'approve': return [tool('project_task', { action: 'dispatch', taskId, version, node: 2 })]
       }
     }
+    if (used?.name === 'project_task' && messages.some(m => /native-project-question-smoke|The user answered a clarification on the existing task/.test(textOf(m.content)))) {
+      if (result.is_error) return [text('Project question smoke failed: ' + resultText)]
+      const card = JSON.parse(resultText)
+      const taskId = card.taskId
+      const savedPlan = [...messages].reverse().flatMap(m => Array.isArray(m.content) ? m.content : []).find(block => block.type === 'tool_use' && block.name === 'project_task' && block.input.action === 'plan')?.input
+      switch (used.input.action) {
+        case 'plan': return card.version === 1 ? [tool('project_task', { action: 'dispatch', taskId, version: 1, node: 1 })]
+          : [tool('project_task', { action: 'clarify', taskId, reason: 'Confirm chat range and history start.', questions: [
+            { question: 'Which chat range should the table contain?', options: [{ label: 'Course service period' }, { label: 'All teacher and user chats' }], nodes: [3] },
+            { question: 'On which date should historical data start?', nodes: [3] },
+          ] })]
+        case 'dispatch': return [tool('message_bot', { to: 'Coder', taskId, card_round: card.dispatchRound, request_id: 'question-smoke-' + taskId + '-' + card.dispatchRound, reply_to: 'user', message: 'Inspect the source inventory. native-project-question-smoke' })]
+        case 'start': return [tool('project_task', { action: 'submit', taskId, round: used.input.round, result: 'Source inventory verified. native-project-question-smoke' })]
+        case 'read': {
+          const submitted = card.rounds.findIndex(round => round.result && !round.planNode.acceptedAt)
+          if (submitted >= 0) {
+            const node = card.plans.at(-1).nodes.find(node => node.round === submitted + 1)
+            return [tool('project_task', { action: 'approve', taskId, version: card.plans.at(-1).version, node: node.no, round: submitted + 1, artifact: 'source-evidence-' + (submitted + 1) })]
+          }
+          if (card.questions?.every(question => question.answer || question.withdrawnAt)) return [tool('project_task', { action: 'dispatch', taskId, version: 2, node: 2 })]
+          return [text('The first answer is saved. The remaining question stays above the composer.')]
+        }
+        case 'approve':
+          if (used.input.version === 1) {
+            const [source, build, review] = savedPlan.nodes
+            return [tool('project_task', { action: 'plan', taskId, version: 2, reason: 'Keep verified sources and add technical design.', nodes: [
+              { ...source, itemId: '1:1', title: 'Verify course filters and chat source' },
+              { ...build, title: 'Define the table and daily update design', instructions: 'Specify the grain and update rules.', deliverable: 'Technical design', acceptance: 'The design is explicit.', dependsOn: [1] },
+              { ...build, itemId: '1:2', dependsOn: [2] }, { ...review, itemId: '1:3', dependsOn: [3] },
+            ] })]
+          }
+          return [text('The answers reached the coordinator and the next step completed on the original card.')]
+        default: return [text('The focused questions are saved on the original card.')]
+      }
+    }
     if (used?.name === 'project_task' && messages.some(m => textOf(m.content).includes('native-project-handoff-smoke'))) {
       if (result.is_error) return [text('Project handoff failed: ' + resultText)]
       const card = JSON.parse(resultText)
@@ -446,6 +481,24 @@ function decide(body) {
   }
   // Only a direct project delivery triggers the scripted coordination tools.
   const directProject = tools.has('project_task') && /^\[[^\]\n]+\] \[Message from You[^\]\n]*\]\n/.test(userText)
+  if (tools.has('project_task') && me === 'Assistant' && userText.includes('The user answered a clarification on the existing task'))
+    return [tool('project_task', { action: 'read', taskId: /^\[([0-9a-f-]{36})\]/m.exec(userText)?.[1] })]
+  if (tools.has('project_task') && messages.some(m => textOf(m.content).includes('native-project-question-smoke'))) {
+    const taskId = /^\[([0-9a-f-]{36})\]/m.exec(userText)?.[1]
+    if (userText.includes('Confirm with project_task start')) return [tool('project_task', { action: 'start', taskId, round: Number(/this taskId and round (\d+)/.exec(userText)?.[1]) })]
+    if (userText.includes('The user answered a clarification') || userText.includes('The owner submitted evidence')) return [tool('project_task', { action: 'read', taskId })]
+    if (directProject && /The group admin delegated this (?:requirement|existing card)/.test(userText)) {
+      const owners = JSON.parse(userText.match(/^Eligible node owners: (.+)$/m)[1])
+      const coder = owners.find(member => member.name === 'Coder').id
+      const tester = owners.find(member => member.name === 'Tester').id
+      return [tool('project_task', { action: 'plan', version: 1, title: 'Daily chat table', acceptance: '1. Record source evidence and continue after scoped answers.', nodes: [
+        { ownerId: coder, title: 'Inspect source assets', instructions: 'Inspect the source assets. native-project-question-smoke', deliverable: 'Source evidence', acceptance: 'The source is verified.', dependsOn: [] },
+        { ownerId: coder, title: 'Build the daily chat detail table', instructions: 'Build according to the confirmed scope.', deliverable: 'Daily detail table', acceptance: 'The table can be queried.', dependsOn: [1] },
+        { ownerId: tester, title: 'Verify the table and daily run', instructions: 'Read-only validation.', deliverable: 'Test receipt', acceptance: 'Daily runs are verified.', dependsOn: [2] },
+      ] })]
+    }
+    if (userText.includes('Handle it in your session for this group.')) return [tool('project_task', { action: 'reply', acceptWork: true, title: 'Daily chat table', plan: '1. Create a daily chat detail table. native-project-question-smoke', acceptance: '1. Record source evidence and continue after scoped answers.', message: 'Accepted on the original card.' })]
+  }
   if (tools.has('project_task') && userText.includes('native-project-handoff-smoke')) {
     if (userText.includes('Accepted project cards still have no plan or execution.'))
       return [text('The accepted original card was not handed off before the assistant appointment. I will scan and retry it.'), tool('project_task', { action: 'scan' })]

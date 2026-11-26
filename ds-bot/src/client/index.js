@@ -22,6 +22,7 @@ import { SIDE_CSS, sideSource } from './side-chat.js'
 import { VOICE_BUNDLE, closingReplyText, requestPreparation } from './speech.js'
 import { sameVersion } from './dsh-offer.js'
 import { WorkDock } from './work-dock.js'
+import { ProjectQuestionDock } from './project-questions.js'
 import { QuestionCard, QuestionDock } from './questions.js'
 import { AnsweredReply, WidgetDock, WIDGET_CSS } from './widget-cell.js'
 import { CHANGES_CSS } from './changes-card.js'
@@ -1249,6 +1250,7 @@ export function apply(ctx) {
     () => shadow('conversation.input.dock', { id: 'bot-model', order: -110, inject: face }, ModelChoiceDock),
     () => shadow('conversation.input.dock', { id: 'bot-readonly', order: -105, inject: face }, ReadOnlyDock),
     () => shadow('conversation.input.dock', { id: 'bot-work', order: -95, inject: face }, WorkDock),
+    () => shadow('conversation.input.dock', { id: 'bot-project-question', order: -101, inject: face }, ProjectQuestionDock),
     () => shadow('conversation.input.dock', { id: 'bot-question', order: -100, inject: face }, QuestionDock),
     () => shadow('conversation.input.dock', { id: 'bot-view', order: -95, inject: face }, WidgetDock),
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),
