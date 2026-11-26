@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+from local_access import AccessError, UnixConnection, socket_path
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request
 
@@ -46,8 +47,8 @@ def announced_login(stream, base, root):
     return latest
 
 
-def desktop_base():
-    """Discover the local team's Desktop writer, without using any credential to probe ports."""
+def desktop_writer():
+    """Verify the same-account Desktop writer without reading its credentials."""
     lock = Path.home() / ".dsh/bot/state.lock"
     pid = json.loads(lock.read_text()).get("pid")
     if type(pid) is not int or pid <= 1:
@@ -63,6 +64,12 @@ def desktop_base():
         return int(fields[1])
 
     parent(parent(pid))
+    return pid
+
+
+def desktop_base():
+    """Discover the local team's Desktop API without using credentials to probe ports."""
+    pid = desktop_writer()
     listeners = subprocess.run(["/usr/sbin/lsof", "-nP", "-a", "-p", str(pid), "-iTCP",
                                 "-sTCP:LISTEN", "-Fn"], capture_output=True, text=True)
     ports = set(re.findall(r"^n127\.0\.0\.1:(\d+)$", listeners.stdout, re.MULTILINE))
@@ -122,9 +129,12 @@ class Operator:
         if not self.cookie:
             raise RequestError("no_matching_session_cookie")
 
-    def exchange(self, method, path, data=None):
+    def connection(self):
         cls = http.client.HTTPSConnection if self.base.scheme == "https" else http.client.HTTPConnection
-        conn = cls(self.base.hostname, self.base.port, timeout=self.timeout)
+        return cls(self.base.hostname, self.base.port, timeout=self.timeout)
+
+    def exchange(self, method, path, data=None):
+        conn = self.connection()
         try:
             headers = {"Content-Type": "application/json"} if data is not None else {}
             if self.cookie:
@@ -150,6 +160,18 @@ class Operator:
         return result.get("value")
 
 
+class LocalOperator(Operator):
+    def __init__(self, home, expected_pid=None, timeout=20):
+        self.home = home
+        self.expected_pid = expected_pid
+        self.timeout = timeout
+        self.root = "/"
+        self.cookie = ""
+
+    def connection(self):
+        return UnixConnection(socket_path(self.home, self.expected_pid), timeout=self.timeout)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("endpoint", help="Operation from the API reference")
@@ -162,15 +184,21 @@ def main():
     parser.add_argument("--jq", help="Print only this jq projection of value. Default prints a receipt")
     parser.add_argument("--desktop", action="store_true",
                         help="Discover the current macOS Desktop writer and its loopback API")
+    parser.add_argument("--local", action="store_true", help="Use DS Bot Backdoor, the opt-in Unix socket without DSH credentials")
+    parser.add_argument("--team-home", type=Path, help="Explicit isolated/Web plugin team directory; requires --local")
     args = parser.parse_args()
-    if not args.desktop and not args.base:
+    if args.team_home and (not args.local or args.desktop):
+        parser.error("--team-home requires --local and cannot be combined with --desktop")
+    if args.local and (not (args.desktop or args.team_home) or any((args.login_file, args.cookie_jar, args.web_log))):
+        parser.error("--local requires --desktop or --team-home and accepts no login source")
+    if not args.local and not args.desktop and not args.base:
         parser.error("set --base or DS_BOT_BASE_URL")
     sources = (args.login_file, args.cookie_jar, args.web_log)
     if not any(sources):
         sources = tuple(os.getenv(key) for key in ("DS_BOT_LOGIN_FILE", "DS_BOT_COOKIE_JAR", "DS_BOT_WEB_LOG"))
     if args.desktop and not any(sources):
         sources = (None, None, str(Path.home() / ".local/state/ds-bot/desktop-web.log"))
-    if sum(bool(item) for item in sources) != 1:
+    if not args.local and sum(bool(item) for item in sources) != 1:
         parser.error("supply exactly one operator authentication source")
     if args.jq and not shutil.which("jq"):
         parser.error("jq is required for --jq")
@@ -189,8 +217,13 @@ def main():
                 parser.error("payload must be a readable UTF-8 JSON document")
         if not isinstance(payload, dict):
             parser.error("payload must be a JSON object")
-        base = desktop_base() if args.desktop else args.base
-        api = Operator(base, *sources)
+        if args.local:
+            expected_pid = desktop_writer() if args.desktop else None
+            home = Path.home() / ".dsh/bot" if args.desktop else args.team_home.resolve(strict=True)
+            api = LocalOperator(home, expected_pid)
+        else:
+            base = desktop_base() if args.desktop else args.base
+            api = Operator(base, *sources)
         if args.desktop and args.endpoint != "state":
             if api.call("state", {}).get("readOnly") is not None:
                 raise RequestError("desktop_is_read_only")
@@ -203,9 +236,9 @@ def main():
         else:
             print('{"ok":true}')
         return 0
-    except (ValueError, OSError, http.client.HTTPException, RequestError) as error:
+    except (ValueError, OSError, http.client.HTTPException, RequestError, AccessError) as error:
         # Exception messages can include URLs, user content or credential paths.
-        code = str(error) if isinstance(error, RequestError) else type(error).__name__
+        code = str(error) if isinstance(error, (RequestError, AccessError)) else type(error).__name__
         print(json.dumps({"ok": False, "error": code}), file=sys.stderr)
         return 1
 

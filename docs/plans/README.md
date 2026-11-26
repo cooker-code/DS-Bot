@@ -38,6 +38,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| [后门（Backdoor）](2026-11-26-backdoor.md) | 本机受限操作入口；从这里定位宿主白名单、Codex 调用、启停命令、测试和后续扩展 |
 | [本地上游适配](../../scripts/upstream-sync/plans/2026-11-25-local-upstream-decisions.md) | 保留并行会话和项目卡；协作完整流程交付条件及.27断点、设置搜索与预览、二开缺陷报告 |
 | [DSH 让步总账](2026-10-13-dsh-concessions.md) | 因 DSH 本身的限制而做的妥协。判断「是 DS Bot 的 bug 还是 DSH 的限制」先看这里 |
 | [角色与权限](2026-10-07-roles-and-permissions.md) | 用户、Main Bot、群管理员、普通 Bot 各能做什么；Bot 的权限预设和群的统一权限 |

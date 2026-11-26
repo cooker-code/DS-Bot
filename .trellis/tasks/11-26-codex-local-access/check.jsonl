@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"按实际安全风险选择边界和资源清理验证"}
+{"file":".agents/skills/ds-bot-doc/references/operator.md","reason":"核对本机受限入口、原 HTTP 兼容和正文读写契约"}

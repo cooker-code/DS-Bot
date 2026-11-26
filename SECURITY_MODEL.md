@@ -27,6 +27,7 @@ Trust boundaries:
 - Chat input from the user (trusted).
 - Content the Bot reads: web pages (Bot browser, `read_browser`, web search), files in the work folder, connector/MCP tool results, messages from other Bots and group chats, scheduled-task prompts. **Attacker-controlled.**
 - `/api/bot` HTTP endpoints and DSH Web UI: users authenticated by the DSH host.
+- Backdoor (opt-in local administration, `src/host/local-operator.js`): the current macOS account through a private Unix socket. Only roster/project-card reads and Bot-instructions/room-notice edits are allowed. The socket does not accept or export DSH credentials, proxy other Host APIs, or accept TCP connections. The server rechecks the grant and team ownership before dispatch; unsupported operations and fields are rejected. See [Backdoor](docs/plans/2026-11-26-backdoor.md).
 
 ## Assets (maintainer-ranked)
 
@@ -51,6 +52,8 @@ Trust boundaries:
 - HTML widgets run in `sandbox="allow-scripts"` iframes. DSH Desktop supplies the isolated webview partitions for Bot browser panels.
 
 ## Out of scope / accepted risk (maintainer)
+
+- Local administration grants the OS account, not one named application. Any process already running as that account can use or change the local grant. Directory/file permissions exclude other accounts; they do not distinguish Codex from other same-account processes. Revocation stops requests that have not entered the business dispatcher; already-admitted writes may complete.
 
 - **Encryption at rest does not protect a running host**: the process needs the decrypted values and, for encrypted stores, the passphrase (in memory or in the environment/passphrase file). A compromised process, a same-user process that can read the environment, or an administrator can get the keys. The benefit is disk copies and backups not carrying plaintext; keep the passphrase out of those copies.
 
