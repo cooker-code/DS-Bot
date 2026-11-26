@@ -3,6 +3,12 @@
 来源仓库为 [Fei-Craft/DS-Bot](https://github.com/Fei-Craft/DS-Bot)，原名 Fei2411/DS-Bot，GitHub 仓库 ID 为 `1409013846`（2026-11-25 核实）。迁名前后沿用同一来源键。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
 
 
+## 2026-11-26 · 依赖组中文名称（仅管理页）
+
+记录时间 **2026-11-26 13:45 +0800（Asia/Taipei）**。新分支`chore/upstream-catalog-group-names`，工作树`.worktree/chore%2Fupstream-catalog-group-names`，从1f6df194创建；dev提交及执行前tracked diff保持不变，未合回。筛选项、表格和详情统一显示“Gxx · 中文名称”，19组名称直接取既有分组文档，不重复人工维护；数据库与筛选值仍为Gxx。未知名称显示待补齐，保留未分组状态。
+
+固定候选58acd76c独立只读复核通过；工具22/22、JS语法、G01/G16实际筛选、URL/API编号保持、G09长名称、详情一致、问号、390px及未知名称回退真实检查通过，无pageerror。正式4179服务已更新，旧服务与临时预览、测试浏览器/脚本及临时Chrome目录已清理；日用DSH未中断。无新上游区间、PR采用、数据库迁移或插件包变更，265来源/113待处理保持。见[交互和清理证据](docs/reviews/evidence/2026-11-26-upstream-catalog-group-names.json)、[页面截图](docs/reviews/evidence/2026-11-26-upstream-catalog-group-names.png)。
+
 ## 2026-11-26 · 依赖组问号说明（仅管理页）
 
 记录时间 **2026-11-26 13:39 +0800（Asia/Taipei）**。新分支`chore/upstream-catalog-help`，工作树`.worktree/chore%2Fupstream-catalog-help`，从76eed3d0创建；dev提交与执行前tracked diff保持不变，未合回。筛选栏及表头“依赖组”后增加圆圈问号，解释同功能/配套适配或验证的分组，以G16举例，明确同组不等于必须全合。支持悬停、点击、键盘聚焦、Esc/外部关闭，390px和原筛选真实检查通过，无pageerror；候选96aee9f7独立只读复核通过。正式4179管理服务已更新，临时预览与测试浏览器/进程已清理，日用DSH未中断。

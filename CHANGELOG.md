@@ -6,6 +6,8 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### 2026-11-26 — upstream catalog timestamps and skill entry
 
+- Show dependency group codes with their Chinese names in filters, table rows and PR details, using the existing review document while retaining stable filter values.
+
 - Explain dependency groups with circular question-mark help in both the filter and table header. Hover, click or keyboard focus opens the explanation; Escape or an outside click dismisses it.
 
 - Show each PR's GitHub creation time and latest source-data import time in the catalog table and details, using Asia/Taipei. Cache missing timestamps once; decisions and repeated checks keep source sync times unchanged.
