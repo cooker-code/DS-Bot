@@ -1,6 +1,17 @@
 // Japanese (ja) localization for DS Bot client and DSH settings namespaces.
 
 export const JA = {
+  "GPT Fast mode": "GPT 高速モード",
+  "Fast mode for {name}": "{name} の高速モード",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "このプロバイダーとモデルを使うすべてのリクエストで、追加料金を伴う高速処理を要求します。プロバイダーが標準速度で処理する場合もあります。オフにするとプロバイダーの既定の動作に戻ります。",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "高速モードに再接続できませんでした。モデル設定で一度オフにしてから再びオンにしてください。",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "高速モードは OpenAI API 経由の GPT モデルでのみ使用できます。",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "プロバイダーのエンドポイントが変更されました。高速モードを一度オフにしてから再びオンにしてください。",
+  "Change Fast mode in the host that owns this team.": "このチームの書き込みロックを持つホストで高速モードを変更してください。",
+  "Choose a GPT model and a Fast mode switch value.": "GPT モデルと高速モードのオン・オフを指定してください。",
+  "The GPT model is no longer available.": "この GPT モデルは利用できなくなりました。",
+  "Fast mode requires an HTTP API endpoint.": "高速モードには HTTP API エンドポイントが必要です。",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "高速モードには認証情報、クエリ、フラグメントを含まない HTTP API エンドポイントが必要です。",
   "Result": "結果",
   "Prompts": "プロンプト",
   "Task message explanations": "タスクメッセージのわかりやすい説明",

@@ -21,9 +21,9 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    "docs/reviews/2026-11-26-upstream-community-implementation.md",
-    "upstream-changelog.md",
-    "docs/upstream-catalog.md"
+    "scripts/upstream-sync/reviews/2026-11-26-upstream-community-implementation.md",
+    "scripts/upstream-sync/upstream-changelog.md",
+    "scripts/upstream-sync/README.md"
   ],
   "notes": "已按本轮明确批准方案完成实现、自动/独立复核和正式网页/技能更新；dev不变。最终用户验收另计；DSH插件无变更。",
   "meta": {

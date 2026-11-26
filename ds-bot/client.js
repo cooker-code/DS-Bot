@@ -531,6 +531,17 @@ function convertHostErrors(pairs) {
 
 // src/client/locales/ja.js
 var JA = {
+  "GPT Fast mode": "GPT 高速モード",
+  "Fast mode for {name}": "{name} の高速モード",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "このプロバイダーとモデルを使うすべてのリクエストで、追加料金を伴う高速処理を要求します。プロバイダーが標準速度で処理する場合もあります。オフにするとプロバイダーの既定の動作に戻ります。",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "高速モードに再接続できませんでした。モデル設定で一度オフにしてから再びオンにしてください。",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "高速モードは OpenAI API 経由の GPT モデルでのみ使用できます。",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "プロバイダーのエンドポイントが変更されました。高速モードを一度オフにしてから再びオンにしてください。",
+  "Change Fast mode in the host that owns this team.": "このチームの書き込みロックを持つホストで高速モードを変更してください。",
+  "Choose a GPT model and a Fast mode switch value.": "GPT モデルと高速モードのオン・オフを指定してください。",
+  "The GPT model is no longer available.": "この GPT モデルは利用できなくなりました。",
+  "Fast mode requires an HTTP API endpoint.": "高速モードには HTTP API エンドポイントが必要です。",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "高速モードには認証情報、クエリ、フラグメントを含まない HTTP API エンドポイントが必要です。",
   "Result": "結果",
   "Prompts": "プロンプト",
   "Task message explanations": "タスクメッセージのわかりやすい説明",
@@ -3231,6 +3242,17 @@ var DSH_JA = {
 
 // src/client/locales/ko.js
 var KO = {
+  "GPT Fast mode": "GPT 고속 모드",
+  "Fast mode for {name}": "{name} 고속 모드",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "이 공급자와 모델을 사용하는 모든 요청에 추가 비용이 드는 고속 처리를 요청합니다. 공급자가 표준 속도로 처리할 수도 있습니다. 끄면 공급자의 기본 동작으로 돌아갑니다.",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "고속 모드에 다시 연결하지 못했습니다. 모델 설정에서 껐다가 다시 켜세요.",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "고속 모드는 OpenAI API 경로를 사용하는 GPT 모델에서만 지원됩니다.",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "공급자 엔드포인트가 변경되었습니다. 고속 모드를 껐다가 다시 켜세요.",
+  "Change Fast mode in the host that owns this team.": "이 팀의 쓰기 잠금을 보유한 호스트에서 고속 모드를 변경하세요.",
+  "Choose a GPT model and a Fast mode switch value.": "GPT 모델과 고속 모드의 켜기 또는 끄기 값을 지정하세요.",
+  "The GPT model is no longer available.": "이 GPT 모델은 더 이상 사용할 수 없습니다.",
+  "Fast mode requires an HTTP API endpoint.": "고속 모드에는 HTTP API 엔드포인트가 필요합니다.",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "고속 모드에는 자격 증명, 쿼리 또는 프래그먼트가 없는 HTTP API 엔드포인트가 필요합니다.",
   "Result": "결과",
   "Prompts": "프롬프트",
   "Task message explanations": "작업 메시지 쉬운 설명",
@@ -5976,6 +5998,17 @@ var DSH_KO = {
 
 // src/client/locales/es.js
 var ES = {
+  "GPT Fast mode": "Modo rápido de GPT",
+  "Fast mode for {name}": "Modo rápido para {name}",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "Solicita un procesamiento más rápido con un coste adicional para todas las solicitudes que utilicen este proveedor y modelo. El proveedor puede seguir usando el procesamiento estándar. Al desactivarlo se restaura el comportamiento predeterminado del proveedor.",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "No se pudo reconectar el modo rápido. Desactívalo y vuelve a activarlo en Modelos.",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "El modo rápido solo está disponible para modelos GPT mediante rutas de API de OpenAI.",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "El endpoint del proveedor ha cambiado. Desactiva el modo rápido antes de volver a activarlo.",
+  "Change Fast mode in the host that owns this team.": "Cambia el modo rápido en el host que tiene el bloqueo de escritura de este equipo.",
+  "Choose a GPT model and a Fast mode switch value.": "Elige un modelo GPT e indica si el modo rápido debe estar activado o desactivado.",
+  "The GPT model is no longer available.": "El modelo GPT ya no está disponible.",
+  "Fast mode requires an HTTP API endpoint.": "El modo rápido requiere un endpoint de API HTTP.",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "El modo rápido requiere un endpoint de API HTTP sin credenciales, parámetros de consulta ni fragmento.",
   "Result": "Resultado",
   "Prompts": "Indicaciones",
   "Task message explanations": "Explicaciones de mensajes de tareas",
@@ -8721,6 +8754,17 @@ var DSH_ES = {
 
 // src/client/locales/fr.js
 var FR = {
+  "GPT Fast mode": "Mode rapide GPT",
+  "Fast mode for {name}": "Mode rapide pour {name}",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "Demande un traitement plus rapide moyennant un supplément pour toutes les requêtes utilisant ce fournisseur et ce modèle. Le fournisseur peut toutefois utiliser le traitement standard. La désactivation rétablit le comportement par défaut du fournisseur.",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "Impossible de reconnecter le mode rapide. Désactivez-le puis réactivez-le dans Modèles.",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "Le mode rapide est disponible uniquement pour les modèles GPT via les routes API OpenAI.",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "Le point de terminaison du fournisseur a changé. Désactivez le mode rapide avant de le réactiver.",
+  "Change Fast mode in the host that owns this team.": "Modifiez le mode rapide sur l’hôte qui détient le verrou d’écriture de cette équipe.",
+  "Choose a GPT model and a Fast mode switch value.": "Choisissez un modèle GPT et indiquez si le mode rapide doit être activé ou désactivé.",
+  "The GPT model is no longer available.": "Le modèle GPT n’est plus disponible.",
+  "Fast mode requires an HTTP API endpoint.": "Le mode rapide nécessite un point de terminaison API HTTP.",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "Le mode rapide nécessite un point de terminaison API HTTP sans identifiants, paramètres de requête ni fragment.",
   "Result": "Résultat",
   "Prompts": "Invites",
   "Task message explanations": "Explications des messages de tâche",
@@ -11421,6 +11465,17 @@ var DSH_FR = {
 
 // src/client/locales/de.js
 var DE = {
+  "GPT Fast mode": "GPT-Schnellmodus",
+  "Fast mode for {name}": "Schnellmodus für {name}",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "Fordert für alle Anfragen mit diesem Anbieter und Modell eine schnellere Verarbeitung gegen Aufpreis an. Der Anbieter kann weiterhin die Standardverarbeitung verwenden. Beim Ausschalten wird das Standardverhalten des Anbieters wiederhergestellt.",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "Der Schnellmodus konnte nicht erneut verbunden werden. Schalte ihn unter Modelle aus und wieder ein.",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "Der Schnellmodus ist nur für GPT-Modelle über OpenAI-API-Routen verfügbar.",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "Der Endpunkt des Anbieters wurde geändert. Schalte den Schnellmodus aus, bevor du ihn wieder einschaltest.",
+  "Change Fast mode in the host that owns this team.": "Ändere den Schnellmodus auf dem Host, der die Schreibsperre für dieses Team hält.",
+  "Choose a GPT model and a Fast mode switch value.": "Wähle ein GPT-Modell und gib an, ob der Schnellmodus ein- oder ausgeschaltet sein soll.",
+  "The GPT model is no longer available.": "Das GPT-Modell ist nicht mehr verfügbar.",
+  "Fast mode requires an HTTP API endpoint.": "Der Schnellmodus erfordert einen HTTP-API-Endpunkt.",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "Der Schnellmodus erfordert einen HTTP-API-Endpunkt ohne Zugangsdaten, Abfrageparameter oder Fragment.",
   "Result": "Ergebnis",
   "Prompts": "Eingabeaufforderungen",
   "Task message explanations": "Erklärungen zu Aufgabennachrichten",

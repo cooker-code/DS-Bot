@@ -1,6 +1,17 @@
 // Korean (ko) localization for DS Bot client and DSH settings namespaces.
 
 export const KO = {
+  "GPT Fast mode": "GPT 고속 모드",
+  "Fast mode for {name}": "{name} 고속 모드",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "이 공급자와 모델을 사용하는 모든 요청에 추가 비용이 드는 고속 처리를 요청합니다. 공급자가 표준 속도로 처리할 수도 있습니다. 끄면 공급자의 기본 동작으로 돌아갑니다.",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "고속 모드에 다시 연결하지 못했습니다. 모델 설정에서 껐다가 다시 켜세요.",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "고속 모드는 OpenAI API 경로를 사용하는 GPT 모델에서만 지원됩니다.",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "공급자 엔드포인트가 변경되었습니다. 고속 모드를 껐다가 다시 켜세요.",
+  "Change Fast mode in the host that owns this team.": "이 팀의 쓰기 잠금을 보유한 호스트에서 고속 모드를 변경하세요.",
+  "Choose a GPT model and a Fast mode switch value.": "GPT 모델과 고속 모드의 켜기 또는 끄기 값을 지정하세요.",
+  "The GPT model is no longer available.": "이 GPT 모델은 더 이상 사용할 수 없습니다.",
+  "Fast mode requires an HTTP API endpoint.": "고속 모드에는 HTTP API 엔드포인트가 필요합니다.",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "고속 모드에는 자격 증명, 쿼리 또는 프래그먼트가 없는 HTTP API 엔드포인트가 필요합니다.",
   "Result": "결과",
   "Prompts": "프롬프트",
   "Task message explanations": "작업 메시지 쉬운 설명",

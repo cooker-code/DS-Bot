@@ -4,7 +4,7 @@ import { build } from 'esbuild'
 import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
-const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('../src/client/settings-discovery.js', import.meta.url))], bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/*'] })
+const { outputFiles } = await build({ entryPoints: [fileURLToPath(new URL('../src/client/settings-discovery.js', import.meta.url))], bundle: true, format: 'cjs', write: false, external: ['react', 'react-dom', '@deepseek-ai/*'] })
 const module = { exports: {} }
 const react = { createElement: () => ({}), createContext: () => ({}) }
 runInNewContext(outputFiles[0].text, { module, exports: module.exports, require: () => react })

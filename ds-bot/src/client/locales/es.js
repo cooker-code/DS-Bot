@@ -1,6 +1,17 @@
 // Spanish (es) localization for DS Bot client and DSH settings namespaces.
 
 export const ES = {
+  "GPT Fast mode": "Modo rápido de GPT",
+  "Fast mode for {name}": "Modo rápido para {name}",
+  "Requests faster processing at extra cost for everyone using this provider and model. The provider may still use standard processing. Off restores the provider default.": "Solicita un procesamiento más rápido con un coste adicional para todas las solicitudes que utilicen este proveedor y modelo. El proveedor puede seguir usando el procesamiento estándar. Al desactivarlo se restaura el comportamiento predeterminado del proveedor.",
+  "Fast mode could not reconnect. Turn it off and enable it again in Models.": "No se pudo reconectar el modo rápido. Desactívalo y vuelve a activarlo en Modelos.",
+  "Fast mode is only available for GPT models on OpenAI API routes.": "El modo rápido solo está disponible para modelos GPT mediante rutas de API de OpenAI.",
+  "The provider endpoint changed. Turn Fast mode off before enabling it again.": "El endpoint del proveedor ha cambiado. Desactiva el modo rápido antes de volver a activarlo.",
+  "Change Fast mode in the host that owns this team.": "Cambia el modo rápido en el host que tiene el bloqueo de escritura de este equipo.",
+  "Choose a GPT model and a Fast mode switch value.": "Elige un modelo GPT e indica si el modo rápido debe estar activado o desactivado.",
+  "The GPT model is no longer available.": "El modelo GPT ya no está disponible.",
+  "Fast mode requires an HTTP API endpoint.": "El modo rápido requiere un endpoint de API HTTP.",
+  "Fast mode requires an HTTP API endpoint without credentials, query or fragment.": "El modo rápido requiere un endpoint de API HTTP sin credenciales, parámetros de consulta ni fragmento.",
   "Result": "Resultado",
   "Prompts": "Indicaciones",
   "Task message explanations": "Explicaciones de mensajes de tareas",

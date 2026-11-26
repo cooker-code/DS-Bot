@@ -21,11 +21,11 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    "docs/reviews/2026-11-26-upstream-2028-implementation.md",
-    "docs/upstream-catalog.md",
-    "upstream-changelog.md"
+    "scripts/upstream-sync/reviews/2026-11-26-upstream-2028-implementation.md",
+    "scripts/upstream-sync/README.md",
+    "scripts/upstream-sync/upstream-changelog.md"
   ],
-  "notes": "用户已批准文字方案；实现、自动检查、独立只读复核、安装及测试清理完成。台账最终候选118245cf，插件e25f6caf；日用加载和最终用户验收未核实。见docs/reviews/2026-11-26-upstream-2028-implementation.md。",
+  "notes": "用户已批准文字方案；实现、自动检查、独立只读复核、安装及测试清理完成。台账最终候选118245cf，插件e25f6caf；日用加载和最终用户验收未核实。见scripts/upstream-sync/reviews/2026-11-26-upstream-2028-implementation.md。",
   "meta": {
     "planning_contract_version": "2",
     "ui": "true",

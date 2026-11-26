@@ -45,6 +45,8 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on settings/document-updated',
     'on agent/disposed',
     'effect ds-bot: auxiliary llm retry',
+    'effect ds-bot: Fast ownership changes',
+    'effect ds-bot: GPT Fast relay',
     'on subagent/start',
     'on subagent/end',
     'on session/event',

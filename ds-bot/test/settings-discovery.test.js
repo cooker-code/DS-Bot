@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 
 const { outputFiles } = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/settings-discovery.js', import.meta.url))],
-  bundle: true, format: 'cjs', write: false, external: ['react', '@deepseek-ai/*'],
+  bundle: true, format: 'cjs', write: false, external: ['react', 'react-dom', '@deepseek-ai/*'],
 })
 const module = { exports: {} }
 const react = { createElement: (type, props, ...children) => ({ type, props, children }), createContext: () => ({}) }
