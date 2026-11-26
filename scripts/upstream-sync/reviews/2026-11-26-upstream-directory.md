@@ -1,6 +1,6 @@
 # 上游同步目录迁移回执
 
-记录时间：2026-11-26，Asia/Taipei。本批分支`chore/upstream-sync-directory`，工作树位于项目主目录`.worktree/chore%2Fupstream-sync-directory/`，基线`a2b1873dce3a2d136c842022cd0f7c1ac8c569ac`。固定候选及独立复核见下方记录。本地dev保持`7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d`；其原有已跟踪差异与执行前逐字一致，未合回或推送。
+记录时间：2026-11-26，Asia/Taipei。本批分支`chore/upstream-sync-directory`，工作树位于项目主目录`.worktree/chore%2Fupstream-sync-directory/`，基线`a2b1873dce3a2d136c842022cd0f7c1ac8c569ac`。固定候选`1f10d12b253a9032b19f7d37ac6cfba26d1a6490`已由独立测试者只读复核。本地dev保持`7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d`；其原有已跟踪差异与执行前逐字一致，未合回或推送。
 
 1. **目录和后续约定已统一。** 85个既有文件迁入`scripts/upstream-sync/`，包括入口、预检、Python模块、网页、测试、参考资料、同步记录、PR评估、两份本地同步设计、历史报告/证据与6个已完成同步任务。`AGENTS.md`与[技能入口](../../../.agents/skills/sync-upstream/SKILL.md)规定今后相关管理材料也归该目录。技能发现入口、项目通用规则/发布日志和实际插件代码沿用平台及模块位置；旧分支原有文件不因本次迁移被改写。
 
@@ -14,6 +14,6 @@
 
 6. **验证范围和资源清理。** `python3 -m unittest discover -s scripts/upstream-sync/tests -v`通过34项，含原32项与新增跨工作树共享偏好、迁移后CLI导出及默认备份路径。JS语法、skill结构及Git改动格式检查通过。相对链接检查覆盖迁移文件与调用方；另一个既有任务原有两张prototype图片缺失不属于本次迁移，保持原状。浏览器脚本、旧管理服务与本次Chrome进程均已核实退出，临时Chrome目录无残留；交付管理服务4179按要求保留。未改DSH插件API、源码或包内容，沿用`0.3.10-local.29-upstream`，无需重装，日用DSH未被停止或重启。
 
-独立只读复核：待固定候选后补入实际结果。
+独立只读复核：**通过**。测试者独立运行34/34项，通过从`/tmp`启动CLI、跨工作树共享库/偏好、导出位置与默认备份等验证；正式主库只读integrity及foreign_key_check均正常，4份备份完整性均正常，旧数据目录已退役。独立比较dev的HEAD与执行前tracked diff均一致，测试临时fixture/进程已退出清理；未写正式库或停止交付服务与DSH。复核记录时间：2026-11-26T14:53:49+08:00。
 
 [结构化证据](evidence/2026-11-26-upstream-directory.json)保留逐表数量、API元信息、浏览器结论及清理记录；[目录与命令](../README.md)提供日后入口。历史回执中的分支、绝对目录和执行命令继续表示当时事实，当前可点击相对链接已调整。

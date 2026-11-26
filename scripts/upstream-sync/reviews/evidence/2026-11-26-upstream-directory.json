@@ -156,5 +156,24 @@
     "newPRs": 0,
     "fetch": false
   },
-  "pluginUnchanged": "0.3.10-local.29-upstream"
+  "pluginUnchanged": "0.3.10-local.29-upstream",
+  "independentReview": {
+    "candidate": "1f10d12b253a9032b19f7d37ac6cfba26d1a6490",
+    "reviewer": "acceptance",
+    "recordedAt": "2026-11-26T14:53:49+08:00",
+    "result": "passed",
+    "testsPassed": 34,
+    "checks": [
+      "CLI from another cwd resolves shared main catalog",
+      "linked worktree preferences persist",
+      "CLI/API export targets central ledger",
+      "default backup location",
+      "main database integrity and foreign keys",
+      "4 backup integrity checks",
+      "legacy storage absent",
+      "dev HEAD and prior tracked diff unchanged",
+      "temporary fixture and process cleanup"
+    ],
+    "formalDatabaseReadOnly": true
+  }
 }
