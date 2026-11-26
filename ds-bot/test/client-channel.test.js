@@ -139,11 +139,28 @@ test('project-task-list reads one room at the same revision as the team view, in
   rt.readOnly = () => 'Another host is writing'
   const result = await call('project-task-list', { roomId: room.id })
   assert.deepEqual(result, { ok: true, value: {
-    roomId: room.id, revision: full.revision, tasks: summary.projectCards, pendingIntakes: summary.pendingIntakes,
+    roomId: room.id, revision: full.revision, tasks: summary.projectCards, pendingIntakes: summary.pendingIntakes, unassigned: [],
   } })
   assert.deepEqual(result.value.tasks.map(task => [task.taskId, task.ownerId]), [['current', writer.id]])
   assert.deepEqual(result.value.pendingIntakes.map(item => item.id), ['queued'])
   assert.equal((await call('project-task-list', { roomId: 'missing' })).error.code, 'GROUP_CONTEXT_REQUIRED')
+})
+
+test('unassigned cards expose actual retry reasons without internal scan metadata in state', async t => {
+  const { rt, call, stop } = start()
+  t.after(stop)
+  const { writer, room } = await team(call)
+  const target = rt.roomOf(room.id)
+  target.projectAssistantId = writer.id
+  target.projectCards = { waiting: { id: 'waiting', title: 'Daily table', goal: 'Create daily data.', acceptance: 'Verify daily updates.', rounds: [], plans: [], intakes: [] } }
+  target.projectHandoffScan = { id: 'internal', toId: target.admin, fingerprint: 'internal scan body', status: 'delivered' }
+  const result = (await call('project-task-list', { roomId: room.id })).value
+  assert.equal(result.unassigned[0].taskId, 'waiting')
+  assert.equal(result.unassigned[0].status, 'not_sent')
+  assert.equal(result.unassigned[0].retryable, true)
+  assert.match(result.unassigned[0].reason, /not been delivered/)
+  const view = (await call('state', {})).value.rooms.find(r => r.id === room.id)
+  assert.equal(Object.hasOwn(view, 'projectHandoffScan'), false)
 })
 
 test('stop-chat ends a Bot own-chat turn, and answers false when nothing runs', async () => {

@@ -828,6 +828,7 @@ export function install(rt) {
           Object.assign(asked, previous)
         }
       } })
+      if (patch.projectAssistantId !== undefined || patch.taskManagementEnabled === true) rt.scheduleProjectHandoffScan?.(0)
       return { room: asked, changes }
     }
     const moving = patch.workDir !== undefined

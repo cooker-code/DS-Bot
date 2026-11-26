@@ -44,3 +44,5 @@
 | `schedules` / `schedule-create` / `schedule-delete` | 查询 `{}`。创建用 `{target,title,prompt,when}`，target 为 Bot 或群 ID。单次用 `{kind:"at",at:"2030-01-01T10:00:00Z"}`。每日用 `kind:"daily",time,timeZone?`，每周用 `kind:"weekly",time,weekdays,timeZone?`（星期取 1–7），间隔用 `kind:"every",minutes`。删除用 `{sessionId,id}`。 | [scheduleEndpoint](../../../../ds-bot/src/host/schedules.js) 调 DSH 调度服务。返回 `{available,tasks}`，id、目标会话和下一次执行时间以实际记录为准。 |
 
 DSH 自身的字体、外观、开发工具、账号、插件和其他宿主设置由注册设置项的模块维护。例如开发工具用 `configForms.developerTools.setEnabled`，读取配置文档用 `remote.settings.openSettingsDocument`。它们使用对应 DSH 版本公开的设置服务，独立于团队偏好表。[设置项组装](../../../../ds-bot/src/client/settings.js) · [宿主设置接入](../../../../ds-bot/src/client/settings-shell.js)
+
+任命或更换任务助理后，服务会安排管理员扫描尚无计划、尚无执行轮次的原卡，说明未交接原因并按条件重试；不重新派发在途工作。扫描与重试契约见 [项目工作与运行接口](runtime-api.md#管理员扫描与重试交接)。

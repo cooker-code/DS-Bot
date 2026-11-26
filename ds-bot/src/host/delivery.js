@@ -83,7 +83,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ taskId, requirementVersion, retryOf, handoffText, parentExchangeId, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ validateDestination, taskId, requirementVersion, retryOf, handoffText, parentExchangeId, groupHandoffSeqs, projectActorId, cardRound, dispatchInput, retryFailedAt, previousOutput, intakeId, intakeSeq, fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
     const key = taskId ?? intakeId
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
@@ -153,6 +153,7 @@ export function install(rt) {
     const retryRound = retryRoom?.projectCards?.[taskId]?.rounds.find(r => r.dispatchId === exchangeId && r.ownerId === toId)
     const previousFailure = retryRound?.failedAt ?? retryFailedAt
     const live = rt.live?.get(targetSessionId)
+    if (validateDestination && !validateDestination()) throw new Error('The project recipient changed before enqueue. Scan the original card again.')
     if (steer && scopeOf(live?.info) === key) agent.steer(message)
     else agent.followup(message)
     await ctx.sessions.flush(agent.session)
