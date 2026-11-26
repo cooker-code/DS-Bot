@@ -109,6 +109,10 @@ class Store:
             for number, c, batch_date in rows:
                 old = self.db.execute('SELECT * FROM prs WHERE repo_id=? AND number=?', (REPO_ID, number)).fetchone()
                 if old and old['status'] == c[1] and old['title'] == c[3] and old['reason'] == c[4] and old['local_difference'] == c[5] and old['solution'] == c[6]:
+                    snapshot = snapshots.get(number,{})
+                    if snapshot.get('createdAt') and not json.loads(old['upstream_json'] or '{}').get('createdAt'):
+                        self.db.execute('UPDATE prs SET upstream_json=? WHERE repo_id=? AND number=?',(json.dumps(snapshot,ensure_ascii=False),REPO_ID,number))
+                        self.event(number,'metadata',None,{k:snapshot[k] for k in ('createdAt','sourceSyncedAt')})
                     if not old['analyzed_at'] and number in GUIDE and (old['purpose'], old['scenario']) != GUIDE[number]:
                         purpose, scenario = GUIDE[number]
                         self.db.execute('UPDATE prs SET purpose=?,scenario=?,effect=? WHERE repo_id=? AND number=?', (purpose, scenario, purpose + '\n本地适用性：' + plain(c[4]), REPO_ID, number))

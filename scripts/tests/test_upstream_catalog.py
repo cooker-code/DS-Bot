@@ -13,7 +13,7 @@ import urllib.request
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from upstream_catalog.store import Store, Conflict, CatalogError, REPO_ID
-from upstream_catalog.source import sync, reassess, writable, database_path, complete_metadata, github_metadata
+from upstream_catalog.source import sync, reassess, writable, database_path, complete_metadata, github_metadata, bootstrap as bootstrap_source
 from upstream_catalog.web import server
 
 
@@ -51,6 +51,22 @@ class CatalogTests(unittest.TestCase):
 
     def run_git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True, stderr=subprocess.DEVNULL).strip()
+
+    def test_initial_bootstrap_failure_keeps_database_empty_and_success_is_atomic(self):
+        with Store(self.root/'initial.sqlite3') as empty:
+            with patch('upstream_catalog.source.github_metadata',side_effect=CatalogError('GitHub unavailable')):
+                with self.assertRaises(CatalogError):bootstrap_source(empty,self.repo,self.base)
+            self.assertEqual(empty.db.execute('SELECT count(*) FROM sources').fetchone()[0],0)
+            self.assertEqual(empty.db.execute('SELECT count(*) FROM prs').fetchone()[0],0)
+            result=bootstrap_source(empty,self.repo,self.base)
+            self.assertEqual(result['imported'],2)
+            self.assertEqual(empty.stats()['source']['checkpoint_sha'],self.base)
+            self.assertEqual(empty.detail(1)['pr_created_at'],'2026-11-20T01:02:03Z')
+            self.assertIsNotNone(empty.detail(1)['synced_at'])
+            with patch('upstream_catalog.source.github_metadata',return_value={}) as fetch:
+                again=bootstrap_source(empty,self.repo,self.base)
+                self.assertEqual(again['metadata']['githubPRsRead'],0)
+                self.assertEqual(fetch.call_args.args[0],[])
 
     def test_source_dates_are_persisted_and_not_refreshed_by_decisions(self):
         self.store.preference(2,0,'用户不要',0)

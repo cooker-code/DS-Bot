@@ -132,8 +132,11 @@ def bootstrap(store, repo, endpoint, progress=lambda _: None):
         elif number in known:
             cache[number] = snapshot(repo, known[number])
         if (at + 1) % 50 == 0:progress(f'缓存来源 {at + 1}/{len(numbers)}')
+    missing = [number for number in numbers if not cache.get(number,{}).get('createdAt')]
+    details = github_metadata(missing)
+    for number,extra in details.items():cache.setdefault(number,{}).update(extra,sourceSyncedAt=now())
     result = store.bootstrap(ledger, cache, git(repo, 'rev-parse', 'HEAD'), endpoint, groups(repo))
-    result['metadata'] = complete_metadata(store,repo)
+    result['metadata'] = {'updatedPRs':missing, 'githubPRsRead':len(missing)}
     return result
 
 
