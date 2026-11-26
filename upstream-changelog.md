@@ -3,6 +3,14 @@
 来源仓库为 [Fei-Craft/DS-Bot](https://github.com/Fei-Craft/DS-Bot)，原名 Fei2411/DS-Bot，GitHub 仓库 ID 为 `1409013846`（2026-11-25 核实）。迁名前后沿用同一来源键。每个 PR 只占一行。权重为本地采用优先级（1–10，10 最高）。后续涉及同一问题时，可按功能、工具名或 PR 号查找当时的取舍。
 
 
+## 2026-11-26 · 台账时间列与技能网页入口（无上游代码移植）
+
+记录时间 **2026-11-26 13:33 +0800（Asia/Taipei）**。新分支`chore/upstream-catalog-times`，工作树`.worktree/chore%2Fupstream-catalog-times`，从上一批已验证`951b169e`创建；dev仍只读，未合回。未fetch或扩大上游区间，仍固定bb1b1592；本批无上游设计文档变更，也没有新增采用PR。265项状态仍为采用95、需讨论5、暂缓108、跳过57，待处理113。
+
+管理页增加“PR提交时间”和“同步时间”，均以Asia/Taipei显示。前者取GitHub PR createdAt，后者是该PR来源资料实际入库时间，不等于代码采用或安装。本轮一次性从官方GraphQL补齐265项时间资料，重复执行读取0项；保存选择/分析不刷新同步时间。时间写入现有prs.upstream_json，六表结构及DSH团队数据库不变。技能明确以SQLite保存来源/判断/选择与时间，Markdown作审计导出，并要求每次执行后检查服务、主动打开管理网页。
+
+主目录dev内技能仍是旧版，因为未合回；使用本批专用工作树中的新版入口，不为更新技能覆盖dev。固定候选3370e63c，验证和管理服务更新见[本批回执](docs/reviews/2026-11-26-upstream-catalog-times.md)。本次仅管理工具，无DSH包内代码变化；日用插件沿用已安装v0.3.10.29-upstream，不重复打包安装或重启DSH。
+
 ## 2026-11-26 · PR2028完整适配、SQLite管理页与部署
 
 记录时间 **2026-11-26 12:59 +0800（Asia/Taipei）**。本批`chore/upstream-2028-catalog`及独立工作树`.worktree/chore%2Fupstream-2028-catalog`从既有.28应用与规划候选`21556159`续接。主目录`dev@7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d`只读，提交及执行前tracked diff保持一致，未合回或push；没有收拢其他分支。来源仍固定`bb1b1592472084c32278c12287944ee40b8087c5`，本轮未fetch或推进终点。

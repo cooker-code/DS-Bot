@@ -37,7 +37,7 @@
 | 区域 | 内容与行为 |
 | --- | --- |
 | 筛选栏 | 关键词/PR号、采用结果、我的选择、权重范围、依赖组、修复/功能/维护、需重新评估；可清空筛选。 |
-| 主表 | PR号链接、中文功能作用、采用结果、我的选择、权重、依赖组、最近变更时间。默认按状态→权重降序→PR号升序，另可按时间排序。 |
+| 主表 | PR号链接、中文功能作用、采用结果、我的选择、权重、依赖组、PR提交时间、来源同步时间。默认按状态→权重降序→PR号升序，另可按时间排序。 |
 | 详情 | 完整解释与具体例子、上游/本地差异、原因、前置、解决方式、验证、部署版本、历史变更和原PR链接。 |
 | 我的选择 | “待评估 / 需要 / 不需要”，保存时间与可选理由，可撤销；写SQLite后重新加载仍在，增量同步不覆盖。 |
 | 已采用但不需要 | 保留真实“采用”结果，并显示“不需要，后续不再跟进”；不会自动删除已装代码。尚未采用且不需要的后续建议为跳过，仍保留原判断历史。 |
@@ -77,7 +77,7 @@ CREATE TABLE prs (
   dependency_group TEXT, -- 当前依赖组
   dependencies_json TEXT NOT NULL DEFAULT '[]', -- 前置PR键
   merge_sha TEXT, -- 固定合入点
-  upstream_json TEXT, -- 缓存正文、文件路径和设计证据
+  upstream_json TEXT, -- 缓存正文、文件路径、设计证据及createdAt/sourceSyncedAt时间
   local_sha TEXT, -- 本地分析基线
   reason TEXT, -- 原因类型和事实
   local_difference TEXT, -- 双方差异及影响
@@ -151,3 +151,5 @@ CREATE INDEX prs_group ON prs(dependency_group);
 ## 变更
 
 - 2026-11-26：按用户要求确定四状态和逐PR功能解释，提出增量台账与筛选/标记页面；用户批准后实现，包含去重、选择、增量、导出和来源/本地变更校验。
+
+- 2026-11-26补充：PR提交时间来自GitHub createdAt；来源同步时间来自sourceSyncedAt，按实际资料入库记录，分析/选择不刷新；表格和详情均显示Asia/Taipei。首次补齐265项后复用缓存，bootstrap初次来源游标与时间同事务落库，GitHub失败不发布完整游标。详见[实施回执](../reviews/2026-11-26-upstream-catalog-times.md)。

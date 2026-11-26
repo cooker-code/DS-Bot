@@ -1,6 +1,6 @@
 ---
 name: sync-upstream
-description: 盘点 DS Bot upstream 的修复、功能和设计说明，核对本地分歧，按完整业务流程成组适配、验证并更新 upstream-changelog.md。用于上游更新、补记历史批次或重审暂缓项。
+description: 盘点 DS Bot upstream 的修复、功能和设计说明，核对本地分歧，按完整业务流程成组适配、验证，保存 SQLite 增量台账并打开 HTML 管理页，导出 upstream-changelog.md。用于上游更新、补记历史批次或重审暂缓项。
 ---
 
 # 更新上游插件
