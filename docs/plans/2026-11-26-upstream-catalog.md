@@ -1,7 +1,7 @@
 # 上游同步台账、增量更新与PR管理页
 
 - 日期：2026-11-26
-- 状态：用户2026-11-26批准方案；SQLite、本地服务、HTML和PR2028已实施，固定候选验收与部署结果另记。
+- 状态：用户2026-11-26批准方案；SQLite、本地服务、HTML和PR2028已实施，固定候选独立验收通过，.29已安装web/desktop，日用加载未核实；见[实施回执](../reviews/2026-11-26-upstream-2028-implementation.md)。
 - 相关：[PR2028复核](../reviews/2026-11-26-upstream-2028-review.md)、[同步技能](../../.agents/skills/sync-upstream/SKILL.md)。
 
 ## 为什么
@@ -20,7 +20,7 @@
 
 独立本地管理页用于上游决策，插件内设置页承接PR2028。管理页不进入聊天和项目卡界面。只用Python标准库提供回环HTTP服务并读写SQLite，HTML经有限JSON接口查询和保存，浏览器不直接执行SQL。
 
-数据库拟放本项目公共Git目录的`upstream-sync/upstream.sqlite3`，本机通常为`DS-Bot/.git/upstream-sync/upstream.sqlite3`。通过`git rev-parse --git-common-dir`定位，所有专用工作树共用同一台账，不随分支丢失标记，也不向dev工作树写文件。不把SQLite二进制及事务日志提交Git；用一致性备份保留数据库，Markdown作为可审阅的提交交付。它与日用DSH团队数据库完全独立。
+数据库存放在本项目公共Git目录的`upstream-sync/upstream.sqlite3`，本机通常为`DS-Bot/.git/upstream-sync/upstream.sqlite3`。通过`git rev-parse --git-common-dir`定位，所有专用工作树共用同一台账，不随分支丢失标记，也不向dev工作树写文件。不把SQLite二进制及事务日志提交Git；用一致性备份保留数据库，Markdown作为可审阅的提交交付。它与日用DSH团队数据库完全独立。
 
 ### 首次导入与增量
 
@@ -51,9 +51,9 @@
 
 保留设置对话框和本地导航入口、提示词/项目设置及原路由；补齐概览配置缺口与状态、修复入口、具体设置项及模型搜索/批量操作、域内锚点和完整外观预览。参考上游能力而不覆盖整个文件；未支持与已排除模块不显示假入口。PR2006额外导览、PR2027浮层改造独立处理。
 
-## 数据模型草案
+## 数据模型
 
-以下DDL描述当前数据契约，具体建表由scripts/upstream_catalog/store.py统一维护。所有时间保存含时区的ISO8601，展示用Asia/Taipei；历史不明时间为NULL，不用本次导入时间假充原发生时间。
+以下DDL描述当前数据契约，具体建表由scripts/upstream_catalog/store.py统一维护。新产生的时间保存含时区ISO8601，展示用Asia/Taipei；旧记录若只有日期则保留YYYY-MM-DD精度，不补造时分秒；完全不明时间为NULL，不用导入时间假充原发生时间。
 
 ```sql
 CREATE TABLE sources (
@@ -133,7 +133,7 @@ CREATE INDEX prs_status_weight ON prs(status,weight DESC,number);
 CREATE INDEX prs_group ON prs(dependency_group);
 ```
 
-连接启用外键和busy_timeout，写入使用短事务；重复导入按复合键upsert，不重复事件。用户选择表由用户动作维护，来源刷新不覆盖。schema版本用PRAGMA user_version；首次创建之前备份已有文件，升级失败保持原库。回滚使用一致备份，不用删除日用DSH数据。
+连接启用外键和busy_timeout，写入使用短事务；重复导入按复合键upsert，不重复事件。用户选择表由用户动作维护，来源刷新不覆盖。schema版本用PRAGMA user_version；初建时拒绝覆盖无关数据库，不自动升级未知版本；修改既有台账前使用一致备份，失败保留原库。回滚使用一致备份，不用删除日用DSH数据。
 
 ## 验证与交付条件
 
@@ -146,7 +146,7 @@ CREATE INDEX prs_group ON prs(dependency_group);
 
 ## 不做什么
 
-不删本地并行会话和项目卡，不自动合dev或push，不把尚未实现的SQLite/HTML称为已交付；管理页不直接执行代码合并或操作日用DSH。
+不删本地并行会话和项目卡，不自动合dev或push，管理页不直接执行代码合并或操作日用DSH。
 
 ## 变更
 

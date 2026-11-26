@@ -1,17 +1,12 @@
 # 技术设计
 
-产品行为、数据模型DDL及各字段备注、约束、迁移回滚、服务/页面边界统一维护在[设计草案](../../../docs/plans/2026-11-26-upstream-catalog.md)，避免两份模型不一致。
+产品行为与契约以[已定设计](../../../docs/plans/2026-11-26-upstream-catalog.md)为准。SQLite使用公共Git目录，来源、分析、用户选择、事件、批次和内部元数据六表；回环有限HTTP不接DSH团队库，不允许任意SQL或自动合并。下面字段与当前契约一致。
 
-插件应用基线chore/upstream-2130-complete@5c364e05，dev@7b9a4fa8只读。SQLite拟放公共Git目录，专用分支脚本统一访问；来源缓存、当前分析、用户选择和事件分表。仅回环HTTP有限API，不接DSH团队库，不允许任意SQL或自动代码合并。Markdown为审计导出。
+基线21556159，实际分支chore/upstream-2028-catalog，dev7b9a4fa8只读。插件e25f6caf与工具118245cf均独立复核通过，.29已装web/desktop；最终用户验收及日用加载另行判断。
 
-本任务七项规划画像均为true，复杂等级complex。用户2026-11-26已批准本方案进入实现；文字交互方案已确认，最终UI仍由实际验证和用户验收判断。
-
-## 数据模型
-
-### DDL
+## DDL
 
 ```sql
--- sources：来源游标
 CREATE TABLE sources (
   repo_id INTEGER PRIMARY KEY, -- 稳定GitHub仓库ID，迁名不变
   canonical_url TEXT NOT NULL, -- 当前来源地址
@@ -19,7 +14,6 @@ CREATE TABLE sources (
   checkpoint_sha TEXT, -- 最近完整对账的终点
   scanned_at TEXT -- 对账完成时间
 );
--- prs：PR及当前分析
 CREATE TABLE prs (
   repo_id INTEGER NOT NULL REFERENCES sources(repo_id), -- 来源
   number INTEGER NOT NULL, -- PR号
@@ -45,9 +39,9 @@ CREATE TABLE prs (
   analyzed_at TEXT, -- 最近实质评估时间
   updated_at TEXT NOT NULL, -- 当前记录变更时间
   revision INTEGER NOT NULL DEFAULT 1, -- 并发编辑版本
+  needs_review INTEGER NOT NULL DEFAULT 0, -- 本地变化后需重审
   PRIMARY KEY(repo_id,number)
 );
--- preferences：用户选择
 CREATE TABLE preferences (
   repo_id INTEGER NOT NULL, -- 来源
   pr_number INTEGER NOT NULL, -- PR号
@@ -58,7 +52,6 @@ CREATE TABLE preferences (
   PRIMARY KEY(repo_id,pr_number),
   FOREIGN KEY(repo_id,pr_number) REFERENCES prs(repo_id,number)
 );
--- sync_runs：增量批次
 CREATE TABLE sync_runs (
   id INTEGER PRIMARY KEY, -- 批次ID
   repo_id INTEGER NOT NULL REFERENCES sources(repo_id), -- 来源
@@ -68,10 +61,9 @@ CREATE TABLE sync_runs (
   local_sha TEXT NOT NULL, -- 本地比较基线
   started_at TEXT NOT NULL, -- 开始时间
   completed_at TEXT, -- 完成时间
-  outcome TEXT NOT NULL CHECK(outcome IN ('running','complete','failed')), -- 运行结果，不是采用状态
+  outcome TEXT NOT NULL CHECK(outcome IN ('running','complete','failed','needs_analysis')), -- 运行结果，不是采用状态
   error TEXT -- 失败原因
 );
--- events：变更历史
 CREATE TABLE events (
   id INTEGER PRIMARY KEY, -- 顺序事件ID
   repo_id INTEGER NOT NULL, -- 来源
@@ -84,15 +76,17 @@ CREATE TABLE events (
   run_id INTEGER REFERENCES sync_runs(id), -- 可选关联批次
   FOREIGN KEY(repo_id,pr_number) REFERENCES prs(repo_id,number)
 );
+CREATE TABLE metadata (
+  key TEXT PRIMARY KEY, -- 台账元数据名称
+  value TEXT NOT NULL -- JSON值：Markdown摘要、导出事件游标和按SHA缓存的直接提交
+);
 CREATE INDEX prs_status_weight ON prs(status,weight DESC,number);
 CREATE INDEX prs_group ON prs(dependency_group);
 ```
 
-### 表与字段说明
+## 字段字典
 
-DDL每列行内备注是字段含义；sources为来源游标，prs为复合主键PR及评估，preferences保留用户选择，sync_runs为批次，events为变更历史。外键约束来源及PR归属，status CHECK只允许四种状态，weight限1到10。首次导入前备份，升级使用user_version和事务，失败回滚；恢复使用一致性备份。
-
-| 表 | 字段 | 类型 | 业务说明 |
+| 表 | 字段 | 类型 | 含义/约束 |
 | --- | --- | --- | --- |
 | sources | repo_id | INTEGER | 稳定GitHub仓库ID，迁名不变 |
 | sources | canonical_url | TEXT | 当前来源地址 |
@@ -123,6 +117,7 @@ DDL每列行内备注是字段含义；sources为来源游标，prs为复合主�
 | prs | analyzed_at | TEXT | 最近实质评估时间 |
 | prs | updated_at | TEXT | 当前记录变更时间 |
 | prs | revision | INTEGER | 并发编辑版本 |
+| prs | needs_review | INTEGER | 本地变化后需重审 |
 | preferences | repo_id | INTEGER | 来源 |
 | preferences | pr_number | INTEGER | PR号 |
 | preferences | wanted | INTEGER | NULL待评估，0不需要，1需要 |
@@ -148,3 +143,5 @@ DDL每列行内备注是字段含义；sources为来源游标，prs为复合主�
 | events | actor | TEXT | 用户或同步执行者 |
 | events | recorded_at | TEXT | 发生/记录时间 |
 | events | run_id | INTEGER | 可选关联批次 |
+| metadata | key | TEXT | 台账元数据名称 |
+| metadata | value | TEXT | JSON值：Markdown摘要、导出事件游标和按SHA缓存的直接提交 |

@@ -1,9 +1,12 @@
-# 本轮规则与规划核查
+# 实施验证
 
-- sync-upstream quick_validate通过（使用临时uv依赖环境，未改项目依赖）。
-- 265唯一来源键、四状态统计94/5/109/57、114待处理、7个来源表排序通过；119历史队列无重复。
-- 191个本地Markdown链接存在，diff无空白错误。
-- 设计DDL只在内存SQLite执行验证，5表/外键与禁止部分采用约束通过；没有创建持久化台账、服务或HTML。
-- 插件源码没有diff，未构建/测试插件、未发版/安装；仍为已安装.28-upstream。
-- dev仍为7b9a4fa8，主工作区执行前后的tracked diff逐字节一致，未合回或push。
-- task处于planning，七项画像均true/complex，PRD/design/implement已写；尚无原型、尚未批准产品实现，未运行task start。
+- 台账18/18（ResourceWarning为错误），覆盖SQLite/Git/HTTP/导出，真实Git历史2216隔离增量检查通过。
+- 设置相关113/113；原生隔离DSH完整概览/故障/只读/焦点/草稿/模型确认/锚点/预览/关闭保存/窄屏通过，隔离重启确认.29及持久设置。
+- 全量3469/3475，6项均为已确认基线失败（i18n2、sections1、style-debt2、switch-keeps-input1）；完整冒烟56/57，既有原地压缩失败保留。
+- lint 0 errors、client构建及生成一致性、188API登记、技能quick_validate通过。实际功能及数据流验证不以静态检查代替。
+- 独立插件e25f6caf与工具c0cd43bb/118245cf复核通过；18项工具测试由独立测试者在最终工具候选重跑。
+- 正式265唯一来源/四状态95/5/108/57、113待处理，用户选择2039/2042不需要、2028需要；与根唯一来源行一致。
+- .29 web/desktop各177个文件与包一致。日用DSH未重启，当前运行加载未核实。
+- 本次测试进程/浏览器/临时克隆清理，测试端口释放；4179为保留的交付服务。dev提交及执行前tracked diff保持原样。
+
+[逐项行为和证据](../../../docs/reviews/2026-11-26-upstream-2028-implementation.md)，[结构化快照](../../../docs/reviews/evidence/2026-11-26-upstream-2028-implementation.json)。实现/检查/独立复核完成；用户最终验收另行判断。
