@@ -1,4 +1,4 @@
-import { createElement as h, useEffect, useId, useRef, useState } from 'react'
+import { createElement as h, useEffect, useRef } from 'react'
 import { TaskContent } from './task-content.js'
 import { hostText, t } from './i18n.js'
 
@@ -87,34 +87,36 @@ export function unsentPlanNotes(plans, rounds, entries, failures, roster) {
   })
 }
 
+const nodeStatuses = { verified: 'Done', active: 'In progress', ready: 'Ready', waiting: 'Waiting for dependencies', assigned: 'Assigned', delivered: 'Delivered', review: 'Awaiting review', blocked: 'Blocked', failed: 'Failed', omitted: 'Cancelled' }
+
 export function TaskPlans({ plans = [], roster, version, onSelect }) {
-  const [mode, setMode] = useState('full')
-  const id = useId()
   const panel = useRef(null)
   const ordered = [...plans].sort((a, b) => a.version - b.version)
-  const current = ordered.find(plan => plan.version === version)
-  const previous = ordered.filter(plan => plan.version < version).at(-1)
-  const activeMode = previous ? mode : 'full'
-  useEffect(() => { if (current) panel.current?.scrollIntoView({ block: 'nearest' }) }, [version])
-  if (!plans.length) return null
-  return h('div', { className: 'bt-task-plans', ref: panel },
+  const current = ordered.find(plan => plan.version === version) ?? ordered.at(-1)
+  const previous = ordered.filter(plan => plan.version < current?.version).at(-1)
+  useEffect(() => { if (version) panel.current?.scrollIntoView({ block: 'nearest' }) }, [version])
+  if (!current) return null
+  const nodes = current.nodes ?? []
+  const total = nodes.filter(node => node.status !== 'omitted').length
+  const completed = nodes.filter(node => node.status === 'verified').length
+  const name = id => roster?.byId?.[id]?.name ?? t('Not recorded')
+  return h('section', { className: 'bt-task-plans', ref: panel, 'aria-label': t('Execution plans') },
     h('div', { className: 'bt-task-plan-versions' }, h('strong', null, t('Execution plans')),
-      ordered.map(plan => h('button', { key: plan.version, type: 'button', className: 'bt-mini',
-        'aria-pressed': version === plan.version, onClick: () => onSelect(plan.version) },
-      t('Plan v{version}', { version: plan.version }))),
-      current && h('button', { type: 'button', className: 'bt-mini', onClick: () => onSelect(null) }, t('Close'))),
-    current && h('p', { className: 'bt-handoff-context' }, t('Node numbers identify work items within this plan version.')),
-    current && h(TaskContent, { key: current.version + activeMode, panelId: id, selectedId: id + activeMode,
-      header: h('div', { className: 'bt-task-content-modes', role: 'tablist', 'aria-label': t('Execution plans') },
-        ['full', 'diff'].map(item => h('button', { key: item, type: 'button', role: 'tab', id: id + item,
-          'aria-controls': id, 'aria-selected': activeMode === item, disabled: item === 'diff' && !previous,
-          onClick: () => setMode(item), onKeyDown: event => {
-            if (!previous || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-            event.preventDefault()
-            const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : item === 'full' ? 1 : 0
-            event.currentTarget.parentElement.children[next].focus()
-            setMode(next ? 'diff' : 'full')
-          } }, item === 'full' ? t('Full plan') :
-            previous ? t('Compare with v{version}', { version: previous.version }) : t('First plan version')))),
-      text: activeMode === 'diff' ? planDifferenceText(previous, current, roster) : fullPlanText(current, roster) }))
+      h('select', { className: 'bt-select', value: current.version, 'aria-label': t('Plan version'), onChange: event => onSelect(Number(event.target.value)) },
+        ordered.map(plan => h('option', { key: plan.version, value: plan.version }, t('Plan v{version}', { version: plan.version })))),
+      h('span', { role: 'status' }, t('{completed} of {total} completed', { completed, total }))),
+    h('ol', { className: 'bt-plan-checklist' }, nodes.map(node => h('li', { key: node.itemId ?? node.no, 'data-status': node.status },
+      h('details', null,
+        h('summary', null, h('input', { type: 'checkbox', checked: node.status === 'verified', disabled: true, 'aria-label': node.title }),
+          h('span', { className: 'bt-plan-item-title' }, node.title),
+          h('span', { className: 'bt-plan-item-meta' }, name(node.ownerId), ' · ', t(nodeStatuses[node.status] ?? 'Not started'))),
+        h('div', { className: 'bt-plan-item-body' },
+          node.dependsOn?.length > 0 && h('p', null, t('Dependencies'), ': ', node.dependsOn.map(no => nodes.find(item => item.no === no)?.title ?? no).join(', ')),
+          node.reuseRound && h('p', null, t('Completed in an earlier plan')),
+          h(TaskContent, { text: ['### ' + t('Instructions'), node.instructions, '### ' + t('Deliverable'), node.deliverable,
+            '### ' + t('Acceptance criteria'), node.acceptance].filter(Boolean).join('\n\n') })))))),
+    h('details', { className: 'bt-plan-metadata' }, h('summary', null, t('Plan details')),
+      h(TaskContent, { text: fullPlanText(current, roster) })),
+    previous && h('details', { className: 'bt-plan-metadata' }, h('summary', null, t('Compare with v{version}', { version: previous.version })),
+      h(TaskContent, { text: planDifferenceText(previous, current, roster) })))
 }

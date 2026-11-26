@@ -21,6 +21,7 @@ export const planParameters = {
   artifact: { type: 'string', description: 'Verified immutable commit or identifiable deliverable for downstream workers.' },
   nodes: { type: 'array', description: 'Complete plan in topological order. Node numbers are their one-based positions. Only explicit dependsOn edges constrain parallel work.',
     items: { type: 'object', additionalProperties: false, properties: {
+      itemId: { type: 'string', description: 'Preserve this stable work item ID from read when revising or reordering a plan. Omit for new work.' },
       ...Object.fromEntries(['title', 'ownerId', 'instructions', 'deliverable', 'acceptance'].map(key => [key, { type: 'string', required: true }])),
       dependsOn: { type: 'array', items: { type: 'integer' }, description: 'Earlier node numbers whose approved artifacts this node needs.' },
       ...Object.fromEntries(contextFields.map(key => [key, { type: 'string' }])),
@@ -33,6 +34,49 @@ export const planParameters = {
       candidateCommit: { type: 'string', description: 'Only for testing an existing candidate from an older round without a verified code receipt. Pin its full commit in the revised plan.' },
       reuseRound: { type: 'integer', description: 'Revision only: reuse the identified, already approved output from this card.' },
     } } },
+}
+
+export const planItemId = (card, plan, node) => card.planItemLinks?.[plan.version + ':' + node.no] ?? plan.version + ':' + node.no
+
+function sameWork(a, b) {
+  const execution = node => Object.fromEntries(Object.entries(node).filter(([key]) => !['no', 'title', 'dependsOn', 'reuseRound', 'itemId', 'ownerId'].includes(key)))
+  return isDeepStrictEqual(execution(a), execution(b))
+}
+
+function previousPlanNode(card, latest, raw) {
+  if (!latest) return
+  if (raw.itemId) return latest.nodes.find(node => planItemId(card, latest, node) === raw.itemId)
+  const candidate = node => Object.fromEntries(Object.entries(node).filter(([key]) => !['no', 'title', 'dependsOn', 'reuseRound', 'itemId', 'ownerId', 'fixedOwner', 'independentReview'].includes(key)))
+  const matches = latest.nodes.filter(node => node.title === raw.title && isDeepStrictEqual(candidate(node), candidate(raw)))
+  if (matches.length === 1) return matches[0]
+  const legacyIntegration = latest.nodes.filter(node => raw.mergeToDev && node.mergeToDev && node.title === raw.title && node.ownerId === raw.ownerId)
+  return legacyIntegration.length === 1 ? legacyIntegration[0] : undefined
+}
+
+// Identity survives renaming and reordering. Only an unchanged execution contract
+// and the same approved inputs allow old evidence or a live execution to carry.
+function inheritPlanItems(card, latest, nodes, rawNodes, version) {
+  const links = { ...card.planItemLinks }
+  const carried = { ...card.planCarriedRounds }
+  const used = new Set()
+  for (const node of nodes) {
+    const raw = rawNodes[node.no - 1]
+    const previous = previousPlanNode(card, latest, raw)
+    if (raw.itemId && !previous) throw new Error('Use a work item ID from the current plan.')
+    const itemId = previous ? planItemId(card, latest, previous) : version + ':' + node.no
+    if (used.has(itemId)) throw new Error('A work item may appear only once in a plan.')
+    used.add(itemId)
+    if (previous) links[version + ':' + node.no] = itemId
+    if (!previous || node.reuseRound || !sameWork(previous, node) || node.contextGap) continue
+    const oldView = nodeViews(card, latest).find(old => old.no === previous.no)
+    const round = card.rounds[oldView?.round - 1]
+    const inputRounds = node.dependsOn.map(no => nodes[no - 1].reuseRound).sort((a, b) => a - b)
+    if (!round?.planNode || !isDeepStrictEqual(round.planNode.inputs.map(input => input.round).sort((a, b) => a - b), inputRounds)) continue
+    if (round.planNode.acceptedAt) node.reuseRound = oldView.round
+    else if (node.ownerId === round.ownerId && !(card.humanReview?.status === 'returned' && card.humanReview.round === oldView.round) && !round.planNode.block && !round.planNode.supersededBy && !round.failedAt)
+      carried[version + ':' + node.no] = oldView.round
+  }
+  return { links, carried }
 }
 
 // Files and directory subtrees share the same repository-relative spelling.
@@ -102,7 +146,7 @@ export function savePlan(card, args, room, actor) {
         dependsOn.some(n => !Number.isSafeInteger(n) || n < 1 || n >= no)) throw new Error('Each dependency must name a distinct earlier node in this plan.')
     const node = { no, ownerId: raw.ownerId, dependsOn: [...dependsOn].sort((a, b) => a - b) }
     for (const key of ['title', 'instructions', 'deliverable', 'acceptance']) node[key] = field(raw[key], key, key === 'title' ? 200 : 4000)
-    const prior = latest?.nodes[i]
+    const prior = previousPlanNode(card, latest, raw)
     if (prior?.fixedOwner && raw.ownerId !== prior.ownerId) throw new Error('This node requires its designated owner.')
     for (const key of ['fixedOwner', 'independentReview']) {
       if (prior?.[key] && raw[key] === false) throw new Error('A plan revision must preserve the existing node constraints.')
@@ -131,10 +175,14 @@ export function savePlan(card, args, room, actor) {
     }
     return node
   })
-  if (latest?.nodes.slice(nodes.length).some(node => (node.fixedOwner || node.independentReview) && !(card.finishAfterIntegration?.version === latest.version && node.no > card.finishAfterIntegration.node)))
+  const itemLinks = inheritPlanItems(card, latest, nodes, args.nodes, v)
+  if (latest?.nodes.some(old => (old.fixedOwner || old.independentReview) &&
+      !nodes.some(node => (itemLinks.links[v + ':' + node.no] ?? v + ':' + node.no) === planItemId(card, latest, old))))
     throw new Error('A plan revision must preserve the existing constrained nodes.')
   for (const node of nodes.filter(n => n.reuseRound)) {
     const reused = card.rounds[node.reuseRound - 1]
+    const original = card.plans.find(plan => plan.version === reused.planNode.version)?.nodes[reused.planNode.node - 1]
+    if (!original || !sameWork(original, node)) throw new Error('Reused output must satisfy the same execution requirements.')
     if (node.fixedOwner && reused.ownerId !== node.ownerId) throw new Error('This node requires its designated owner.')
     if (node.independentReview && reused.planNode.inputs.some(input => card.rounds[input.round - 1].ownerId === reused.ownerId))
       throw new Error('The review must be independent of upstream producers.')
@@ -167,12 +215,14 @@ export function savePlan(card, args, room, actor) {
   const at = Date.now()
   if (latest) for (const round of card.rounds) {
     const b = round.planNode
-    if (b?.version === latest.version && b.block && !b.block.resolvedAt) {
+    if (b && nodeViews(card, latest).some(node => card.rounds[node.round - 1] === round) && b.block && !b.block.resolvedAt) {
       b.block.resolvedAt = at
       b.block.decisions.push({ action: 'replan', at, by: actor, reason })
     }
   }
   if (first && !card.plannedWorkspace) card.plannedWorkspace = checkoutOf(first)
+  card.planItemLinks = itemLinks.links
+  card.planCarriedRounds = itemLinks.carried
   ;(card.plans ??= []).push({ version: v, at, by: actor, ...(gitNodes.length && { workspacePolicy: policy }), ...(reason ? { reason } : {}), nodes })
 }
 
@@ -181,7 +231,7 @@ export function nodeViews(card, plan) {
   card.rounds.forEach((round, i) => {
     if (round.planNode?.version === plan.version) dispatched.set(round.planNode.node, i + 1)
   })
-  const numberOf = node => node.reuseRound ?? dispatched.get(node.no)
+  const numberOf = node => node.reuseRound ?? dispatched.get(node.no) ?? card.planCarriedRounds?.[plan.version + ':' + node.no]
   return plan.nodes.map(node => {
     const number = numberOf(node)
     const round = card.rounds[number - 1]
@@ -190,8 +240,15 @@ export function nodeViews(card, plan) {
     const needsReceipt = card.finishAfterIntegration?.version === plan.version && node.no === card.finishAfterIntegration.node && card.finishAfterIntegration.needsReceiptRound
     const status = omitted ? 'omitted' : needsReceipt ? 'blocked' : round?.planNode?.acceptedAt ? 'verified' : projectStatus(round) ?? (node.contextGap ? 'blocked' : waiting.length ? 'waiting' : 'ready')
     const workspace = round ? round.workspace : plan === card.plans.at(-1) ? taskWorkspaceFor(card, node) : undefined
-    return { ...node, ...workspace, ownerId: round?.ownerId ?? node.ownerId, status, round: number || undefined, waiting }
+    return { ...node, itemId: planItemId(card, plan, node), ...workspace, ownerId: round?.ownerId ?? node.ownerId, status, round: number || undefined, waiting }
   })
+}
+
+export function executionNode(card, round) {
+  const binding = round?.planNode
+  if (!binding) return
+  return nodeViews(card, card.plans.at(-1)).find(node => card.rounds[node.round - 1] === round)
+    ?? card.plans.find(plan => plan.version === binding.version)?.nodes[binding.node - 1]
 }
 
 // Already dispatched rounds retain their snapshot. Pending Git steps share the task checkout.
@@ -288,7 +345,9 @@ export function dispatchNode(card, args, room, actor, assignment) {
 export function approveRound(card, args, actor) {
   const round = card.rounds[args.round - 1]
   const binding = round?.planNode
-  if (!binding || binding.supersededBy || binding.block || binding.version !== args.version || binding.node !== args.node || binding.version !== card.plans.at(-1).version || !round.result) throw new Error('Approve a submitted round of this node in the current plan.')
+  const plan = card.plans.at(-1)
+  const selected = nodeViews(card, plan).find(node => node.no === args.node && node.round === args.round)
+  if (!binding || binding.supersededBy || binding.block || args.version !== plan.version || !selected || !round.result) throw new Error('Approve a submitted round of this node in the current plan.')
   const artifact = field(args.artifact, 'the verified artifact reference', 2000)
   if (binding.acceptedAt) {
     if (binding.artifact !== artifact) throw new Error('That round already has a different approved artifact.')
@@ -299,7 +358,7 @@ export function approveRound(card, args, actor) {
 
 export function nodeHandoff(card, round) {
   const binding = round.planNode
-  const node = { ...card.plans.at(-1).nodes[binding.node - 1], ...round.workspace }
+  const node = { ...executionNode(card, round), ...round.workspace }
   const old = card.rounds[binding.previousRound - 1]
   const decision = old?.planNode.block.decisions.at(-1)
   return [
@@ -311,7 +370,7 @@ export function nodeHandoff(card, round) {
       ? ['Continue with the existing uncommitted changes in this checkout. Inspect the diff against the revised requirement and preserve the previous work.'] : []),
     ...(node.independentReview && !node.mergeToDev && node.writePaths?.length === 0 && binding.inputs.some(i => card.rounds[i.round - 1].mainReview?.commit)
       ? ['Validate the approved feature candidate against the acceptance criteria. Choose only checks needed to answer them; label extra coverage as a test method. Use project_task checkpoint with checking when a check begins and passedCheck plus evidence when it passes. Reuse existing results and artifact paths. Set checksComplete on the final passing check. After cleanup is verified, submit with cleanupEvidence only. The host creates the receipt; no separate report file or code commit is required.'] : []),
-    'Plan v' + binding.version + ' · Node ' + node.no + ': ' + node.title,
+    'Plan v' + card.plans.at(-1).version + ' · Node ' + node.no + ': ' + node.title,
     'Deliverable: ' + node.deliverable, 'Node acceptance: ' + node.acceptance,
     ...contextFields.filter(k => node[k] && !(decision && ['workDir', 'workRef'].includes(k))).map(k => k + ': ' + node[k]),
     ...(node.writePaths || round.workspace ? ['Before starting, use working_directory to enter the assigned working folder above. Confirm the branch and run project_task start before editing.'] : []),

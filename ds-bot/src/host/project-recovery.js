@@ -23,7 +23,12 @@ export const recoveryParameters = Object.fromEntries(Object.entries({
 
 export function currentBinding(card, round) {
   const b = round?.planNode
-  return Boolean(b && !card.completedWithTaskId && b.version === card.plans?.at(-1)?.version && !b.supersededBy)
+  return Boolean(b && !card.completedWithTaskId && !b.supersededBy && currentPlanNode(card, round))
+}
+
+export function currentPlanNode(card, round) {
+  const plan = card.plans?.at(-1)
+  return plan && nodeViews(card, plan).find(node => card.rounds[node.round - 1] === round)
 }
 
 export function blockRound(round, { at = Date.now(), cause, by, reason, waitingFor, evidence }) {
@@ -137,7 +142,8 @@ export async function inspectReplannedWriter(rt, card, node) {
 function checkTarget(card, args) {
   const round = Number.isSafeInteger(args.round) && card?.rounds[args.round - 1]
   const b = round?.planNode
-  if (!b?.block || b.node !== args.node || b.version !== args.version || b.version !== card.plans.at(-1).version) throw new Error('Identify the blocked node in the current plan and its exact round.')
+  const selected = currentPlanNode(card, round) ?? (b?.supersededBy && nodeViews(card, card.plans.at(-1)).find(node => node.round === b.supersededBy))
+  if (!b?.block || selected?.no !== args.node || args.version !== card.plans.at(-1).version) throw new Error('Identify the blocked node in the current plan and its exact round.')
   return round
 }
 
@@ -151,7 +157,7 @@ export async function inspectRecovery(rt, room, card, args, actor) {
   const b = round.planNode
   if (b.supersededBy) throw new Error('This round has already been replaced.')
   checkOwner(room, actor, args.ownerId)
-  const node = card.plans.at(-1).nodes[b.node - 1]
+  const node = currentPlanNode(card, round)
   requirements(card, node, round, args.ownerId)
   const oldSession = b.session ?? round.executionSession ?? rt.chatOf(round.ownerId)
   const nextSession = await rt.memberSession(room, args.ownerId)
@@ -163,7 +169,7 @@ export async function inspectRecovery(rt, room, card, args, actor) {
   const stopped = () => idleWriter(rt, old, oldSession, round.dispatchId)
   const artifacts = round.planNode.inputs.map(input => card.rounds[input.round - 1].planNode.artifact)
   const commits = await artifactCommits(targetTree, [...artifacts, b.checkpointArtifact])
-  const facts = { taskId: card.id, version: b.version, node: b.node, round: args.round, originalOwner: round.ownerId,
+  const facts = { taskId: card.id, version: card.plans.at(-1).version, node: node.no, round: args.round, originalOwner: round.ownerId,
     ownerId: args.ownerId, writerStopped: stopped(), sourceTree, targetTree,
     artifacts, commits,
     completed: b.completed, remaining: b.remaining, checkpointArtifact: b.checkpointArtifact }
@@ -174,7 +180,7 @@ export async function inspectRecovery(rt, room, card, args, actor) {
 
 export async function checkProjectStart(rt, card, round, session) {
   const decision = recoveryOf(card, round)
-  const node = { ...card.plans.at(-1).nodes[round.planNode.node - 1], ...round.workspace }
+  const node = { ...currentPlanNode(card, round), ...round.workspace }
   if (!decision && !node.workDir && !node.workRef && !node.repository) return
   const agent = await rt.resolveAgent(session)
   const dir = rt.sessionFolder(agent.session)
@@ -229,7 +235,7 @@ export function recoverNode(room, card, args, actor, observation, assignment) {
   const facts = observation?.facts
   if (!facts?.writerStopped || args.inspection !== facts.inspection) throw new Error('Inspect the stopped execution and current worktrees before recovery.')
   const { sourceTree, targetTree } = facts
-  const step = card.plans.at(-1).nodes[b.node - 1]
+  const step = currentPlanNode(card, old)
   const checkout = taskWorkspaceFor(card, step) ?? old.workspace
   const node = { ...step, ...checkout }
   checkOwner(room, actor, ownerId)
@@ -249,7 +255,7 @@ export function recoverNode(room, card, args, actor, observation, assignment) {
   // A second interruption before the successor's first checkpoint must still
   // carry the last completed checks and the reviewed recovery artifact.
   replacement.planNode = {
-    version: b.version, node: b.node, previousRound: args.round, inputs: structuredClone(b.inputs),
+    version: card.plans.at(-1).version, node: step.no, previousRound: args.round, inputs: step.dependsOn.map(no => ({ node: no, round: nodeViews(card, card.plans.at(-1)).find(node => node.no === no).round })),
     ...(b.completed && { completed: b.completed }), remaining, checkpointArtifact: artifact,
   }
   const number = card.rounds.push(replacement)

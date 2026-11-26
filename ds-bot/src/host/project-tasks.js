@@ -1,3 +1,4 @@
+import { setProjectQuestions, publicProjectQuestions, questionBlocksNode, openProjectQuestions } from './project-questions.js'
 import { snapshotResultFiles } from './project-result-files.js'
 import { beginValidation, checkpointValidation, validationReceipt } from './project-validation.js'
 import { taskError, editableProjectStatuses } from '../shared/task-settings.js'
@@ -9,7 +10,7 @@ import { workspacePolicyOf } from '../shared/project-workspace.js'
 import { isDeepStrictEqual } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { approveRound, completeRelatedCards, finishSubmittedPlan, requestAcceptance, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
+import { executionNode, approveRound, completeRelatedCards, finishSubmittedPlan, requestAcceptance, checkOwner, dispatchNode, field, nodeHandoff, nodeViews, plannedSummary, planParameters, savePlan, taskCheckout, taskWorkspaceFor } from './project-plan.js'
 import { blockRound, checkProjectStart, currentBinding, inspectReplannedWriter, inspectRecovery, recoverNode, recoveryParameters } from './project-recovery.js'
 import { codeDelivery, projectStatus, taskPhase, taskStatusBasis } from './project-status.js'
 import { scopeFields, scopeOf, taskRoom } from './task-routing.js'
@@ -70,7 +71,7 @@ async function acceptWork(rt, room, intakeId, reason, title, delegatedSeq, docum
         const updated = { ...existing, ...(updateDocument ? document : {}),
           ...(unplanned && title && { title }), ...(delegatedSeq && { delegatedSeq }) }
         if (updateDocument) reviseRequirement(room, updated, projectSources(rt, room, existing.intakes, existing.id, delegatedSeq), document.goal, existing)
-        delete updated.clarification
+        if (!openProjectQuestions(updated).some(question => question.id !== 'legacy')) delete updated.clarification
         room.projectCards[existing.id] = updated
         return () => { room.projectCards[existing.id] = existing }
       }
@@ -227,7 +228,7 @@ export function projectCardDetail(rt, room, card, taskId = card.id, textOnly = f
   if (textOnly) return text
   const checkout = taskCheckout(card)
   return {
-    ...projectCardSummary(card, taskId), requirementHistory: requirementHistory(room, card, sources), supportsHumanAcceptance: Boolean(card.plans), ...(checkout && { taskWorkspace: checkout }), ...(card.workspace && { selectedWorkspace: card.workspace }), ...text, ...(card.humanReview ? { humanReview: card.humanReview } : {}), rounds: card.rounds ?? [],
+    ...projectCardSummary(card, taskId), questions: publicProjectQuestions(card), requirementHistory: requirementHistory(room, card, sources), supportsHumanAcceptance: Boolean(card.plans), ...(checkout && { taskWorkspace: checkout }), ...(card.workspace && { selectedWorkspace: card.workspace }), ...text, ...(card.humanReview ? { humanReview: card.humanReview } : {}), rounds: card.rounds ?? [],
     ...(card.plans?.length ? { plans: card.plans.map(plan => ({ ...plan, nodes: nodeViews(card, plan) })) } : {}),
     ...(card.previousReviews?.length ? { previousReviews: card.previousReviews } : {}),
     requirements: sources.map(({ seq, text, images, files }) => ({ seq, text, images, files })),
@@ -296,7 +297,7 @@ export async function updateProjectTaskText(rt, { roomId, taskId, field: key, pr
     const updatedAt = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)
     if (card.plans?.length) changes.fieldEditTimes = { ...card.fieldEditTimes, [key]: updatedAt }
     room.projectCards[taskId] = { ...card, ...changes, updatedAt }
-    delete room.projectCards[taskId].clarification
+    if (!openProjectQuestions(room.projectCards[taskId]).some(question => question.id !== 'legacy')) delete room.projectCards[taskId].clarification
     return () => { room.projectCards[taskId] = card }
   } })
   const room = targetRoom()
@@ -338,9 +339,10 @@ export function developmentHandoff(rt, session, room, card, owner, number) {
 export function install(rt) {
   rt.teamTools.push(defineTool({
     name: 'project_task',
-    description: 'Manage DS Bot project cards. Use scan to list unassigned cards with actual reasons and retryability. The group admin uses retry_handoff with an existing taskId to normalize title, plan and acceptance and safely retry delivery to the current assistant, including from a recovery group turn. Do not use attach to edit card content. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the plan, dispatch, recovery and review. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. After revising requirements or acceptance, dispatch ready nodes in the current plan. Dispatch checks whether the same developer can reclaim a stopped historical writer’s clean checkout at its original start commit. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Submitting the final outstanding delivery finishes the task automatically or opens human acceptance if required. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
+    description: 'Manage DS Bot project cards. Use scan to list unassigned cards with actual reasons and retryability. The group admin uses retry_handoff with an existing taskId to normalize title, plan and acceptance and safely retry delivery to the current assistant, including from a recovery group turn. Do not use attach to edit card content. When the room has a task assistant, the admin uses delegate with plan and acceptance to hand off a user intake. The assistant owns the execution checklist, dispatch, recovery and review. Ground business rules in the admin and technical decisions in the responsible specialist; preserve itemId across plan revisions and reuse verified results. For human input use focused questions with options or free text and the affected nodes, one decision per question. The admin uses report with message for results or questions returned by the assistant. For Git work the appointed task assistant (or the Main Bot if unassigned) in its group chat calls branches to inventory local branches, describe_branch to record its purpose, prepare_worktree to create or reuse one, then plan one task workspaceMode, workRef and workspaceReason with writePaths per Git step. Manager: use context to resolve references against earlier public group messages and recorded classifications. List members, plan a complete DAG for an intake or attach, clarify or classify as chat. Use clarify with a specific question. Unclassified intakes wait for an answer without creating a card. For an explicit user request to relate A to B, use relate with taskId A and parentTaskId B. The current owner may also clarify their assigned card. On blocked rounds clarify coordinates on the card between the assistant and admin. Use block for an execution impediment, inspect_recovery or plan for recovery, and give the user progress updates. Only the group admin can mark a blocked card as needing human input with humanInput and a specific user-only question. After revising requirements or acceptance, dispatch ready nodes in the current plan. Dispatch checks whether the same developer can reclaim a stopped historical writer’s clean checkout at its original start commit. Plan creates zero rounds. Dispatch each ready node with its version and node, then message_bot with the returned dispatchRound. Owners start and submit that round. Submitting the final outstanding delivery finishes the task automatically or opens human acceptance if required. Approve its artifact before dispatching dependents. Independent nodes run concurrently. Owners checkpoint or block their dispatched round. For a blocked node the manager can wait, revise the plan, or inspect_recovery for a candidate. Read its artifact, original writer and worktree evidence. Pass inspection, expectedCommit, remaining checks, eligibility and worktreeReview to resume or takeover, then send the returned dispatchRound.',
     parameters: {
       acceptWork: { type: 'boolean', description: 'With reply, create the formal task card before announcing acceptance of actual work, including read-only investigation.' },
+      questions: { type: 'array', description: 'With clarify, one focused human question per entry. Use options for choices, omit them for free text. nodes names only the current plan nodes blocked by the answer; omit for a task-wide decision. Existing answers stay on the card.', items: { type: 'object', additionalProperties: false, properties: { question: { type: 'string', required: true }, detail: { type: 'string' }, options: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { label: { type: 'string', required: true }, description: { type: 'string' } } } }, nodes: { type: 'array', items: { type: 'integer' } } } } },
       humanInput: { type: 'string', enum: ['requirement', 'external_permission'], description: 'Only the group admin may set this with clarify on a blocked execution, for a missing user requirement or permission outside the team. Ordinary branch, review, testing and recovery decisions belong to the assistant and admin.' },
       followsTaskId: { type: 'string', description: 'For plan: the existing task whose delivery this task continues.' },
       classificationReason: { type: 'string', description: 'For new work accepted by reply, specify the distinct deliverable and how its completion can be verified.' },
@@ -595,7 +597,7 @@ export function install(rt) {
         }
       }
       if (!run?.validation && !testNode?.mergeToDev && !scope && owner && args.action === 'submit' && run.startedAt && selectedForReview(card, run)) {
-        const node = run.planNode && card.plans?.at(-1)?.nodes[run.planNode.node - 1]
+        const node = executionNode(card, run)
         if (args.commit || args.deliveryKind === 'code') {
           if (run.mainReview && args.commit?.toLowerCase() !== run.mainReview.commit) throw new Error('This round already has a different verified delivery commit.')
           review = run.mainReview ?? await verifyReviewCommit(rt, room, args.repository, args.commit)
@@ -689,13 +691,13 @@ async function notifyProjectChange(rt, room, args, actor, source, result) {
       'Merged into dev, validating. Candidate ' + round.mergeReceipt.commit + ', dev merge ' + round.mergeReceipt.mergeCommit +
       '. The tester will submit post-merge checks. Wait for that report before approving.')
   } else if (args.action === 'submit' && round?.planNode && round.planNode.version < card.plans.at(-1).version &&
-      projectCardSummary(card).status !== 'done' && !round.ownershipTransfer) {
+      projectCardSummary(card).status !== 'done' && !round.ownershipTransfer && !currentBinding(card, round)) {
     await projectNotice(rt, room, assistant ?? room.admin, scope, round.dispatchId + ':historical-submit',
       'A previous plan execution has returned. Read the current plan and dispatch its ready work. The historical receipt does not approve a current node.')
   } else if (result.coordination) {
     const { toId, instruction } = result.coordination
     if (toId && toId !== actor) await projectNotice(rt, room, toId, scope,
-      'technical-block:' + card.id + ':' + actor + ':' + (source?.exchangeId ?? '') + ':' + createHash('sha256').update(args.reason).digest('hex'),
+      'technical-block:' + card.id + ':' + actor + ':' + (source?.exchangeId ?? '') + ':' + createHash('sha256').update(args.reason ?? args.questions?.[0]?.question ?? '').digest('hex'),
       instruction + '\nIssue or decision: ' + args.reason, {}, args.reason)
   } else if (args.action === 'submit' && ['done', 'human_review'].includes(result.status) && !result.lateReceiptRound) {
     await projectNotice(rt, room, room.admin, scope, card.id + ':delivery:' + round.planNode.version,
@@ -705,13 +707,13 @@ async function notifyProjectChange(rt, room, args, actor, source, result) {
     const status = args.action === 'submit' ? 'submitted evidence for review' : 'reported a blocker'
     const next = args.action === 'submit' && round.planNode
       ? 'Verify the evidence. For approve, or request_acceptance when the user requested final sign-off, supply the verified artifact and ' +
-        JSON.stringify({ taskId: card.id, version: round.planNode.version, node: round.planNode.node, round: args.round }) + '. Then dispatch any ready successors.'
+        JSON.stringify({ taskId: card.id, version: card.plans.at(-1).version, node: nodeViews(card, card.plans.at(-1)).find(node => node.round === args.round)?.no, round: args.round }) + '. Then dispatch any ready successors.'
       : 'Read the card and the evidence. Review or recover the node and dispatch ready successors.'
     await projectNotice(rt, room, assistant, scope, round.dispatchId + ':' + args.action,
       'The owner ' + status + ' on round ' + args.round + '. ' + next + (round.planNode?.feedback ? '\nReturn this failed test to the developer on the same card. Dispatch a repair with these changes, then retest the new candidate: ' + round.planNode.feedback : ''))
   } else if (args.action === 'clarify' && actor !== room.admin) {
     await projectNotice(rt, room, room.admin, scope, scopeOf(scope) + ':clarify:' + (source?.exchangeId ?? ''),
-      'The project needs a user decision. Use project_task report to ask this question in the group: ' + args.reason, {}, args.reason)
+      'The project has saved focused question cards. Direct the user to the question above the group composer, then coordinate the answer on this task. Question: ' + (args.reason ?? args.questions?.[0]?.question), {}, args.reason)
   } else if (card && (args.action === 'approve' && result.status === 'done' || args.action === 'request_acceptance')) {
     await projectNotice(rt, room, room.admin, scope, card.id + ':' + args.action + ':' + args.round,
       (result.status === 'done' ? 'The last node is approved. The task is complete.' : 'The task is ready for the human sign-off requested by the user.') +
@@ -752,7 +754,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       source?.taskId === card.id && (round.planNode ? currentBinding(card, round) : i === card.rounds.length - 1))
     if ((source?.intakeId && linked !== card) || (!manager && !owner)) throw new Error('Use the manager chat or the assigned execution to request clarification.')
     if (projectCardSummary(card).status === 'done') throw new Error('This task is complete.')
-    const reason = field(args.reason, 'the question or coordination request', 2000)
+    const reason = field(args.reason ?? args.questions?.[0]?.question, 'the question or coordination request', 2000)
     if (hasBlockedExecution(card) && !(rt.isAdminOf(room, actor) && ['requirement', 'external_permission'].includes(args.humanInput))) {
       const assistant = assistantId(room)
       const toId = actor === assistant ? room.admin : assistant ?? room.admin
@@ -761,7 +763,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         : 'Read the existing card and act on this technical blocker: inspect the candidate, revise the plan or dispatch independent verification. Coordinate with the admin only if a distinct decision is needed. Record a concrete next action or recovery condition.'
       return JSON.stringify({ ...projectCardSummary(card), coordination: { toId, instruction } })
     }
-    card.clarification = reason
+    setProjectQuestions(rt, room, card, { ...args, reason }, actor)
   } else if (['wait', 'resume', 'takeover'].includes(args.action)) {
     if (!manager || !card || (source?.intakeId && !card.intakes.includes(source.intakeId))) throw new Error('Use the manager chat for this card.')
     dispatchRound = recoverNode(room, card, args, actor, observation, assignment)
@@ -794,17 +796,21 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (!card.plans?.length) {
         card.title = title
         card.acceptance = acceptance
-        delete card.clarification
+        if (!openProjectQuestions(card).some(question => question.id !== 'legacy')) delete card.clarification
       }
       if (args.followsTaskId !== undefined) setPredecessor(room, card, args.followsTaskId)
       card.humanAcceptanceRequired ??= Boolean(card.humanReview)
       card.classificationReason ??= args.classificationReason || acceptance
       savePlan(card, args, room, actor)
+      const currentIds = new Set(nodeViews(card, card.plans.at(-1)).map(node => node.itemId))
+      for (const question of card.questions ?? []) if (!question.answer && question.itemIds?.length && !question.itemIds.some(id => currentIds.has(id))) question.withdrawnAt = Date.now()
+      if (card.questions?.length && card.questions.every(question => question.answer || question.withdrawnAt)) delete card.clarification
       ;(room.projectCards ??= {})[card.id] = card
       if (receipt) { receipt.status = 'accepted'; delete receipt.reason }
     } else {
       if (!card?.plans?.length) throw new Error('Choose a planned card in this group.')
       if (args.action === 'dispatch') {
+        if (questionBlocksNode(card, args.node)) throw new Error('Answer the question blocking this node before dispatch.')
         dispatchRound = dispatchNode(card, args, room, actor, assignment)
         reserveNodePaths(rt, room.id, card, card.rounds[dispatchRound - 1])
       }
@@ -814,7 +820,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       }
       else {
         const review = card.humanReview
-        if (card.clarification) throw new Error('Wait for the requested clarification before approval.')
+        if (card.clarification && (!card.questions?.length || questionBlocksNode(card, args.node))) throw new Error('Wait for the requested clarification before approval.')
         if ((!review || review.version !== args.version) && card.humanAcceptanceRequired && nodeViews(card, card.plans.at(-1)).every(n => ['verified', 'omitted'].includes(n.status) || (n.no === args.node && n.status === 'review'))) {
           requestAcceptance(card, args)
           return JSON.stringify(projectCardSummary(card))
@@ -836,7 +842,7 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
       if (!card || (linked && linked !== card)) throw new Error('Intake and card must belong to the same project and agree.')
       if (!linked) {
         card.intakes.push(source.intakeId)
-        delete card.clarification
+        if (!openProjectQuestions(card).some(question => question.id !== 'legacy')) delete card.clarification
       }
       if (receipt && receipt.status !== 'accepted') { receipt.status = 'attached'; delete receipt.reason }
     } else {
@@ -908,12 +914,12 @@ function changeProject(rt, room, args, actor, source, id, manager, observation, 
         if (args.artifact) binding.checkpointArtifact = field(args.artifact, 'checkpoint artifact', 2000)
         binding.checkpointAt = Math.max(Date.now(), (binding.checkpointAt ?? 0) + 1)
       } else if (args.action === 'block' && binding && !round.result) {
-        const node = card.plans.at(-1).nodes[binding.node - 1]
+        const node = executionNode(card, round)
         if (node.independentReview && node.writePaths?.length === 0 && args.feedback != null) binding.feedback = field(args.feedback, 'actionable test feedback for the developer', 4000)
         blockRound(round, { by: actor, cause: 'reported', reason: field(args.reason, 'the blocker', 2000),
           waitingFor: field(args.waitingFor, 'the recovery condition', 2000), evidence: field(args.evidence, 'observed evidence', 2000) })
       } else if (args.action === 'submit' && round.startedAt) {
-        if (binding && currentBinding(card, round) && card.plans.at(-1).nodes[binding.node - 1].mergeToDev && !round.integration)
+        if (binding && currentBinding(card, round) && executionNode(card, round).mergeToDev && !round.integration)
           throw new Error('Verify the independently tested candidate on dev before submitting.')
         if ((!binding || currentBinding(card, round)) && codeDelivery(card, round) && !round.mainReview)
           throw new Error('Verify the delivery commit on its assigned branch before submitting this round.')

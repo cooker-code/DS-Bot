@@ -4,6 +4,7 @@ import { explainTaskMessage } from './task-explanations.js'
 import { TASK_EXPLANATION_PROMPT_LIMIT } from '../shared/task-explanation-prompt.js'
 import { readReceiptFile, taskResultView } from './task-result-view.js'
 import { readResultDocument } from './project-result-files.js'
+import { installProjectQuestions, publicProjectQuestions } from './project-questions.js'
 import { assistantId, projectNotice } from './project-assistant.js'
 import { groupDiscussions, setDiscussionArchive } from './group-archive.js'
 import { taskErrors, taskError, taskManagementEnabled } from '../shared/task-settings.js'
@@ -54,7 +55,7 @@ const MEMORY_LIMIT_MAX = 200_000
 
 function roomTaskSummaries(room) {
   return Object.entries(room.projectCards ?? {}).map(([taskId, card]) => ({
-    ...projectCardSummary(card, taskId), workspace: workspaceSummary(card, room), intakes: card.intakes,
+    ...projectCardSummary(card, taskId), workspace: workspaceSummary(card, room), intakes: card.intakes, questions: publicProjectQuestions(card),
   }))
 }
 
@@ -65,6 +66,7 @@ export function errorCode(error) {
 }
 
 export function install(rt) {
+  installProjectQuestions(rt)
   installBtw(rt)
   installSide(rt)
   const { ctx, state } = rt
@@ -84,6 +86,7 @@ export function install(rt) {
   // Models come from DSH, not state.json, so a provider added on the Models pages of Settings
   // changes the view without a new revision.
   const modelsKey = () => `${rt.cachedCatalog().map(entry => `${entry.ref}${entry.needsKey ? '!' : ''}${entry.reasoning ? `:${JSON.stringify(entry.reasoning)}` : ''}`).join(',')}|${rt.cachedDefault() ?? ''}`
+  const publicCards = cards => Object.fromEntries(Object.entries(cards ?? {}).map(([sessionId, { imOrigin, ...card }]) => [sessionId, card]))
   const view = () => ({
     revision: state.revision,
     workspaceId: state.workspaceId ?? null,
@@ -117,7 +120,7 @@ export function install(rt) {
     // ones; `parts` the members' hidden group Sessions and their earlier segments,
     // for usage.
     rooms: Object.values(state.rooms).map(original => {
-      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectHandoffScan: _handoffScan, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
+      const { log, seen, paused, sessions, segments, parts: ownParts, projectCards, projectInbox, projectReplyScopes: _replyScopes, projectIntakeOrigins: _intakeOrigins, projectHandoffScan: _handoffScan, projectBranches: _projectBranches, deletedTaskIntakes: _deletedIntakes, ...room } = original
       const parts = [...Object.values(sessions ?? {}), ...Object.values(segments ?? {}).flat().map(segment => segment.sessionId), ...(ownParts ?? []).map(segment => segment.sessionId)]
       const last = (log ?? []).findLast(line => line.kind === undefined && !isIntakeReceipt(line))
       const preview = last && taskCaption(taskMessage(last.text, original))
@@ -131,8 +134,8 @@ export function install(rt) {
     // Deleted private Bots whose folder, memory and chats stay closed to the others.
     privateArchives: rt.archivesView(),
     exchangeTurns: state.exchangeTurns,
-    questions: state.questions,
-    views: state.views ?? {},
+    questions: publicCards(state.questions),
+    views: publicCards(state.views),
     closedCards: state.closedCards ?? {},
     // Aside answers of each Bot's current part, newest first. Not part of the
     // model-visible history; earlier parts send their cards on their own pages.
@@ -539,6 +542,9 @@ export function install(rt) {
           } })
           return ok(required)
         }
+        case 'answer-project-question':
+          await rt.load()
+          return ok(await rt.answerProjectQuestion(body))
         case 'continue-project-task': {
           await rt.load()
           const room = rt.roomOf(body.roomId)
@@ -939,34 +945,7 @@ export function install(rt) {
         case 'view-reply': {
           if (typeof body.sessionId !== 'string') return fail('Nothing to send', 'bot/invalid')
           await rt.load()
-          const sessionId = ownThreadTarget(body.sessionId) ?? body.sessionId
-          const pending = rt.own(state.views, sessionId)
-          if (pending === undefined || pending.id !== body.viewId) return fail('This view is no longer open', 'bot/stale')
-          const checked = validateViewAnswer(pending.view, body.action, body.values)
-          if (checked.error !== undefined) return fail(checked.error, 'bot/invalid')
-          const reply = viewReply(pending, body.action, body.values)
-          if (reply === undefined) return fail('Nothing to send', 'bot/invalid')
-          // Claim the view before queueing so a second answer is refused.
-          delete state.views[sessionId]
-          let consumed = false
-          let issueReportResult
-          try {
-            await rt.ensureCapabilities(sessionId)
-            const agent = await rt.resolveAgent(sessionId)
-            if (pending.issueDraft !== undefined && body.action === PUBLISH_ISSUE && checked.confirmed === true) {
-              await rt.save({ required: true })
-              consumed = true
-              issueReportResult = await rt.settleIssueReport(sessionId, pending.issueDraft)
-              reply.text = JSON.stringify({ ...JSON.parse(reply.text), issueReportResult })
-            }
-            agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: reply.source }))
-            await ctx.sessions.flush(agent.session)
-          } catch (error) {
-            if (!consumed) state.views[sessionId] ??= pending
-            throw error
-          }
-          await rt.save()
-          return ok(issueReportResult === undefined ? true : { issueReportResult })
+          return ok(await rt.answerView(body.sessionId, body.viewId, body.action, body.values))
         }
         // Upload each photo separately. The message references its staged images in order.
         case 'stage-image': {
@@ -1217,6 +1196,7 @@ export function install(rt) {
     const sessionId = ownThreadTarget(sessionRef) ?? sessionRef
     const question = rt.own(state.questions, sessionId)
     if (question === undefined || question.id !== questionId) throw Object.assign(new Error('This question is no longer open'), { code: 'bot/stale' })
+    if (question.projectTask) return rt.answerProjectQuestion({ ...question.projectTask, answer })
     const reply = questionReply(question, answer)
     if (reply === undefined) throw Object.assign(new Error('Nothing to send'), { code: 'bot/invalid' })
     // Claim the question before queueing so a second answer is refused.
@@ -1234,7 +1214,39 @@ export function install(rt) {
     return true
   }
 
-  Object.assign(rt, { sendUser, answerQuestion })
+  async function answerView(sessionRef, viewId, action, values, requestId) {
+    const sessionId = ownThreadTarget(sessionRef) ?? sessionRef
+    const pending = rt.own(state.views, sessionId)
+    if (pending === undefined || pending.id !== viewId) throw Object.assign(new Error('This view is no longer open'), { code: 'bot/stale' })
+    const checked = validateViewAnswer(pending.view, action, values)
+    if (checked.error !== undefined) throw Object.assign(new Error(checked.error), { code: 'bot/invalid' })
+    const reply = viewReply(pending, action, values)
+    if (reply === undefined) throw Object.assign(new Error('Nothing to send'), { code: 'bot/invalid' })
+    // Claim the view before queueing so a second answer is refused.
+    delete state.views[sessionId]
+    let consumed = false
+    let issueReportResult
+    try {
+      await rt.ensureCapabilities(sessionId)
+      const agent = await rt.resolveAgent(sessionId)
+      if (pending.issueDraft !== undefined && action === PUBLISH_ISSUE && checked.confirmed === true) {
+        // Persist the claim before sending a write that cannot be safely retried.
+        await rt.save({ required: true })
+        consumed = true
+        issueReportResult = await rt.settleIssueReport(sessionId, pending.issueDraft)
+        reply.text = JSON.stringify({ ...JSON.parse(reply.text), issueReportResult })
+      }
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: reply.text }], source: { ...reply.source, ...(requestId === undefined ? {} : { rpcId: requestId }) } }))
+      await ctx.sessions.flush(agent.session)
+    } catch (error) {
+      if (!consumed) state.views[sessionId] ??= pending
+      throw error
+    }
+    await rt.save()
+    return issueReportResult === undefined ? true : { issueReportResult }
+  }
+
+  Object.assign(rt, { sendUser, answerQuestion, answerView })
 
   // An exact Fetch route on the shared /api channel; the browser authenticates with its session cookie.
   ctx.effect(() => ctx.connection.fetch.register({

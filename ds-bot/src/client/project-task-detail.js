@@ -3,6 +3,7 @@ import { call } from './api.js'
 import { SaveFileAction } from './file-save.js'
 import { MarkdownField } from './markdown-field.js'
 import { ChevronLeftIcon, CloseIcon } from './icons.js'
+import { focusProjectQuestion } from './project-questions.js'
 import { TaskHandoffs } from './task-handoffs.js'
 import { TaskResults } from './task-results.js'
 import { TaskWorkspace } from './task-workspace.js'
@@ -239,7 +240,7 @@ export function ProjectTaskDetail({ room, card, roster, actions, readOnly, openR
       !card ? h('p', { role: 'status' }, t('No such task')) : h(Fragment, null,
         error ? h('div', { role: 'alert' }, h('p', null, error), h('button', { type: 'button', className: 'bt-soft', onClick: () => retry(n => n + 1) }, t('Retry'))) : null,
         detail ? h(Fragment, null,
-          h(TaskHandoffs, { detail, roster, history, roomId: room.id, taskId }),
+          h(TaskHandoffs, { detail, roster, history, roomId: room.id, taskId, onAnswer: () => { focusProjectQuestion(room.id, taskId); close() } }),
           h(TaskField, { roomId: room.id, taskId, label: t('Requirement'), readOnly, value: detail.requirement, versions: detail.requirementHistory,
             sources: detail.requirements ?? [], openReference, sourceImages: detail.sourceImages, images: detail.fieldImages?.requirement, onSave: (...args) => save('requirement', ...args) }),
           h(TaskField, { roomId: room.id, taskId, label: t('Acceptance criteria'), readOnly, value: detail.acceptance, required: true, maxLength: 2000,

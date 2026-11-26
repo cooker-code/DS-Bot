@@ -510,3 +510,25 @@ test('switching sessions preserves the previous session’s pending cards', asyn
   assert.equal(after.questions[part1], undefined)
   assert.equal(after.views[part1], undefined)
 })
+
+test('project question projections keep IM routes and internal delivery receipts private', async t => {
+  const { rt, call, stop } = start()
+  t.after(stop)
+  const { writer, room } = await team(call)
+  const origin = { connId: 'private-route-connection', chatKey: 'private-route-chat', senderId: 'private-route-sender', binding: 'room:' + room.id }
+  const question = { id: 'q-private', question: 'Which date?', options: [], nodes: [], askedBy: writer.id,
+    imOrigin: origin, answer: { text: '2026-01-01', by: 'user', at: 1, deliveredAt: 2, deliveries: { [writer.id]: { id: 'private-delivery-id', deliveredAt: 2 } } } }
+  const taskId = randomUUID()
+  rt.state.rooms[room.id].projectCards = { [taskId]: { id: taskId, title: 'Source privacy', acceptance: 'Private routes stay private', intakes: [], rounds: [], plans: [], questions: [question] } }
+  rt.state.rooms[room.id].projectIntakeOrigins = { intake: origin }
+  rt.state.questions[writer.id] = { id: 'native-private', question: 'Which?', options: [{ label: 'A' }], imOrigin: origin }
+  rt.state.views = { [writer.id]: { id: 'view-private', title: 'Continue?', view: { type: 'confirm', id: 'go' }, imOrigin: origin } }
+  await rt.save({ required: true })
+  for (const result of [await call('state', {}), await call('project-task-detail', { roomId: room.id, taskId })]) {
+    assert.equal(result.ok, true)
+    assert.ok(!JSON.stringify(result.value).includes('private-route'))
+    assert.ok(!JSON.stringify(result.value).includes('private-delivery-id'))
+  }
+  const detail = (await call('project-task-detail', { roomId: room.id, taskId })).value
+  assert.equal(detail.questions[0].answer.text, '2026-01-01')
+})

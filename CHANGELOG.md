@@ -25,6 +25,13 @@ These repository tools are outside the DSH npm package; the installed plugin rem
 
 ## Local plugin changes
 
+### Unreleased — project checklists and focused questions
+
+- Show execution plans as checklists with owners, live status, verified completion and expandable details. Preserve valid completed work and unchanged running rounds across plan revisions and reordering.
+- Ask one focused project question above the composer, save each answer on its original card, and deliver it to the group admin and task assistant with restart-safe message identities.
+- Adapt upstream [PR #2014](https://github.com/Fei-Craft/DS-Bot/pull/2014): return group question cards and simple choice views to their originating IM chat and continue the asking Bot. Project questions additionally support explicit `/answer` text and restrict IM answers to the original requester.
+
+
 Local release dates and version numbers are listed in the [local release history](local-changelog.md).
 
 ### v0.3.10.29-upstream — settings console and upstream catalog (2026-11-26)

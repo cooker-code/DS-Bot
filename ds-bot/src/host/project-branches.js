@@ -7,7 +7,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { usesGitWorkspace, workspacePolicies, workspacePolicyOf } from '../shared/project-workspace.js'
 import { within } from './folders.js'
-import { plannedCheckout, sameCheckout, taskCheckout, field, nodeViews, pathsOverlap } from './project-plan.js'
+import { executionNode, plannedCheckout, sameCheckout, taskCheckout, field, nodeViews, pathsOverlap } from './project-plan.js'
 
 const run = promisify(execFile)
 const pending = new Map()
@@ -500,14 +500,14 @@ export async function resolvePlanWorkspaces(rt, room, args, actor, card) {
 
 export function reserveNodePaths(rt, roomId, card, round) {
   if (round.result || round.planNode?.supersededBy) return
-  const node = { ...card.plans?.find(p => p.version === round.planNode?.version)?.nodes[round.planNode.node - 1], ...round.workspace }
+  const node = { ...executionNode(card, round), ...round.workspace }
   if (!node?.workDir || node.writePaths?.length === 0) return
   for (const room of Object.values(rt.state.rooms)) for (const saved of Object.values(room.projectCards ?? {})) {
     const other = room.id === roomId && saved.id === card.id ? card : saved
     for (const r of other.rounds ?? []) {
       const b = r.planNode
       if (!b || round.dispatchId === r.dispatchId || b.supersededBy || r.result || b.lateResult || r.ownershipTransfer) continue
-      if ((other.completedWithTaskId || b.version !== other.plans.at(-1).version) && !r.startedAt) continue
+      if ((other.completedWithTaskId || !nodeViews(other, other.plans.at(-1)).some(node => node.round && other.rounds[node.round - 1] === r)) && !r.startedAt) continue
       const n = { ...other.plans.find(p => p.version === b.version)?.nodes[b.node - 1], ...r.workspace }
       if (n?.workDir !== node.workDir) continue
       if (n.writePaths?.length === 0 || (!node.writePaths && !n.writePaths)) continue

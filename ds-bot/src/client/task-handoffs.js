@@ -2,6 +2,7 @@ import { createElement as h, Fragment, useEffect, useId, useRef, useState } from
 import { createPortal } from 'react-dom'
 import { viewBottom } from './motion.js'
 import { RETRY_TEXT, RETRY_PROMISE_TEXT } from '../shared/retry-prompts.js'
+import { ProjectQuestionHistory } from './project-questions.js'
 import { TaskPlans, unsentPlanNotes } from './task-plans.js'
 import { TaskContent, CopyTaskText } from './task-content.js'
 import { TaskExecutionStatus } from './task-execution-status.js'
@@ -148,7 +149,7 @@ function HandoffRow({ entry, children, onPlan, reveal, explain, explanationVersi
       h('small', null, t('Only part of the message is available.')))
 }
 
-export function TaskHandoffs({ detail, roster, history, roomId, taskId }) {
+export function TaskHandoffs({ detail, roster, history, roomId, taskId, onAnswer }) {
   const [planVersion, selectPlan] = useState(null)
   const [reveal, setReveal] = useState(null)
   const id = useId()
@@ -166,9 +167,10 @@ export function TaskHandoffs({ detail, roster, history, roomId, taskId }) {
   return h('section', { 'aria-label': t('Task handoffs') },
     detail.title && h('div', { className: 'bt-task-detail-name' }, h('h2', null, detail.title),
       h(CopyTaskText, { text: detail.title, label: t('Copy task name') })),
-    h(TaskExecutionStatus, { detail }),
-    h('h3', { className: 'bt-section-title' }, t('Task handoffs')),
+    h(TaskExecutionStatus, { detail, onAnswer }),
     h(TaskPlans, { plans: detail.plans, roster, version: planVersion, onSelect: selectPlan }),
+    h(ProjectQuestionHistory, { questions: detail.questions, roster }),
+    h('h3', { className: 'bt-section-title' }, t('Task handoffs')),
     notes.filter(note => !note.after).map(noteIcon),
     !history && h('small', { role: 'status' }, t('Loading message history…')),
     history?.incomplete && h('small', { role: 'status' }, t('Some session history is unavailable.')),
