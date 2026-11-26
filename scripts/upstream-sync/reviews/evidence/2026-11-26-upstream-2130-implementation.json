@@ -1,0 +1,164 @@
+{
+  "recordedAt": "2026-11-26T11:23:00+08:00",
+  "branch": "chore/upstream-2130-complete",
+  "applicationCandidate": "eb05224a2ceefc8cd8050c21340bbd4891658cb0",
+  "packagingHead": "3c9cfb95",
+  "upstreamPR": "https://github.com/Fei-Craft/DS-Bot/pull/2130",
+  "upstreamMerge": "94aa5a451f5746e5917132e9012013e3962cb0aa",
+  "fixedUpstreamEndpoint": "bb1b1592472084c32278c12287944ee40b8087c5",
+  "version": "0.3.10.28-upstream",
+  "npmVersion": "0.3.10-local.28-upstream",
+  "tarball": "/tmp/ds-bot-0.3.10-local.28-upstream.tgz",
+  "independentAcceptance": {
+    "agent": "/root/acceptance",
+    "candidate": "eb05224a2ceefc8cd8050c21340bbd4891658cb0",
+    "result": "passed for authorized local installation",
+    "userAcceptance": "not asserted"
+  },
+  "checks": {
+    "fullSuite": {
+      "tests": 3465,
+      "pass": 3459,
+      "fail": 6,
+      "failuresMatchExistingBaseline": true,
+      "baselineFailures": {
+        "i18n": 2,
+        "sections": 1,
+        "style-debt": 2,
+        "switch-keeps-input": 1
+      }
+    },
+    "affectedFormalFlow": {
+      "tests": 200,
+      "pass": 200
+    },
+    "finalProtocolIncludingImplicitAnswerCancelRace": {
+      "tests": 27,
+      "pass": 27
+    },
+    "groupGuard": {
+      "tests": 199,
+      "pass": 199
+    },
+    "traditionalNativeSmoke": {
+      "tests": 57,
+      "pass": 56,
+      "fail": 1,
+      "existingFailure": "Writer condensed in place, not switched"
+    },
+    "lintErrors": 0,
+    "generatedClientMatchesSource": true,
+    "documentedAPIEndpoints": 188
+  },
+  "runtimeLoadedInDailyProfiles": "not verified; no daily DSH quit or restart",
+  "scope": {
+    "uniquePRsCompletedThisBatch": 1,
+    "allUniquePRs": 265,
+    "statusCounts": {
+      "采用": 94,
+      "部分采用": 6,
+      "需讨论": 5,
+      "暂缓": 103,
+      "跳过": 57
+    },
+    "remainingIncomplete": 114
+  },
+  "installation": {
+    "web": {
+      "version": "0.3.10-local.28-upstream",
+      "checkedFiles": 177,
+      "mismatches": []
+    },
+    "desktop": {
+      "version": "0.3.10-local.28-upstream",
+      "checkedFiles": 177,
+      "mismatches": []
+    }
+  },
+  "nativeFlow": {
+    "callReturn": true,
+    "backgroundKeepsForeground": true,
+    "pauseId": "741b4994-0f1e-4a36-b03a-15ba0761738f",
+    "pauseVisibleState": true
+  },
+  "nativeExtra": {
+    "candidate": "eb05224a2ceefc8cd8050c21340bbd4891658cb0",
+    "queueWaitsForForeground": true,
+    "activeCancelKeepsOtherConversation": true,
+    "silentBufferedUntilIdle": true,
+    "noCancelledLateReturn": true,
+    "noSilentWake": true
+  },
+  "nativeRestart": {
+    "candidate": "eb05224a",
+    "pausedSurvivesRealHostRestart": true,
+    "workId": "b9f76163-e5a9-474d-b64a-daeece1faca1",
+    "doesNotAutoResume": true
+  },
+  "sqliteCopy": {
+    "revision": 2893,
+    "bots": 14,
+    "rooms": 3,
+    "cards": 12,
+    "rounds": 31,
+    "fullRoundtrip": true,
+    "transactionReadback": true,
+    "protocolQuestionAndReceiptRoundtrip": true,
+    "failedTransactionRollback": true,
+    "sameRoomCardsFromSnapshot": true,
+    "twoCardModelInputIsolation": true,
+    "twoCardWorkingNoticeIsolation": true,
+    "modelOrExternalCalls": 0,
+    "sourceWritten": false
+  },
+  "ui": {
+    "pid": 97407,
+    "pauseVisible": true,
+    "exchangePauseVisible": true,
+    "continueSameWork": true,
+    "cancelRemovesCard": true,
+    "narrowWidth": 390,
+    "pageErrors": []
+  },
+  "cleanup": {
+    "ownedGroupsExited": [
+      {
+        "bench": "upstream2130",
+        "role": "web",
+        "pid": 363
+      },
+      {
+        "bench": "upstream2130",
+        "role": "mock",
+        "pid": 354
+      }
+    ],
+    "portsClosed": {
+      "3983": true,
+      "8983": true,
+      "3984": true,
+      "8984": true
+    },
+    "browserContextClosed": true,
+    "browserTemporaryDirectoryRemoved": true,
+    "ownedScriptProcesses": []
+  },
+  "devIsolation": {
+    "devCommit": "7b9a4fa8fa7ba9ee3236e6c516ac5679b4ee141d",
+    "commitUnchanged": true,
+    "initialTrackedDiffByteIdentical": false,
+    "concurrentChangedTrackedPaths": [
+      ".github/pull_request_template.md",
+      "AGENTS.md",
+      "CONTRIBUTING.md",
+      "CONTRIBUTING.zh.md"
+    ],
+    "taskWroteMainWorkspace": false,
+    "taskMergedToDev": false,
+    "unchangedOriginalTrackedPaths": [
+      ".agents/skills/sync-upstream/SKILL.md",
+      ".agents/skills/sync-upstream/references/verification.md",
+      "upstream-changelog.md"
+    ]
+  }
+}

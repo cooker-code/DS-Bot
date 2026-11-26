@@ -1,0 +1,429 @@
+"""Behavioral checks use temporary SQLite and a separate fixture Git repository."""
+import json
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
+import urllib.error
+import urllib.request
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from upstream_catalog.store import Store, Conflict, CatalogError, REPO_ID
+from upstream_catalog.source import sync, reassess, writable, database_path, complete_metadata, github_metadata, bootstrap as bootstrap_source, coverage, check_upstream, git as source_git
+from upstream_catalog.web import server
+
+
+class CatalogTests(unittest.TestCase):
+    def setUp(self):
+        self.metadata_mock = patch('upstream_catalog.source.github_metadata', side_effect=lambda numbers: {n:{'createdAt':'2026-11-20T01:02:03Z','githubMergedAt':'2026-11-21T04:05:06Z'} for n in numbers})
+        self.metadata_mock.start();self.addCleanup(self.metadata_mock.stop)
+        self.tmp = tempfile.TemporaryDirectory(prefix='ds-upstream-catalog-test-')
+        self.root = Path(self.tmp.name)
+        self.repo = self.root / 'repo';self.repo.mkdir()
+        self.run_git('init', '-b', 'sync-test')
+        self.run_git('remote','add','upstream','https://github.com/Fei-Craft/DS-Bot.git')
+        self.run_git('config', 'user.name', 'Test User')
+        self.run_git('config', 'user.email', 'test@example.invalid')
+        (self.repo / 'plugin.js').write_text('initial\n')
+        self.run_git('add', '.');self.run_git('commit', '-m', 'Initial fixture')
+        self.base = self.run_git('rev-parse', 'HEAD')
+        self.ledger = self.repo / 'scripts/upstream-sync/upstream-changelog.md'
+        self.ledger.parent.mkdir(parents=True)
+        self.ledger.write_text('''# fixture
+
+## 2026-11-25
+
+| PR | 状态 | 权重 | 上游改动 | 原因类型 | 实际差异与采用范围 | 解决方式与通过条件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| [#1](https://example.invalid/1) | 采用 | 8 | 修复投递 | 已验证 | 历史代码与证据 | 通过条件：同一消息只发送一次 |
+| [#2](https://example.invalid/2) | 暂缓 | 9 | 增加搜索 | 缺少适配 | 原历史 | 补齐搜索和返回入口 |
+''')
+        self.path = self.root / 'catalog.sqlite3'
+        self.store = Store(self.path)
+        self.snapshots = {1: {'sha': self.base, 'files': ['plugin.js']}, 2: {'sha': self.base, 'files': ['other.js']}}
+        self.store.bootstrap(self.ledger, self.snapshots, self.base, self.base, {})
+
+    def tearDown(self):
+        self.store.db.close();self.tmp.cleanup()
+
+    def run_git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True, stderr=subprocess.DEVNULL).strip()
+
+    def test_initial_bootstrap_failure_keeps_database_empty_and_success_is_atomic(self):
+        with Store(self.root/'initial.sqlite3') as empty:
+            with patch('upstream_catalog.source.github_metadata',side_effect=CatalogError('GitHub unavailable')):
+                with self.assertRaises(CatalogError):bootstrap_source(empty,self.repo,self.base)
+            self.assertEqual(empty.db.execute('SELECT count(*) FROM sources').fetchone()[0],0)
+            self.assertEqual(empty.db.execute('SELECT count(*) FROM prs').fetchone()[0],0)
+            result=bootstrap_source(empty,self.repo,self.base)
+            self.assertEqual(result['imported'],2)
+            self.assertEqual(empty.stats()['source']['checkpoint_sha'],self.base)
+            self.assertEqual(empty.detail(1)['pr_created_at'],'2026-11-20T01:02:03Z')
+            self.assertIsNotNone(empty.detail(1)['synced_at'])
+            with patch('upstream_catalog.source.github_metadata',return_value={}) as fetch:
+                again=bootstrap_source(empty,self.repo,self.base)
+                self.assertEqual(again['metadata']['githubPRsRead'],0)
+                self.assertEqual(fetch.call_args.args[0],[])
+
+    def test_source_dates_are_persisted_and_not_refreshed_by_decisions(self):
+        self.store.preference(2,0,'用户不要',0)
+        with patch('upstream_catalog.source.github_metadata',return_value={1:{'createdAt':'2026-11-20T01:02:03Z'},2:{'createdAt':'2026-11-19T02:03:04Z'}}) as fetch:
+            result = complete_metadata(self.store,self.repo)
+            self.assertEqual(result['githubPRsRead'],2)
+            row = self.store.detail(2)
+            self.assertEqual(row['pr_created_at'],'2026-11-19T02:03:04Z')
+            self.assertEqual(row['wanted'],0)
+            synced = row['synced_at'];self.assertIsNotNone(synced)
+            self.store.preference(2,1,'撤销不需要',1)
+            self.store.annotate(2,dict(purpose='搜索',scenario='输入关键词',effect='定位设置',reason='完整验证待执行',solution='补齐测试'),self.base)
+            self.assertEqual(self.store.detail(2)['synced_at'],synced)
+            self.assertEqual(complete_metadata(self.store,self.repo)['githubPRsRead'],0)
+            self.assertEqual(fetch.call_count,1)
+        with Store(self.path,readonly=True) as reopened:
+            self.assertEqual(reopened.list({'q':'搜索'})['rows'][0]['synced_at'],synced)
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'],self.base)
+
+    def test_metadata_failure_does_not_change_rows_or_source_cursor(self):
+        before=self.store.detail(1);source=self.store.stats()['source']
+        with patch('upstream_catalog.source.github_metadata',side_effect=CatalogError('network unavailable')):
+            with self.assertRaises(CatalogError):complete_metadata(self.store,self.repo)
+        self.assertEqual(self.store.detail(1),before)
+        self.assertEqual(self.store.stats()['source'],source)
+
+    def test_github_metadata_batches_and_validates_source_identity(self):
+        calls=[]
+        def run(args,**kwargs):
+            import re
+            numbers=[int(n) for n in re.findall(r'pullRequest\(number:(\d+)\)',args[-1])]
+            calls.append(numbers)
+            repo={'databaseId':REPO_ID}
+            repo.update({f'p{n}':{'number':n,'createdAt':'2026-11-20T01:02:03Z','mergedAt':None,'url':f'https://github.com/Fei-Craft/DS-Bot/pull/{n}'} for n in numbers})
+            return SimpleNamespace(returncode=0,stdout=json.dumps({'data':{'repository':repo}}))
+        with patch('upstream_catalog.source.subprocess.run',side_effect=run):
+            result=github_metadata(list(range(1,53))+[1])
+            self.assertEqual(len(result),52);self.assertEqual([len(c) for c in calls],[50,2])
+        bad={'data':{'repository':{'databaseId':0}}}
+        with patch('upstream_catalog.source.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps(bad))):
+            with self.assertRaises(CatalogError):github_metadata([1])
+
+    def test_import_repeat_and_choices_survive_reopen(self):
+        first = self.store.preference(2, 0, '保留本地行为', 0)
+        with Store(self.path) as second:
+            result = second.bootstrap(self.ledger, {}, self.base, self.base, {})
+            self.assertEqual(result['imported'], 0)
+            self.assertEqual(second.stats()['total'], 2)
+            self.assertEqual(second.detail(2)['wanted'], 0)
+            self.assertEqual(second.detail(2)['choice_reason'], '保留本地行为')
+        self.assertEqual(first['choice_revision'], 1)
+
+    def test_optimistic_choice_conflict_and_undo(self):
+        self.store.preference(1, 0, '', 0)
+        with self.assertRaises(Conflict):self.store.preference(1, 1, 'stale tab', 0)
+        self.assertEqual(self.store.detail(1)['wanted'], 0)
+        self.store.preference(1, None, '撤销', 1)
+        self.assertIsNone(self.store.detail(1)['wanted'])
+        self.assertEqual(self.store.detail(1)['status'], '采用')
+
+    def test_filters_sort_pagination_and_sql_input(self):
+        self.store.preference(2, 0, '选择', 0)
+        self.assertEqual([r['number'] for r in self.store.list({})['rows']], [1, 2])
+        self.assertEqual(self.store.list({'wanted': '0','min':'9'})['rows'][0]['number'], 2)
+        self.assertEqual(self.store.list({'q': "' OR 1=1 --"})['total'], 0)
+        self.assertEqual(self.store.list({'limit': '1','offset':'1'})['rows'][0]['number'], 2)
+        with self.assertRaises(CatalogError):self.store.list({'status': '部分采用'})
+        with self.assertRaises(CatalogError):self.store.list({'limit': '-1'})
+
+    def test_export_retains_history_and_is_repeatable(self):
+        self.store.preference(1, 0, '已装过，停止跟进', 0)
+        out = self.store.export(self.ledger)
+        text = self.ledger.read_text()
+        self.assertEqual(out['changed'], 1)
+        self.assertIn('历史代码与证据', text)
+        self.assertIn('不自动回滚代码', text)
+        self.assertIn('| 采用 |', text)
+        self.assertEqual(self.store.export(self.ledger)['changed'], 0)
+        self.assertEqual(self.store.bootstrap(self.ledger, {}, self.base, self.base, {})['imported'], 0)
+        self.assertEqual(self.store.stats()['pendingExport'], 0)
+
+    def test_export_includes_current_assessment_and_validation_with_legacy_history(self):
+        self.store.annotate(1,dict(local_difference='保留本地并行会话和项目卡',verification='候选abc123专项通过，web/desktop包一致',reason='完整适配通过'),self.base)
+        self.store.export(self.ledger)
+        content = self.ledger.read_text()
+        self.assertIn('保留本地并行会话和项目卡',content)
+        self.assertIn('候选abc123专项通过，web/desktop包一致',content)
+        self.assertIn('历史代码与证据',content)
+
+    def test_export_refuses_concurrent_markdown_change(self):
+        self.store.preference(2, 1, '', 0)
+        self.ledger.write_text(self.ledger.read_text() + '\n另一个会话的内容\n')
+        original = self.ledger.read_bytes()
+        with self.assertRaises(Conflict):self.store.export(self.ledger)
+        self.assertEqual(self.ledger.read_bytes(), original)
+        self.assertEqual(self.store.detail(2)['wanted'], 1)
+
+    def test_incremental_inventory_does_not_advance_before_analysis(self):
+        (self.repo / 'new.js').write_text('new')
+        self.run_git('add', 'new.js');self.run_git('commit', '-m', 'Merge pull request #9001 from fixture/feature\n\nAdd bounded search')
+        end = self.run_git('rev-parse', 'HEAD')
+        result = sync(self.store, self.repo, end)
+        self.assertEqual(result['commitsExamined'], 1)
+        self.assertEqual(result['pendingAnalysis'], [9001])
+        self.assertEqual(self.store.detail(9001)['pr_created_at'],'2026-11-20T01:02:03Z')
+        self.assertIsNotNone(self.store.detail(9001)['synced_at'])
+        self.assertEqual(self.store.detail(9001)['status'],'暂缓')
+        self.assertFalse(result['checkpointAdvanced'])
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'], self.base)
+        self.store.preference(9001, 0, '当前不需要', 0)
+        result = sync(self.store, self.repo, end)
+        self.assertEqual(result['changedPRs'], [])
+        self.assertEqual(result['pendingAnalysis'], [9001])
+        self.store.annotate(9001,dict(purpose='按范围搜索',scenario='输入关键词定位结果',effect='减少查找时间',reason='用户不需要',solution='跳过并保留来源',status='跳过'),end)
+        result = sync(self.store,self.repo,end)
+        self.assertTrue(result['checkpointAdvanced'])
+        self.assertEqual(self.store.detail(9001)['wanted'], 0)
+        self.assertEqual(sync(self.store, self.repo, end)['commitsExamined'], 0)
+        self.assertEqual(self.store.stats()['total'], 3)
+
+    def test_annotation_completes_pending_inventory_and_rejects_half_status(self):
+        self.run_git('commit', '--allow-empty', '-m', 'Merge pull request #9002 from fixture/fix\n\nFix pending work')
+        end = self.run_git('rev-parse', 'HEAD');sync(self.store,self.repo,end)
+        values = dict(purpose='修复等待投递', scenario='重启后检查原队列', effect='避免丢失消息', status='暂缓', weight=7, reason='需本地适配', solution='适配后验证一次投递')
+        with self.assertRaises(CatalogError):self.store.annotate(9002,{**values,'status':'部分采用'},end)
+        self.store.annotate(9002,values,end)
+        self.assertTrue(sync(self.store,self.repo,end)['checkpointAdvanced'])
+        events = len(self.store.detail(9002)['history'])
+        self.store.annotate(9002,values,end)
+        self.assertEqual(len(self.store.detail(9002)['history']),events)
+
+    def test_failed_source_scan_keeps_checkpoint_and_data(self):
+        before = self.store.stats()
+        with self.assertRaises(CatalogError):sync(self.store,self.repo,'missing-commit')
+        self.assertEqual(self.store.stats()['source'],before['source'])
+        self.assertEqual(self.store.stats()['total'],before['total'])
+
+    def test_local_reassessment_is_scoped_and_respects_not_wanted(self):
+        (self.repo / 'plugin.js').write_text('changed')
+        self.assertEqual(reassess(self.store,self.repo),[1])
+        self.store.preference(1,0,'不再跟进',0)
+        self.assertEqual(reassess(self.store,self.repo),[])
+        self.assertEqual(self.store.detail(2)['needs_review'],0)
+
+    def test_failed_transaction_records_failure_without_partial_inventory(self):
+        self.run_git('commit','--allow-empty','-m','Merge pull request #9010 from fixture/failure')
+        end = self.run_git('rev-parse','HEAD')
+        original = self.store.event
+        def fail(*args, **kwargs):raise RuntimeError('controlled write failure')
+        self.store.event = fail
+        try:
+            with self.assertRaises(RuntimeError):sync(self.store,self.repo,end)
+        finally:self.store.event = original
+        self.assertEqual(self.store.stats()['total'],2)
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'],self.base)
+        self.assertEqual(self.store.db.execute("SELECT count(*) FROM sync_runs WHERE outcome='failed'").fetchone()[0],1)
+
+    def test_direct_commit_review_is_cached_and_exported_once(self):
+        self.run_git('commit','--allow-empty','-m','Refresh source documentation')
+        end = self.run_git('rev-parse','HEAD')
+        result = sync(self.store,self.repo,end)
+        self.assertEqual(result['directCommits'],[end])
+        records = self.store.meta('direct_commits')
+        records[end].update(reviewed=True,purpose='更新来源文档',reason='仅文档',solution='核对链接',status='暂缓')
+        with self.store.db:self.store.set_meta('direct_commits',records)
+        self.assertTrue(sync(self.store,self.repo,end)['checkpointAdvanced'])
+        self.assertEqual(self.store.export(self.ledger)['changed'],1)
+        self.assertEqual(self.store.export(self.ledger)['changed'],0)
+        self.assertEqual(self.ledger.read_text().count('/commit/'+end),1)
+
+    def test_source_identity_is_not_silently_replaced(self):
+        self.run_git('remote','set-url','upstream','https://github.com/example/other.git')
+        with self.assertRaises(CatalogError):sync(self.store,self.repo,self.base)
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'],self.base)
+
+    def test_shared_path_and_dev_write_guard(self):
+        self.assertEqual(database_path(self.repo),(self.repo / 'scripts/upstream-sync/upstream.sqlite3').resolve())
+        self.run_git('switch','-c','dev')
+        with self.assertRaises(CatalogError):writable(self.repo)
+
+    def test_time_sorts_use_distinct_dates_and_normalize_timezones(self):
+        a={'createdAt':'2026-11-22T23:00:00-08:00','githubMergedAt':'2026-11-24T01:00:00Z'}
+        b={'createdAt':'2026-11-23T06:30:00Z','githubMergedAt':'2026-11-25T01:00:00Z'}
+        with self.store.db:
+            self.store.db.execute('UPDATE prs SET upstream_json=?,updated_at=? WHERE number=1',(json.dumps(a),'2026-11-26T00:00:00Z'))
+            self.store.db.execute('UPDATE prs SET upstream_json=?,updated_at=? WHERE number=2',(json.dumps(b),'2026-11-25T00:00:00Z'))
+        for sort,expected in [('created',[1,2]),('merged',[2,1]),('time',[1,2])]:
+            self.assertEqual([r['number'] for r in self.store.list({'sort':sort})['rows']],expected)
+        self.assertEqual(self.store.detail(2)['pr_merged_at'],b['githubMergedAt'])
+        with self.store.db:self.store.db.execute("UPDATE prs SET upstream_json='{}' WHERE number=1")
+        self.assertEqual([r['number'] for r in self.store.list({'sort':'created'})['rows']],[2,1])
+        with self.assertRaises(CatalogError):self.store.list({'sort':'unrecognized'})
+
+    def test_remote_observation_does_not_advance_reviewed_coverage(self):
+        self.assertIsNone(coverage(self.store,self.repo)['unseenPRs'])
+        (self.repo/'next.js').write_text('next')
+        self.run_git('add','next.js');self.run_git('commit','-m','Merge pull request #9001 from fixture/new')
+        tip=self.run_git('rev-parse','HEAD')
+        def remote(repo,*args):
+            if args[:1]==('ls-remote',):return tip+'\trefs/heads/dev'
+            return source_git(repo,*args)
+        with patch('upstream_catalog.source.git',side_effect=remote):
+            observed=check_upstream(self.store,self.repo)
+        self.assertEqual(observed['unseenPRs'],1)
+        self.assertEqual(observed['unseenDirectCommits'],0)
+        self.assertEqual(self.store.stats()['source']['checkpoint_sha'],self.base)
+        with self.store.db:self.store.db.execute('UPDATE sources SET checkpoint_sha=?',(tip,))
+        self.assertEqual(coverage(self.store,self.repo)['unseenCommits'],0)
+        def failed(repo,*args):
+            if args[:1]==('ls-remote',):raise CatalogError('remote unavailable')
+            return source_git(repo,*args)
+        with patch('upstream_catalog.source.git',side_effect=failed):
+            with self.assertRaises(CatalogError):check_upstream(self.store,self.repo)
+        state=coverage(self.store,self.repo)
+        self.assertEqual(state['checkedTip'],tip)
+        self.assertEqual(state['error'],'remote unavailable')
+
+    def test_new_pr_export_includes_difference_scenario_and_not_wanted(self):
+        self.store.annotate(2,{'purpose':'新功能','scenario':'两个项目并行','local_difference':'保留本地项目归属','solution':'隔离验证'},self.base)
+        self.store.preference(2,0,'本地不需要',0)
+        text=self.ledger.read_text()
+        shortened='\n'.join(line for line in text.splitlines() if not line.startswith('| [#2]'))+'\n'
+        self.ledger.write_text(shortened)
+        from upstream_catalog.store import digest
+        with self.store.db:self.store.set_meta('ledger_digest',digest(shortened))
+        self.store.export(self.ledger)
+        exported=self.ledger.read_text()
+        for value in ['两个项目并行','保留本地项目归属','不需要','本地不需要']:self.assertIn(value,exported)
+        self.assertEqual(exported.count('/2)'),1)
+        self.assertEqual(self.store.export(self.ledger)['changed'],0)
+
+    def test_linked_worktree_reuses_main_catalog_and_choices(self):
+        linked = self.repo / '.worktree/catalog-other'
+        self.run_git('worktree','add','-b','catalog-other',str(linked))
+        main_path = database_path(self.repo)
+        self.assertEqual(database_path(linked),main_path)
+        main_path.parent.mkdir(exist_ok=True,parents=True)
+        self.store.backup(main_path)
+        with Store(database_path(linked)) as writer:
+            writer.preference(2,0,'跨工作树保留选择',0)
+        with Store(database_path(self.repo),readonly=True) as reader:
+            self.assertEqual(reader.detail(2)['wanted'],0)
+            self.assertEqual(reader.detail(2)['choice_reason'],'跨工作树保留选择')
+
+    def test_relocated_cli_exports_central_ledger_and_defaults_backup_location(self):
+        cli = Path(__file__).resolve().parents[1] / 'upstream-catalog.py'
+        args = [sys.executable,str(cli),'--repo',str(self.repo),'--database',str(self.path)]
+        self.store.preference(2,0,'目录迁移后的选择',0)
+        result = json.loads(subprocess.check_output([*args,'export'],text=True,cwd=self.root))
+        self.assertEqual(Path(result['path']),self.ledger.resolve())
+        self.assertFalse((self.repo/'upstream-changelog.md').exists())
+        self.assertIn('目录迁移后的选择',self.ledger.read_text())
+        saved = json.loads(subprocess.check_output([*args,'backup'],text=True,cwd=self.root))
+        self.assertEqual(Path(saved['backup']).parent,(self.path.parent/'backups').resolve())
+        with Store(saved['backup'],readonly=True) as copy:
+            self.assertEqual(copy.detail(2)['wanted'],0)
+            self.assertEqual(copy.meta('ledger_file'),str(self.ledger.resolve()))
+
+    def test_rejects_unrelated_database_without_mutating_it(self):
+        path = self.root / 'unrelated.sqlite3'
+        connection = sqlite3.connect(path)
+        connection.execute('CREATE TABLE user_data(value TEXT)');connection.commit();connection.close()
+        with self.assertRaises(CatalogError):Store(path)
+        connection = sqlite3.connect(path)
+        try:self.assertEqual(connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall(),[('user_data',)])
+        finally:connection.close()
+
+    def test_readonly_queries_cannot_write(self):
+        with Store(self.path,readonly=True) as reader:
+            self.assertEqual(reader.list({})['total'],2)
+            with self.assertRaises(sqlite3.OperationalError):reader.db.execute("UPDATE prs SET status='跳过'")
+        self.assertEqual(self.store.detail(1)['status'],'采用')
+
+    def test_backup_is_consistent(self):
+        self.store.preference(2,0,'持久化',0)
+        target = self.root / 'backup.sqlite3';self.store.backup(target)
+        with Store(target) as copy:
+            self.assertEqual(copy.detail(2)['wanted'],0)
+            self.assertEqual(copy.db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
+
+    def test_http_real_reads_writes_origin_and_allowlist(self):
+        docs=self.repo/'scripts/upstream-sync/docs';docs.mkdir()
+        (docs/'upstream-remaining-review.md').write_text('### G01 测试基线、翻译与测试维护（6 个 PR）\n### G16 设置导航、搜索与组件入口（历史5个PR，当前待处理4个）\n')
+        with self.store.db:self.store.db.execute("UPDATE prs SET dependency_group='G16' WHERE number=2")
+        host = server(self.repo,self.path,0)
+        thread = threading.Thread(target=host.serve_forever);thread.start()
+        origin = f'http://127.0.0.1:{host.server_port}'
+        def call(path,body=None,origin_header=None):
+            headers = {} if body is None else {'Content-Type':'application/json'}
+            if origin_header:headers['Origin'] = origin_header
+            req = urllib.request.Request(origin+path,data=None if body is None else json.dumps(body).encode(),headers=headers)
+            with urllib.request.urlopen(req,timeout=5) as response:return response.status,response.read()
+        try:
+            metadata=json.loads(call('/api/meta')[1])
+            self.assertEqual(metadata['groupNames'],{'G01':'测试基线、翻译与测试维护','G16':'设置导航、搜索与组件入口'})
+            self.assertEqual(metadata['groups'],['G16'])
+            filtered=json.loads(call('/api/prs?group=G16')[1])
+            self.assertEqual(filtered['total'],1)
+            self.assertEqual(filtered['rows'][0]['dependency_group'],'G16')
+            self.assertEqual(json.loads(call('/api/prs?status='+urllib.parse.quote('暂缓'))[1])['total'],1)
+            with self.assertRaises(urllib.error.HTTPError) as error:call('/api/preference',{'number':2,'wanted':0,'revision':0})
+            self.assertEqual(error.exception.code,403);error.exception.close()
+            response = json.loads(call('/api/preference',{'number':2,'wanted':0,'revision':0},origin)[1])
+            self.assertEqual(response['wanted'],0)
+            with self.assertRaises(urllib.error.HTTPError) as error:call('/api/preference',[],origin)
+            self.assertEqual(error.exception.code,400);error.exception.close()
+            with self.assertRaises(urllib.error.HTTPError) as error:call('/.git/config')
+            self.assertEqual(error.exception.code,404);error.exception.close()
+            self.assertIn(b'upstream',call('/')[1])
+        finally:
+            host.shutdown();host.server_close();thread.join(5)
+            self.assertFalse(thread.is_alive())
+
+    def test_daily_dev_page_saves_choices_but_cannot_export_or_sync(self):
+        self.run_git('switch','-c','dev')
+        original=self.ledger.read_bytes()
+        host=server(self.repo,self.path,0)
+        thread=threading.Thread(target=host.serve_forever);thread.start()
+        origin=f'http://127.0.0.1:{host.server_port}'
+        def call(path,body=None):
+            req=urllib.request.Request(origin+path,data=None if body is None else json.dumps(body).encode(),headers={'Content-Type':'application/json','Origin':origin})
+            with urllib.request.urlopen(req,timeout=5) as response:return json.load(response)
+        try:
+            self.assertFalse(call('/api/meta')['canExport'])
+            saved=call('/api/preference',{'number':2,'wanted':0,'reason':'日常页面保存','revision':0})
+            self.assertEqual(saved['wanted'],0)
+            self.assertEqual(self.store.detail(2)['choice_reason'],'日常页面保存')
+            with self.assertRaises(urllib.error.HTTPError) as error:call('/api/export',{})
+            self.assertEqual(error.exception.code,400);error.exception.close()
+            self.assertEqual(self.ledger.read_bytes(),original)
+            with self.assertRaises(CatalogError):sync(self.store,self.repo,self.base)
+        finally:
+            host.shutdown();host.server_close();thread.join(5)
+            self.assertFalse(thread.is_alive())
+
+    def test_cli_can_start_daily_page_from_dev(self):
+        import selectors
+        self.run_git('switch','-c','dev')
+        cli=Path(__file__).resolve().parents[1]/'upstream-catalog.py'
+        process=subprocess.Popen([sys.executable,str(cli),'--repo',str(self.repo),'--database',str(self.path),'serve','--port','0'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout,selectors.EVENT_READ)
+                self.assertTrue(selector.select(10),'CLI did not start')
+            started=json.loads(process.stdout.readline())
+            self.assertEqual(started['branch'],'dev')
+            with urllib.request.urlopen(started['url']+'/api/meta',timeout=5) as response:meta=json.load(response)
+            self.assertFalse(meta['canExport'])
+            self.assertEqual(meta['total'],2)
+        finally:
+            try:
+                if process.poll() is None:process.terminate()
+                process.wait(timeout=5)
+            finally:
+                if process.poll() is None:process.kill();process.wait(timeout=5)
+                process.stdout.close();process.stderr.close()
+
+
+if __name__ == '__main__':unittest.main()

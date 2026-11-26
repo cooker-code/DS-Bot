@@ -14,7 +14,7 @@ Local release dates and version numbers are listed in the [local release history
 - Model and usage caches release stale data and reduce repeated ownership scans. Usage diagnostics keep real errors visible while omitting explicitly unsupported subagent descriptors.
 - Package metadata and the diagnostics issue link point to the renamed Fei-Craft upstream repository.
 
-See the [per-PR sync record](upstream-changelog.md#2026-11-25--macos-插件同步) for adoption boundaries and verification.
+See the [per-PR sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-25--macos-插件同步) for adoption boundaries and verification.
 
 ### Upstream changes adopted on 2026-11-24
 
@@ -24,7 +24,7 @@ See the [per-PR sync record](upstream-changelog.md#2026-11-25--macos-插件同�
 - The avatar picker includes dolphin, octopus, turtle, crab, pufferfish, jellyfish, starfish and seahorse characters.
 - Model content-safety refusals have a dedicated error explanation. Local ACP agents record updated team instructions after sending them.
 
-See the [per-PR sync record](upstream-changelog.md#2026-11-24--macos-插件同步) for scope and verification.
+See the [per-PR sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-24--macos-插件同步) for scope and verification.
 
 ### Upstream changes adopted on 2026-11-23
 
@@ -33,11 +33,11 @@ See the [per-PR sync record](upstream-changelog.md#2026-11-24--macos-插件同�
 - The Settings model picker opens reliably and its tooltip no longer flickers. Message popovers release their viewport listener when closed.
 - Bot creation handles a failed greeting, history reads reuse per-message secret redaction, and memory retries a failed journal-tail read.
 
-See the [per-PR sync record](upstream-changelog.md#2026-11-23--macos-插件同步) for scope and verification.
+See the [per-PR sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-23--macos-插件同步) for scope and verification.
 
 ### Upstream changes adopted on 2026-11-21
 
-The [sync record](upstream-changelog.md#2026-11-21--macos-插件同步) lists the source pull requests and deferred changes.
+The [sync record](scripts/upstream-sync/upstream-changelog.md#2026-11-21--macos-插件同步) lists the source pull requests and deferred changes.
 
 - WeChat passes quoted messages to Bots. QQ retries only undelivered chunks, reports platform errors in successful HTTP responses, and formats tables without outer pipes. Discord conversations prefer channel names.
 - Custom remote MCP servers support optional OAuth sign-in. The setup guide for custom clients is easier to follow.
@@ -47,7 +47,7 @@ The [sync record](upstream-changelog.md#2026-11-21--macos-插件同步) lists th
 
 ### Upstream changes adopted on 2026-11-20
 
-The [sync record](upstream-changelog.md#已合入本地工作区) lists the source pull requests for these changes.
+The [sync record](scripts/upstream-sync/upstream-changelog.md#已合入本地工作区) lists the source pull requests for these changes.
 
 - Search the model menu and filter results with the keyboard. Local agents now start with the permission preset selected for their group, Bot or host.
 - Malformed model responses can be retried. Local agent errors retain their original cause, Claude accepts chunked input, and Antigravity sign-in detection works on macOS. On Windows, Pi now receives the resolved executable path at startup.

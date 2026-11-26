@@ -1,0 +1,27 @@
+{
+  "pid": 1233,
+  "checks": [
+    "社区/PR表头与最低最高权重旁共4个问号；口径显示正确",
+    "悬停、键盘聚焦、点击、Escape、点击外部及两类说明互斥",
+    "窄屏浮层完整位于视口，筛选值保留"
+  ],
+  "pageErrors": [],
+  "remainingChromeFiles": [],
+  "remainingOwnedProcesses": [],
+  "scriptExited": true,
+  "deployment": {
+    "url": "http://127.0.0.1:4179",
+    "branch": "chore/upstream-weight-help",
+    "database": "/Users/blank/wangliang/gitcode/DS-Bot/scripts/upstream-sync/upstream.sqlite3",
+    "assetsMatchCandidate": true,
+    "previewStopped": true,
+    "devUnchanged": true,
+    "scoresUnchanged": true
+  },
+  "independentReview": {
+    "result": "passed",
+    "candidate": "6d273daffb46c2b0308082df22afbc7b4590fdc7",
+    "recordedAt": "2026-11-26T14:59:55+08:00",
+    "scope": "评分说明、4个入口、ARIA、互斥与旧帮助行为；复用真实浏览器证据"
+  }
+}
