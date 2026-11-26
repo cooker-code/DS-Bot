@@ -343,6 +343,9 @@ export function install(rt) {
           return ok(await rt.addProvider(body))
         case 'provider-models':
           return ok(await rt.discoverModels(body))
+        case 'provider-model-fast':
+          await rt.setModelFast(body)
+          return ok(await rt.providersView())
         case 'provider-models-save':
           return ok(await rt.saveProviderModels(body))
         case 'provider-remove':

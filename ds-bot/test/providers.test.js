@@ -392,3 +392,39 @@ test('retained models keep explicit metadata before catalog defaults fill absent
   assert.deepEqual(models[0].input, ['text'])
   assert.equal(models[0].name, 'My Model')
 })
+
+
+test('removing a model also clears its saved Fast preference', async () => {
+  const { rt } = dsh({ user: { providers: { relay: { api: 'openai-completions', baseURL: 'https://gateway.example/v1', models: [{ id: 'gpt-a' }, { id: 'gpt-b' }] } } } })
+  rt.state.modelFast = { relay: { models: ['gpt-a', 'gpt-b'] } }
+  const cleared = []
+  rt.setModelFast = async body => cleared.push(body)
+  await rt.saveProviderModels({ provider: 'relay', models: [{ id: 'gpt-b' }] })
+  assert.deepEqual(cleared, [{ provider: 'relay', model: 'gpt-a', enabled: false }])
+})
+
+test('refusing to remove a built-in provider keeps its Fast preferences', async () => {
+  const { rt } = dsh({ base: { providers: { moonshotai: { apiKeyEnv: 'MOONSHOTAI_API_KEY' } } } })
+  let forgotten = false
+  rt.forgetModelFast = async () => { forgotten = true }
+  await assert.rejects(rt.removeProvider('moonshotai'), /comes with this setup/)
+  assert.equal(forgotten, false)
+})
+
+test('removing a Fast provider uses the settings revision after restoring its endpoint', async () => {
+  const { rt, writes } = dsh({ user: { providers: { relay: { api: 'openai-completions', baseURL: 'http://127.0.0.1:1/fixture', models: [{ id: 'gpt-a' }] } } } })
+  rt.forgetModelFast = async () => {
+    const section = rt.ctx.get('settings').describe().find(entry => entry.ns === 'llm-pi-ai')
+    await rt.ctx.get('settings').mutate('llm-pi-ai', [{ op: 'set', path: ['providers', 'relay', 'baseURL'], value: 'https://gateway.example/v1' }], section.revision)
+  }
+  await rt.removeProvider('relay')
+  assert.equal(writes.at(-1)[1][0].op, 'unset')
+})
+
+test('startup loads Fast recovery records before treating a catalog relay endpoint as a custom gateway', async () => {
+  const relayURL = 'http://127.0.0.1:1/fixture'
+  const { rt, writes } = dsh({ user: { providers: { openai: { baseURL: relayURL } } }, catalog: { openai: ['gpt-fixture'] } })
+  rt.load = async () => { rt.state.modelFast = { openai: { relayURL, upstream: 'https://api.openai.com/v1', models: ['gpt-fixture'] } } }
+  await rt.providersView()
+  assert.deepEqual(writes, [], 'Fast must not turn the official route into a custom-compat route')
+})
