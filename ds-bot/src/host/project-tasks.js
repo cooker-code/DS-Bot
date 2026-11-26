@@ -239,8 +239,11 @@ export async function updateProjectTaskStatus(rt, { roomId, taskId, previous, st
     if (status === current) throw new Error('Choose a different task status.')
     const at = Math.max(Date.now(), (card.updatedAt ?? 0) + 1)
     const change = { from: current, status, reason, at, by: 'user', basis: taskStatusBasis(card) }
-    room.projectCards[taskId] = { ...card, updatedAt: at, statusHistory: [...(card.statusHistory ?? []), change] }
-    return () => { room.projectCards[taskId] = card }
+    const previousCards = room.projectCards
+    const cards = { ...previousCards, [taskId]: { ...card, updatedAt: at, statusHistory: [...(card.statusHistory ?? []), change] } }
+    if (status === 'done') completeRelatedCards(cards)
+    room.projectCards = cards
+    return () => { room.projectCards = previousCards }
   } })
   const room = rt.roomOf(roomId)
   return projectCardDetail(rt, room, room.projectCards[taskId])

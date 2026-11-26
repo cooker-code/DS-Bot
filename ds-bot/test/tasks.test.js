@@ -528,6 +528,48 @@ test('a blocked project card saves the reason and resumes automatic status when 
   assert.equal((await host.call('update-project-task-status', { ...target, previous: 'blocked', status: 'done', reason: 'Done elsewhere' })).ok, false)
 })
 
+test('manually completing a planned failed primary card completes descendants in the same transaction', async t => {
+  const team = seed()
+  const card = { id: 'card', intakes: [], plans: [{ version: 1, by: 'a', at: 1, nodes: [{ no: 1, ownerId: 'b', title: 'Deliver', instructions: 'Inspect score', deliverable: 'Verified result', acceptance: 'Score verified', dependsOn: [] }] }],
+    rounds: [{ ownerId: 'b', assignedAt: 1, startedAt: 2, failedAt: 3, planNode: { version: 1, node: 1, inputs: [], block: { at: 3, by: 'b', cause: 'failure', reason: 'Failed', decisions: [] } } }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: {
+    card, child: { id: 'child', parentTaskId: 'card', plans: [], rounds: [], intakes: [] },
+    grandchild: { id: 'grandchild', parentTaskId: 'child', plans: [], rounds: [], intakes: [] },
+  } })
+  const host = await start(t, team)
+  await host.rt.load()
+  const target = { roomId: 'r1', taskId: 'card' }
+  const edit = status => host.call('update-project-task-status', { ...target, previous: 'failed', status, reason: 'External agent delivered and verified the result' })
+  const read = async (source, taskId) => (await source.call('project-task-detail', { ...target, taskId })).value
+  const locked = new DatabaseSync(join(host.home, 'state', 'rooms', 'id-r1', 'room.sqlite'))
+  try {
+    locked.exec('BEGIN IMMEDIATE')
+    assert.equal((await edit('done')).ok, false)
+    assert.equal((await read(host, 'card')).status, 'failed')
+    assert.equal((await read(host, 'grandchild')).status, 'planning')
+  } finally { locked.close() }
+  assert.equal((await edit('done')).ok, true)
+  const restarted = await start(t, host.saved())
+  for (const source of [host, restarted]) for (const id of ['card', 'child', 'grandchild'])
+    assert.equal((await read(source, id)).status, 'done')
+  assert.deepEqual((await read(host, 'card')).rounds, card.rounds)
+  assert.equal(host.saved().rooms.r1.projectCards.grandchild.completedWithTaskId, 'child')
+})
+
+test('manually cancelling a planned blocked primary card preserves its descendants', async t => {
+  const team = seed()
+  const card = { id: 'card', intakes: [], plans: [{ version: 1, by: 'a', at: 1, nodes: [{ no: 1, ownerId: 'b', title: 'Deliver', instructions: 'Inspect score', deliverable: 'Verified result', acceptance: 'Score verified', dependsOn: [] }] }],
+    rounds: [{ ownerId: 'b', assignedAt: 1, planNode: { version: 1, node: 1, inputs: [], block: { at: 2, by: 'b', cause: 'dependency', reason: 'Unavailable', decisions: [] } } }] }
+  Object.assign(team.rooms.r1, { taskManagementEnabled: true, projectCards: {
+    card, child: { id: 'child', parentTaskId: 'card', plans: [], rounds: [], intakes: [] },
+  } })
+  const host = await start(t, team)
+  assert.equal((await host.call('update-project-task-status', { roomId: 'r1', taskId: 'card', previous: 'blocked', status: 'cancelled', reason: 'Replaced by another task' })).ok, true)
+  const restarted = await start(t, host.saved())
+  assert.equal((await restarted.call('project-task-detail', { roomId: 'r1', taskId: 'card' })).value.status, 'cancelled')
+  assert.equal((await restarted.call('project-task-detail', { roomId: 'r1', taskId: 'child' })).value.status, 'planning')
+})
+
 test('task fields show original annotation images and save separate pictures for acceptance and requirements', async t => {
   const team = seed()
   const intake = 'intake-11111111-1111-4111-8111-111111111111'
