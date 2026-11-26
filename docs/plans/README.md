@@ -71,3 +71,5 @@
 | [Office 文档](2026-10-27-office-documents.md) | Bot 离线处理 .docx/.pptx/.xlsx：应用带的 payload、`office.js` 命令行、office 路由换成带 `office-tools` 的版本 |
 | [连接器](2026-11-04-connectors.md) | 通用连接器引擎、OAuth、网关、邮箱 |
 | [功能结单与异步集成](2026-11-21-async-dev-integration.md) | 功能卡独立结单、Git 管理师更新本地 dev、快照回执和中断恢复 |
+
+本地设计草案：[上游增量台账与PR管理页](2026-11-26-upstream-catalog.md)，待用户确认，不代表已实现或已定设计。
