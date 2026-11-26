@@ -54,6 +54,7 @@ test('scan explains why accepted work is unassigned and the admin retries the or
   assert.equal(f.room.projectCards.one.title, document.title)
   assert.equal(f.room.projectCards.one.goal, document.plan)
   assert.equal(f.room.projectCards.one.acceptance, document.acceptance)
+  assert.deepEqual(f.room.projectCards.one.requirementHistory.map(entry => entry.text), ['Create the daily chat detail table.'])
   assert.equal(f.deliveries[0].toId, 'b')
   assert.match(f.deliveries[0].text, /Create the daily chat detail table/)
   assert.equal(f.deliveries[0].taskId, 'one')
@@ -230,6 +231,19 @@ test('revised card content gets a new delivery while an identical retry reuses i
   assert.equal(f.deliveries.length, 2)
   assert.notEqual(f.deliveries[1].exchangeId, first)
   assert.match(f.deliveries[1].text, /revised daily chat table/)
+})
+
+test('normalizing and revising the original card preserves requirement versions through retries', async t => {
+  const f = fixture(t)
+  await f.call({ action: 'retry_handoff', taskId: 'one', ...document })
+  const revised = { ...document, plan: '1. Inspect the revised daily source.' }
+  await f.call({ action: 'retry_handoff', taskId: 'one', ...revised })
+  await f.call({ action: 'retry_handoff', taskId: 'one', ...revised })
+  assert.deepEqual(f.room.projectCards.one.requirementHistory.map(entry => entry.text), [
+    'Create the daily chat detail table.', document.plan,
+  ])
+  assert.equal(f.room.projectCards.one.goal, revised.plan)
+  assert.equal(f.deliveries.length, 2)
 })
 
 test('an exhausted old delivery does not suppress recovery of revised requirements', async t => {

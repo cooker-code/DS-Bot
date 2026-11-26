@@ -305,7 +305,7 @@ test('task detail shows results below the criteria and switches to a read-only r
   }
   assert.equal(new Set(rows.map(row => row.id)).size, rows.length)
   assert.equal(flows.children[0].children[1].props.text, 'Example task')
-  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace'])
+  assert.deepEqual(Array.from(fields, node => node.props.label ?? node.type.name), ['Requirement', 'Acceptance criteria', 'TaskResults', 'ValidationProgress', 'TaskWorkspace', 'TaskStatusEditor'])
   const results = () => fields[2].type(fields[2].props)
   assert.equal(results().props.placeholder.props.className, 'bt-empty')
   assert.equal(results().props.placeholder.children[0], 'No results submitted yet')

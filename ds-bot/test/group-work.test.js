@@ -2746,6 +2746,33 @@ const cardA = '11111111-1111-4111-8111-111111111111'
 const cardB = '22222222-2222-4222-8222-222222222222'
 const taskNotice = { taskManagementEnabled: true, notice: '' }
 
+test('clarified requirements retain user v1 and advance independently of plan-only revisions', async t => {
+  const host = await start(t, taskNotice)
+  const ended = host.round('requirement', host.say('Use reading scores instead of wrong counts'))
+  await until(() => ended() !== undefined)
+  host.begin('ga')
+  const project = args => host.tool('project_task', args, 'ga').then(JSON.parse)
+  const nodes = [{ title: 'Inspect scores', ownerId: 'b', instructions: 'Inspect the score source', deliverable: 'Score evidence', acceptance: 'Source verified', dependsOn: [] }]
+  const spec = { action: 'plan', version: 1, title: 'Reading scores', acceptance: 'Uses the real score', plan: '1. Read sentence_score from the actual reading assessment.', nodes }
+  const { taskId } = await project(spec)
+  const read = () => project({ action: 'read', taskId })
+  assert.deepEqual((await read()).requirementHistory.map(row => row.text), ['Use reading scores instead of wrong counts'])
+  assert.equal((await read()).requirement, spec.plan)
+  const { plan: _requirement, ...planOnly } = spec
+  await project({ ...planOnly, taskId, version: 2, reason: 'Clarify investigation steps' })
+  assert.equal((await read()).requirementHistory.length, 1)
+  const changed = { ...spec, taskId, version: 3, reason: 'Add score precision', plan: spec.plan + '\n2. Preserve decimals.' }
+  await project(changed)
+  await project(changed)
+  assert.deepEqual((await read()).requirementHistory.map(row => row.text), ['Use reading scores instead of wrong counts', spec.plan])
+  await assert.rejects(project({ ...changed, plan: 'Unversioned overwrite' }), /new plan version/)
+  assert.equal((await read()).requirement, changed.plan)
+  await project({ action: 'dispatch', taskId, version: 3, node: 1 })
+  await host.tool('message_bot', { to: 'Writer', taskId, card_round: 1, reply_to: 'user', request_id: 'reading-v3', message: 'Verify the saved requirement' }, 'ga')
+  assert.equal((await read()).rounds[0].requirementVersion, 3)
+  assert.deepEqual(savedTeam(rt.home).rooms.r1.projectCards[taskId].requirementHistory.map(row => row.text), ['Use reading scores instead of wrong counts', spec.plan])
+})
+
 test('a late group member network failure is visible under its own task', async t => {
   const host = await start(t, taskNotice)
   const room = rt.roomOf('r1')
@@ -3050,6 +3077,7 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   const [accepted] = Object.values(room.projectCards)
   assert.equal(accepted.classificationReason, handoff.plan)
   assert.equal(accepted.goal, handoff.plan)
+  assert.deepEqual(accepted.requirementHistory.map(row => row.text), ['Change the empty label into a dash.'])
   assert.equal(accepted.acceptance, handoff.acceptance)
   assert.match(text(intake), /two separate, concise Markdown numbered lists/)
   const delegated = host.begin('gc')
@@ -3063,6 +3091,7 @@ test('a user-appointed assistant handles one intake, dispatch and review while t
   assert.equal(taskId, accepted.id)
   await project('ga', handoff)
   assert.equal(host.agentOf('gc').calls.length, 1)
+  assert.equal(room.projectCards[taskId].requirementHistory.length, 1)
   const key = { taskId, version: 1, node: 1 }
   await project('gc', { action: 'dispatch', ...key })
   const send = { taskId, to: 'Writer', card_round: 1, reply_to: 'user', request_id: 'one', message: 'Check the label' }

@@ -4,6 +4,7 @@ import { taskMessage } from '../shared/task-message.js'
 import { scopeOf } from './task-routing.js'
 import { lineText, mentionsIn } from './groups.js'
 import { textOf } from './text.js'
+import { projectSources, requirementHistory } from './project-tasks.js'
 
 const recent = new WeakMap()
 
@@ -203,6 +204,7 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
       (edge.retries ??= []).push({ at: retry.at, input: retry.input, restart: retry.restart })
   }
   linkHistory(rows, cache.parts.values(), belongs, room, roster)
+  const unchangedRequirement = !requirementHistory(room, card, projectSources(rt, room, card.intakes ?? [], taskId)).length
   for (const row of rows) {
     const index = (card.rounds ?? []).findIndex(round => round.dispatchId === row.exchangeId && round.ownerId === row.to)
     if (index < 0) continue
@@ -210,7 +212,7 @@ export async function taskInteractions(rt, room, card, signal, taskId = card.id)
     const plan = card.plans?.find(plan => plan.version === round.planNode?.version)
     Object.assign(row, { kind: 'Dispatch', round: index + 1, planVersion: round.planNode?.version,
       node: round.planNode?.node, planReason: plan?.reason,
-      requirementVersion: round.requirementVersion ?? (!card.requirementHistory?.length && !card.fieldEditTimes?.requirement ? 1 : undefined) })
+      requirementVersion: round.requirementVersion ?? (unchangedRequirement ? 1 : undefined) })
   }
   return { messages: rows.sort((a, b) => a.at - b.at), incomplete,
     planDispatchFailures: dispatchFailures(cache.parts.values(), taskId, card.plans ?? []) }
