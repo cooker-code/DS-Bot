@@ -87,6 +87,14 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(self.store.bootstrap(self.ledger, {}, self.base, self.base, {})['imported'], 0)
         self.assertEqual(self.store.stats()['pendingExport'], 0)
 
+    def test_export_includes_current_assessment_and_validation_with_legacy_history(self):
+        self.store.annotate(1,dict(local_difference='保留本地并行会话和项目卡',verification='候选abc123专项通过，web/desktop包一致',reason='完整适配通过'),self.base)
+        self.store.export(self.ledger)
+        content = self.ledger.read_text()
+        self.assertIn('保留本地并行会话和项目卡',content)
+        self.assertIn('候选abc123专项通过，web/desktop包一致',content)
+        self.assertIn('历史代码与证据',content)
+
     def test_export_refuses_concurrent_markdown_change(self):
         self.store.preference(2, 1, '', 0)
         self.ledger.write_text(self.ledger.read_text() + '\n另一个会话的内容\n')

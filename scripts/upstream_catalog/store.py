@@ -231,6 +231,8 @@ class Store:
             # Keep the entire dated ledger history; prefix the latest assessment/choice only once.
             decision = '待评估' if r['wanted'] is None else '需要' if r['wanted'] else '不需要，后续同步跳过（不自动回滚代码）'
             latest = f' **{now()} · 台账更新**。我的选择：{decision}；{r["choice_reason"] or "未填写理由"}。功能：{r["purpose"]} 场景：{r["scenario"]} <br>'
+            if any(event['pr_number'] == number and event['kind'] == 'analysis' for event in pending):
+                latest += f' 本次采用结果：{r["status"]}；本地差异：{r["local_difference"]}；验证：{r["verification"] or "尚未验证"}。 <br>'
             c[5] = ' ' + r['reason'].replace('|', '&#124;') + ' '
             c[6] = html.escape(latest, quote=False).replace('&lt;br&gt;', '<br>').replace('|', '&#124;') + c[6]
             c[7] = ' ' + r['solution'].replace('|', '&#124;') + ' '
